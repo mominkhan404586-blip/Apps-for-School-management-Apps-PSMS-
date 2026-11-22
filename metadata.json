@@ -1,0 +1,8 @@
+{
+  "name": "School Management System — SMS",
+  "description": "Modern bilingual (বাংলা / EN) School Management System from Pre-Primary to Class 10 with Central Admin, School Admin, and Guardian portals.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

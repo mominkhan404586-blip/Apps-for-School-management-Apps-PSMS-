@@ -1,0 +1,326 @@
+{
+  "schemaVersion": 1,
+  "lastSyncedAt": "2026-11-22T09:33:14.496Z",
+  "settings": {
+    "version": 3,
+    "updatedAt": "2026-11-21T12:56:44.372Z",
+    "updatedBy": "মোঃ মোমিন খান",
+    "accountRecoveryEmail": "support@psms.gov.bd",
+    "accountRecoveryPhone": "01700-000001",
+    "security": {
+      "twoFactorEnabled": true,
+      "otpVerificationRequired": true,
+      "loginAlerts": true,
+      "profileVisibility": "school_only",
+      "autoLogoutMinutes": 60,
+      "devices": [
+        {
+          "id": "DEV-01",
+          "deviceName": "Chrome Web Workspace (Desktop)",
+          "platform": "Web Browser",
+          "location": "Dhaka, Bangladesh",
+          "ipMasked": "103.112.**.42",
+          "lastActive": "Active now",
+          "isCurrent": true,
+          "trusted": true
+        },
+        {
+          "id": "DEV-02",
+          "deviceName": "PSMS Android Mobile App (Pixel / Galaxy)",
+          "platform": "Android App",
+          "location": "Dhaka, Bangladesh",
+          "ipMasked": "103.112.**.89",
+          "lastActive": "14 mins ago",
+          "isCurrent": false,
+          "trusted": true
+        }
+      ],
+      "loginHistory": [
+        {
+          "id": "LH-101",
+          "timestamp": "21 Nov 2026, 09:15 AM",
+          "device": "PSMS Android Mobile App",
+          "ipMasked": "103.112.**.89",
+          "status": "OTP Verified"
+        },
+        {
+          "id": "LH-102",
+          "timestamp": "20 Nov 2026, 04:40 PM",
+          "device": "Chrome Web Browser",
+          "ipMasked": "103.112.**.42",
+          "status": "Success"
+        }
+      ]
+    },
+    "notifications": {
+      "push": true,
+      "email": true,
+      "sms": true,
+      "notice": true,
+      "attendance": true,
+      "exam": true,
+      "result": true,
+      "assignment": true,
+      "routine": true,
+      "feePayment": true,
+      "emergency": true
+    },
+    "appearance": {
+      "themePreference": "light",
+      "language": "bn",
+      "fontSize": "normal",
+      "dateFormat": "DD MMM, YYYY",
+      "timeFormat": "12h",
+      "dashboardView": "cards",
+      "density": "comfortable"
+    },
+    "features": {
+      "systemActive": true,
+      "limitedMode": false,
+      "maintenanceMode": false,
+      "newUserRegistration": true,
+      "onlineRegistration": true,
+      "onlineAdmission": true,
+      "schoolJoining": true,
+      "studentRegistration": true,
+      "teacherRegistration": true,
+      "staffRegistration": true,
+      "guardianRegistration": true,
+      "schoolRegistration": true,
+      "admissionRequest": true,
+      "joinSchoolByCode": true,
+      "academicManagement": true,
+      "classManagement": true,
+      "subjectManagement": true,
+      "lesson": true,
+      "lessonPlan": true,
+      "curriculum": true,
+      "syllabus": true,
+      "assignment": true,
+      "activity": true,
+      "classRoutine": true,
+      "examRoutine": true,
+      "teacherRoutine": true,
+      "studentRoutine": true,
+      "studentAttendance": true,
+      "teacherAttendance": true,
+      "staffAttendance": true,
+      "qrScannerAttendance": true,
+      "manualAttendance": true,
+      "lateAttendance": true,
+      "leaveRequest": true,
+      "examManagement": true,
+      "examRegistration": true,
+      "examSchedule": true,
+      "marksEntry": true,
+      "resultProcessing": true,
+      "resultPublish": true,
+      "reportCard": true,
+      "resultDownload": true,
+      "feeManagement": true,
+      "onlinePayment": true,
+      "feeCollection": true,
+      "paymentReceipt": true,
+      "dueManagement": true,
+      "paymentNotification": true,
+      "notice": true,
+      "announcement": true,
+      "pushNotification": true,
+      "sms": true,
+      "email": true,
+      "messaging": true,
+      "adminToTeacher": true,
+      "adminToStudent": true,
+      "adminToGuardian": true,
+      "teacherToStudent": true,
+      "emergencyNotification": true,
+      "idCard": true,
+      "certificate": true,
+      "admitCard": true,
+      "report": true,
+      "resultSheet": true,
+      "receipt": true,
+      "documentTemplates": true
+    },
+    "schoolConfig": {
+      "schoolStartTime": "09:00",
+      "schoolEndTime": "15:15",
+      "workingDays": [
+        "Sun",
+        "Mon",
+        "Tue",
+        "Wed",
+        "Thu"
+      ],
+      "holidayCalendarSummary": "শুক্রবার ও শনিবার সাপ্তাহিক ছুটি + সরকারি একাডেমিক ছুটি",
+      "gradingScaleMode": "NCTB Primary (A+ to F)",
+      "passMarkPct": 33,
+      "lateGraceMinutes": 15,
+      "minAttendanceAlertPct": 75,
+      "defaultClassList": "Pre-Primary, Class 1, Class 2, Class 3, Class 4, Class 5",
+      "defaultSections": "ক (A), খ (B)",
+      "roomsList": "Room 101, Room 102, Room 103, Room 104, Room 105, Lab-01"
+    },
+    "regional": {
+      "language": "bn",
+      "country": "Bangladesh",
+      "timeZone": "Asia/Dhaka (UTC+6)",
+      "currency": "BDT (৳)",
+      "dateFormat": "DD MMM, YYYY",
+      "timeFormat": "12h",
+      "numberFormat": "bn"
+    },
+    "templates": [
+      {
+        "id": "TPL-NOTICE",
+        "titleBn": "অফিশিয়াল নোটিশ টেমপ্লেট",
+        "titleEn": "Official Notice Template",
+        "category": "notice",
+        "enabled": true,
+        "headerStyle": "DPE Crest + School Code Header",
+        "footerNote": "প্রধান শিক্ষক / কর্তৃপক্ষ কর্তৃক স্বাক্ষরিত"
+      },
+      {
+        "id": "TPL-CERT",
+        "titleBn": "প্রত্যয়নপত্র ও সনদ টেমপ্লেট",
+        "titleEn": "Certificate & Testimonial Template",
+        "category": "certificate",
+        "enabled": true,
+        "headerStyle": "Official Border + QR Verification",
+        "footerNote": "QR কোড স্ক্যান করে সত্যতা যাচাইযোগ্য"
+      },
+      {
+        "id": "TPL-ID",
+        "titleBn": "ডিজিটাল QR আইডি কার্ড টেমপ্লেট",
+        "titleEn": "Digital QR ID Card Template",
+        "category": "idCard",
+        "enabled": true,
+        "headerStyle": "Compact Portrait + Permanent ID Barcode",
+        "footerNote": "Emergency Guardian Contact Included"
+      },
+      {
+        "id": "TPL-RESULT",
+        "titleBn": "রেজাল্ট ও মার্কশিট টেমপ্লেট",
+        "titleEn": "Result & Marksheet Template",
+        "category": "result",
+        "enabled": true,
+        "headerStyle": "Subject Marks + GPA Summary Table",
+        "footerNote": "Academic Controller Verified"
+      },
+      {
+        "id": "TPL-RECEIPT",
+        "titleBn": "ফি ও পেমেন্ট রসিদ টেমপ্লেট",
+        "titleEn": "Fee Payment Receipt Template",
+        "category": "receipt",
+        "enabled": true,
+        "headerStyle": "Dual Copy Thermal / A4 Receipt",
+        "footerNote": "Digital Transaction Ref Embedded"
+      },
+      {
+        "id": "TPL-ADMIT",
+        "titleBn": "পরীক্ষার প্রবেশপত্র টেমপ্লেট",
+        "titleEn": "Exam Admit Card Template",
+        "category": "admitCard",
+        "enabled": true,
+        "headerStyle": "Candidate Photo + Exam Seat & Routine",
+        "footerNote": "Examination Hall Rules Attached"
+      }
+    ],
+    "dataGovernance": {
+      "autoBackupInterval": "Daily",
+      "lastBackupAt": "21 Nov 2026, 06:00 AM",
+      "retentionDays": 365,
+      "trashItems": [
+        {
+          "id": "TRASH-01",
+          "entityType": "notice",
+          "titleBn": "বার্ষিক ক্রীড়া মহড়া (খসড়া)",
+          "titleEn": "Annual Sports Rehearsal Draft",
+          "deletedAt": "19 Nov 2026",
+          "deletedBy": "School Admin"
+        },
+        {
+          "id": "TRASH-02",
+          "entityType": "document",
+          "titleBn": "ডুপ্লিকেট প্রত্যয়ন খসড়া #DOC-2026-08",
+          "titleEn": "Duplicate Prottoyon Draft #DOC-2026-08",
+          "deletedAt": "18 Nov 2026",
+          "deletedBy": "Head Teacher"
+        }
+      ]
+    },
+    "subscription": {
+      "planName": "National Unified School Suite (DPE Enterprise)",
+      "status": "Active",
+      "renewalDate": "31 Dec 2027",
+      "billingCycle": "Annual Government Grant",
+      "maxSchools": "Unlimited Schools & Devices (Web + Android APK)",
+      "paymentHistory": [
+        {
+          "id": "PAY-2026-01",
+          "date": "01 Jan 2026",
+          "amount": "৳ ০ (সরকারি প্রাতিষ্ঠানিক লাইসেন্স)",
+          "status": "Paid / Active",
+          "invoiceNo": "INV-DPE-2026-0001"
+        }
+      ]
+    },
+    "supportTickets": []
+  },
+  "auditLogs": [
+    {
+      "id": "AUD-DEP-1795339994496",
+      "who": "মোঃ মোমিন খান",
+      "role": "central_admin",
+      "when": "2026-11-22 09:33",
+      "what": "Updated Unified Web + Android Deployment Links",
+      "targetName": "Deployment / App Links",
+      "requestId": "DEP-SYNC",
+      "oldValue": "Previous config",
+      "newValue": "Web Unset · APK Unset · GitHub Unset"
+    },
+    {
+      "id": "AUD-DEP-1795339993999",
+      "who": "মোঃ মোমিন খান",
+      "role": "central_admin",
+      "when": "2026-11-22 09:33",
+      "what": "Updated Unified Web + Android Deployment Links",
+      "targetName": "Deployment / App Links",
+      "requestId": "DEP-SYNC",
+      "oldValue": "Previous config",
+      "newValue": "Web Live · APK Unset · GitHub Unset"
+    },
+    {
+      "id": "AUD-SET-1795265804366-199",
+      "who": "মোঃ মোমিন খান",
+      "role": "central_admin",
+      "when": "2026-11-21 12:56",
+      "what": "Settings Feature Toggle: Student Registration",
+      "targetName": "শিক্ষার্থী নিবন্ধন (Student Registration) (studentRegistration)",
+      "requestId": "SET-STUDENTREGISTRATION",
+      "oldValue": "OFF",
+      "newValue": "ON",
+      "reason": "Re-enabled via Settings"
+    },
+    {
+      "id": "AUD-SET-1795265803810-749",
+      "who": "মোঃ মোমিন খান",
+      "role": "central_admin",
+      "when": "2026-11-21 12:56",
+      "what": "Settings Feature Toggle: Student Registration",
+      "targetName": "শিক্ষার্থী নিবন্ধন (Student Registration) (studentRegistration)",
+      "requestId": "SET-STUDENTREGISTRATION",
+      "oldValue": "ON",
+      "newValue": "OFF",
+      "reason": "Disabled via Settings (Existing records preserved)"
+    }
+  ],
+  "deploymentLinks": {
+    "webAppUrl": "https://school-management-system-sms-798667902569.asia-southeast1.run.app",
+    "androidApkUrl": "",
+    "githubRepoUrl": "",
+    "apiBaseUrl": "https://school-management-system-sms-798667902569.asia-southeast1.run.app",
+    "updatedAt": "2026-11-22T11:35:00.000Z",
+    "updatedBy": "মোঃ মোমিন খান"
+  }
+}

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PSMS Bangladesh</string>
+    <string name="title_activity_main">PSMS Bangladesh</string>
+    <string name="package_name">bd.gov.dpe.psms</string>
+    <string name="custom_url_scheme">bd.gov.dpe.psms</string>
+</resources>

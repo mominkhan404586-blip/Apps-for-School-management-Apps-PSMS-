@@ -1,0 +1,63 @@
+apply plugin: 'com.android.application'
+
+android {
+    namespace "bd.gov.dpe.psms"
+    compileSdkVersion 35
+
+    defaultConfig {
+        applicationId "bd.gov.dpe.psms"
+        minSdkVersion 23
+        targetSdkVersion 35
+        versionCode 1
+        versionName "2026.1.0"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+            ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+
+    signingConfigs {
+        release {
+            if (System.getenv("PSMS_KEYSTORE_PATH") != null) {
+                storeFile file(System.getenv("PSMS_KEYSTORE_PATH"))
+                storePassword System.getenv("PSMS_KEYSTORE_PASS") ?: ""
+                keyAlias System.getenv("PSMS_KEY_ALIAS") ?: "psms"
+                keyPassword System.getenv("PSMS_KEY_PASS") ?: ""
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix ".debug"
+            debuggable true
+            minifyEnabled false
+        }
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (System.getenv("PSMS_KEYSTORE_PATH") != null) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+repositories {
+    flatDir {
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:1.7.0"
+    implementation "androidx.core:core-splashscreen:1.0.1"
+    implementation project(':capacitor-android')
+}
