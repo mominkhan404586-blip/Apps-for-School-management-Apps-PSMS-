@@ -237,7 +237,7 @@ import {
   type DeviceViewMode,
   type PlatformTarget,
 } from './utils/devicePreviewEngine';
-import { resolveApiUrl } from './utils/deploymentConfig';
+import { detectDeploymentEnvironment, resolveApiUrl } from './utils/deploymentConfig';
 import {
   ActionConfirmModal,
   AddAdminModal,
@@ -250,6 +250,7 @@ import {
 
 interface InitialPreviewBootstrap {
   isEmbeddedPreview: boolean;
+  isProductionEnvironment: boolean;
   showDevPreviewControls: boolean;
   role: Role;
   tab: string;
@@ -287,6 +288,7 @@ function readInitialPreviewBootstrap(): InitialPreviewBootstrap {
   if (typeof window === 'undefined') {
     return {
       isEmbeddedPreview: false,
+      isProductionEnvironment: true,
       showDevPreviewControls: false,
       role: 'central_admin',
       tab: 'dashboard',
@@ -322,23 +324,36 @@ function readInitialPreviewBootstrap(): InitialPreviewBootstrap {
   ).env;
   const isDevBuild = Boolean(envMeta?.DEV);
   const isProdBuild = Boolean(envMeta?.PROD);
-  const showDevControls = shouldShowDeveloperDevicePreviewControls({
+  const envProfile = detectDeploymentEnvironment({
     isDevBuild,
     isProdBuild,
     buildMode: envMeta?.MODE,
     hostname: window.location.hostname,
-    search: window.location.search,
     isCapacitorNative: isCapNative,
-    isEmbeddedPreview: isEmbedded,
   });
+
+  // In production environments, force-hide Device Preview Controls regardless of any other parameters.
+  const showDevControls = envProfile.isProduction
+    ? false
+    : shouldShowDeveloperDevicePreviewControls({
+        isDevBuild,
+        isProdBuild,
+        buildMode: envMeta?.MODE,
+        hostname: window.location.hostname,
+        search: window.location.search,
+        isCapacitorNative: isCapNative,
+        isEmbeddedPreview: isEmbedded,
+      });
 
   let savedMode: string | null = null;
   let savedOrientation: string | null = null;
-  try {
-    savedMode = window.sessionStorage.getItem(PREVIEW_VIEW_MODE_STORAGE_KEY);
-    savedOrientation = window.sessionStorage.getItem(PREVIEW_ORIENTATION_STORAGE_KEY);
-  } catch {
-    // ignore storage errors
+  if (!envProfile.isProduction && showDevControls) {
+    try {
+      savedMode = window.sessionStorage.getItem(PREVIEW_VIEW_MODE_STORAGE_KEY);
+      savedOrientation = window.sessionStorage.getItem(PREVIEW_ORIENTATION_STORAGE_KEY);
+    } catch {
+      // ignore storage errors
+    }
   }
   const resolvedPreview = resolveInitialPreviewState(
     window.location.search,
@@ -348,13 +363,16 @@ function readInitialPreviewBootstrap(): InitialPreviewBootstrap {
 
   return {
     isEmbeddedPreview: isEmbedded,
+    isProductionEnvironment: envProfile.isProduction,
     showDevPreviewControls: showDevControls,
     role: initialRole,
     tab: initialTab,
     lang: initialLang,
     theme: initialTheme,
     platform: initialPlatform,
-    viewMode: resolveEffectiveViewMode(resolvedPreview.viewMode, showDevControls, isEmbedded),
+    viewMode: envProfile.isProduction
+      ? 'auto'
+      : resolveEffectiveViewMode(resolvedPreview.viewMode, showDevControls, isEmbedded),
     orientation: resolvedPreview.orientation,
   };
 }
@@ -362,7 +380,8 @@ function readInitialPreviewBootstrap(): InitialPreviewBootstrap {
 export default function App() {
   const initialBootstrap = useMemo(() => readInitialPreviewBootstrap(), []);
   const isEmbeddedPreview = initialBootstrap.isEmbeddedPreview;
-  const showDevPreviewControls = initialBootstrap.showDevPreviewControls;
+  const isProductionEnvironment = initialBootstrap.isProductionEnvironment;
+  const showDevPreviewControls = !isProductionEnvironment && initialBootstrap.showDevPreviewControls;
 
   const [role, setRole] = useState<Role>(initialBootstrap.role);
   const [activeTab, setActiveTab] = useState<string>(initialBootstrap.tab);
@@ -374,11 +393,9 @@ export default function App() {
   const [detectedDeviceCategory, setDetectedDeviceCategory] = useState<DetectedDeviceCategory>(() =>
     typeof window !== 'undefined' ? detectAutomaticDeviceCategory(window.innerWidth) : 'auto'
   );
-  const effectiveDeviceViewMode = resolveEffectiveViewMode(
-    deviceViewMode,
-    showDevPreviewControls,
-    isEmbeddedPreview
-  );
+  const effectiveDeviceViewMode = isProductionEnvironment
+    ? 'auto'
+    : resolveEffectiveViewMode(deviceViewMode, showDevPreviewControls, isEmbeddedPreview);
   const [searchQuery, setSearchQuery] = useState('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -4812,9 +4829,10 @@ export default function App() {
     <div
       data-device-category={detectedDeviceCategory}
       data-platform={previewPlatform}
+      data-environment={isProductionEnvironment ? 'production' : 'development'}
       className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100"
     >
-      {showDevPreviewControls && (
+      {!isProductionEnvironment && showDevPreviewControls && (
         <DevicePreviewBar
           viewMode={effectiveDeviceViewMode}
           onChangeViewMode={setDeviceViewMode}
@@ -4829,7 +4847,7 @@ export default function App() {
         />
       )}
 
-      {showDevPreviewControls && effectiveDeviceViewMode !== 'auto' ? (
+      {!isProductionEnvironment && showDevPreviewControls && effectiveDeviceViewMode !== 'auto' ? (
         <DevicePreviewFrameStage
           viewMode={effectiveDeviceViewMode}
           orientation={deviceOrientation}

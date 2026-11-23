@@ -206,7 +206,49 @@ async function startServer() {
     res.json({ ok: true, count: db.auditLogs.length });
   });
 
-  app.get('/api/deployment', (_req, res) => {
+  const apkReleaseCache = new Map<string, { checkedAt: number; ready: boolean; actionsUrl: string }>();
+
+  async function inspectApkReleaseAvailability(
+    apkUrl: string,
+    githubRepoUrl: string
+  ): Promise<{ releaseReady: boolean; actionsUrl: string }> {
+    const cleanRepo = (githubRepoUrl || '').replace(/\/+$/, '');
+    const defaultActionsUrl = cleanRepo ? `${cleanRepo}/actions` : '';
+    const match = apkUrl.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/releases\/(?:latest\/download|download\/[^/]+)\/([^/?#]+)/i);
+    if (!match) {
+      return { releaseReady: Boolean(apkUrl), actionsUrl: defaultActionsUrl };
+    }
+    const [, owner, repo, assetName] = match;
+    const actionsUrl = `https://github.com/${owner}/${repo}/actions`;
+    const cacheKey = `${owner}/${repo}/${assetName}`;
+    const cached = apkReleaseCache.get(cacheKey);
+    if (cached && Date.now() - cached.checkedAt < 60_000) {
+      return { releaseReady: cached.ready, actionsUrl: cached.actionsUrl };
+    }
+    try {
+      const resp = await fetch(`https://api.github.com/repos/${owner}/${repo}/releases/latest`, {
+        headers: { 'User-Agent': 'PSMS-Bangladesh-Server' },
+        signal: AbortSignal.timeout(2500),
+      });
+      if (resp.status === 404) {
+        apkReleaseCache.set(cacheKey, { checkedAt: Date.now(), ready: false, actionsUrl });
+        return { releaseReady: false, actionsUrl };
+      }
+      if (resp.ok) {
+        const data = (await resp.json()) as { assets?: Array<{ name?: string }> };
+        const hasAsset = Array.isArray(data.assets)
+          ? data.assets.some((a) => (a.name || '').toLowerCase() === assetName.toLowerCase())
+          : true;
+        apkReleaseCache.set(cacheKey, { checkedAt: Date.now(), ready: hasAsset, actionsUrl });
+        return { releaseReady: hasAsset, actionsUrl };
+      }
+    } catch {
+      // Network offline or timeout: assume configured URL is usable rather than blocking offline users
+    }
+    return { releaseReady: true, actionsUrl };
+  }
+
+  app.get('/api/deployment', async (_req, res) => {
     const db = ensureDbFile();
     const resolved = resolveDeploymentLinksState(db.deploymentLinks, {
       webAppUrl: process.env.LIVE_WEB_APP_URL ?? process.env.VITE_LIVE_WEB_APP_URL,
@@ -214,8 +256,13 @@ async function startServer() {
       githubRepoUrl: process.env.GITHUB_REPO_URL ?? process.env.VITE_GITHUB_REPO_URL,
       apiBaseUrl: process.env.API_BASE_URL ?? process.env.VITE_API_BASE_URL,
     });
+    const releaseCheck = resolved.androidApk.available
+      ? await inspectApkReleaseAvailability(resolved.androidApk.url, resolved.githubRepo.url)
+      : { releaseReady: false, actionsUrl: resolved.githubRepo.url ? `${resolved.githubRepo.url}/actions` : '' };
     res.json({
       deployment: resolved,
+      androidApkReleaseReady: releaseCheck.releaseReady,
+      androidApkActionsUrl: releaseCheck.actionsUrl,
       raw: db.deploymentLinks ?? createEmptyDeploymentLinksRecord(),
       lastSyncedAt: db.lastSyncedAt,
     });

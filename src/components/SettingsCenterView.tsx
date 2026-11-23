@@ -233,6 +233,8 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
   const [deploymentEditorOpen, setDeploymentEditorOpen] = useState(false);
   const [deploymentError, setDeploymentError] = useState<string | null>(null);
   const [savingDeployment, setSavingDeployment] = useState(false);
+  const [apkReleaseReady, setApkReleaseReady] = useState<boolean>(true);
+  const [apkActionsUrl, setApkActionsUrl] = useState<string>('');
 
   useEffect(() => {
     setProfileName(actorName);
@@ -263,14 +265,29 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
 
     fetch(resolveApiUrl('/api/deployment'))
       .then((res) => (res.ok ? res.json() : null))
-      .then((data: { deployment?: ResolvedDeploymentLinksState; raw?: DeploymentLinksRecord } | null) => {
-        if (mounted && data?.deployment) {
-          setDeploymentState(data.deployment);
-          if (data.raw) {
-            setDeploymentDraft(data.raw);
+      .then(
+        (
+          data: {
+            deployment?: ResolvedDeploymentLinksState;
+            androidApkReleaseReady?: boolean;
+            androidApkActionsUrl?: string;
+            raw?: DeploymentLinksRecord;
+          } | null
+        ) => {
+          if (mounted && data?.deployment) {
+            setDeploymentState(data.deployment);
+            if (typeof data.androidApkReleaseReady === 'boolean') {
+              setApkReleaseReady(data.androidApkReleaseReady);
+            }
+            if (typeof data.androidApkActionsUrl === 'string') {
+              setApkActionsUrl(data.androidApkActionsUrl);
+            }
+            if (data.raw) {
+              setDeploymentDraft(data.raw);
+            }
           }
         }
-      })
+      )
       .catch(() => {
         // Keep safe empty / env-resolved defaults without fake URLs
       });
@@ -2367,17 +2384,30 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
                     <div
                       data-testid="apk-status-label"
                       className={`text-xs font-bold ${
-                        deploymentState.androidApk.available
+                        deploymentState.androidApk.available && apkReleaseReady
                           ? 'text-emerald-700 dark:text-emerald-400'
                           : 'text-amber-700 dark:text-amber-400'
                       }`}
                     >
-                      {deploymentState.androidApk.statusEn}
+                      {deploymentState.androidApk.available && !apkReleaseReady
+                        ? b('প্রথম APK রিলিজ বিল্ড অপেক্ষমাণ', 'Pending First GitHub APK Release', lang)
+                        : deploymentState.androidApk.statusEn}
                     </div>
                     {deploymentState.androidApk.available ? (
-                      <div className="text-[11px] font-mono text-slate-700 dark:text-slate-300 break-all">
-                        {deploymentState.androidApk.url}
-                      </div>
+                      <>
+                        <div className="text-[11px] font-mono text-slate-700 dark:text-slate-300 break-all">
+                          {deploymentState.androidApk.url}
+                        </div>
+                        {!apkReleaseReady && (
+                          <div className="text-[11px] text-amber-700 dark:text-amber-300 pt-1">
+                            {b(
+                              'নতুন আপডেট GitHub-এ Push করে Actions রান সবুজ (✅) হওয়া মাত্রই এই লিংকে সরাসরি APK ডাউনলোড চালু হবে।',
+                              'Push latest updates and complete the GitHub Actions APK build once so this release link goes live.',
+                              lang
+                            )}
+                          </div>
+                        )}
+                      </>
                     ) : (
                       <div className="text-[11px] text-slate-500 dark:text-slate-400">
                         {b(
@@ -2391,7 +2421,7 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
                 </div>
 
                 <div className="flex flex-col gap-2">
-                  {deploymentState.androidApk.available ? (
+                  {deploymentState.androidApk.available && apkReleaseReady ? (
                     <a
                       href={deploymentState.androidApk.url}
                       target="_blank"
@@ -2402,6 +2432,17 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
                     >
                       <Download className="w-3.5 h-3.5 shrink-0" />
                       <span>Download APK</span>
+                    </a>
+                  ) : deploymentState.androidApk.available && apkActionsUrl ? (
+                    <a
+                      href={apkActionsUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      data-testid="open-apk-actions-btn"
+                      className="w-full h-9 px-3 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold inline-flex items-center justify-center gap-1.5 whitespace-nowrap transition-colors"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+                      <span>{b('GitHub Actions-এ APK বিল্ড দেখুন', 'Open GitHub Actions Build', lang)}</span>
                     </a>
                   ) : (
                     <button

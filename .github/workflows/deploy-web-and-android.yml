@@ -65,7 +65,9 @@ jobs:
           java-version: '21'
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -96,7 +98,7 @@ jobs:
         env:
           KEYSTORE_B64: ${{ secrets.PSMS_KEYSTORE_BASE64 || secrets.ANDROID_KEYSTORE_BASE64 }}
           KEYSTORE_PASS: ${{ secrets.PSMS_KEYSTORE_PASS || secrets.ANDROID_KEYSTORE_PASSWORD }}
-          KEY_ALIAS_VAL: ${{ secrets.PSMS_KEY_ALIAS || secrets.ANDROID_KEY_ALIAS || 'psms' }}
+          KEY_ALIAS_VAL: ${{ secrets.PSMS_KEY_ALIAS || secrets.PSMS_KEYSTORE_ALIAS || secrets.ANDROID_KEY_ALIAS || 'psms' }}
           KEY_PASS_VAL: ${{ secrets.PSMS_KEY_PASS || secrets.ANDROID_KEY_PASSWORD || secrets.PSMS_KEYSTORE_PASS || secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
           if [ -n "$KEYSTORE_B64" ] && [ -n "$KEYSTORE_PASS" ]; then

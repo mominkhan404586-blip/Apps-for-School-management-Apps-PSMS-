@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Download, Share, Smartphone, WifiOff, X } from 'lucide-react';
+import { Download, ExternalLink, Share, Smartphone, WifiOff, X } from 'lucide-react';
 import { useOnlineStatus, usePWAInstall } from '../hooks/usePWAInstall';
 import type { Language } from '../types';
 import { b } from '../i18n/translations';
@@ -17,6 +17,8 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
   const { canInstallNatively, isInstalled, isIOS, isAndroid, promptInstall } = usePWAInstall();
   const [showGuideModal, setShowGuideModal] = useState(false);
   const [androidApkUrl, setAndroidApkUrl] = useState<string>(() => resolveAndroidApkDownloadUrl());
+  const [apkReleaseReady, setApkReleaseReady] = useState<boolean>(true);
+  const [apkActionsUrl, setApkActionsUrl] = useState<string>('');
 
   const isCapacitorNative =
     typeof window !== 'undefined' &&
@@ -28,14 +30,28 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
     let mounted = true;
     fetch(resolveApiUrl('/api/deployment'))
       .then((res) => (res.ok ? res.json() : null))
-      .then((data: { deployment?: { androidApk?: { available?: boolean; url?: string } } } | null) => {
-        if (!mounted) return;
-        const serverUrl = data?.deployment?.androidApk?.url;
-        const resolved = resolveAndroidApkDownloadUrl(serverUrl);
-        if (resolved) {
-          setAndroidApkUrl(resolved);
+      .then(
+        (
+          data: {
+            deployment?: { androidApk?: { available?: boolean; url?: string } };
+            androidApkReleaseReady?: boolean;
+            androidApkActionsUrl?: string;
+          } | null
+        ) => {
+          if (!mounted) return;
+          const serverUrl = data?.deployment?.androidApk?.url;
+          const resolved = resolveAndroidApkDownloadUrl(serverUrl);
+          if (resolved) {
+            setAndroidApkUrl(resolved);
+          }
+          if (typeof data?.androidApkReleaseReady === 'boolean') {
+            setApkReleaseReady(data.androidApkReleaseReady);
+          }
+          if (typeof data?.androidApkActionsUrl === 'string') {
+            setApkActionsUrl(data.androidApkActionsUrl);
+          }
         }
-      })
+      )
       .catch(() => {
         // Keep env-resolved APK release URL if offline
       });
@@ -44,7 +60,8 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
     };
   }, []);
 
-  const showApkDownload = Boolean(androidApkUrl) && !isCapacitorNative;
+  const showApkDownload = Boolean(androidApkUrl) && apkReleaseReady && !isCapacitorNative;
+  const showPendingActionsLink = Boolean(androidApkUrl) && !apkReleaseReady && Boolean(apkActionsUrl) && !isCapacitorNative;
 
   if (isInstalled && variant === 'compact') {
     return null;
@@ -89,6 +106,18 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
               >
                 <Download className="w-4 h-4" />
                 <span>{b('Android APK ডাউনলোড', 'Download Android APK', lang)}</span>
+              </a>
+            )}
+            {showPendingActionsLink && (
+              <a
+                href={apkActionsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="pwa-android-apk-pending-btn"
+                className="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold whitespace-nowrap transition-colors"
+              >
+                <ExternalLink className="w-4 h-4" />
+                <span>{b('APK বিল্ড স্ট্যাটাস দেখুন', 'Check APK Build', lang)}</span>
               </a>
             )}
             {!isInstalled && (
@@ -177,6 +206,28 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
                 <Download className="w-4 h-4" />
                 <span>{b('Android APK ডাউনলোড করুন', 'Download Android APK', lang)}</span>
               </a>
+            )}
+
+            {showPendingActionsLink && (
+              <div className="rounded-xl border border-amber-200 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-950/40 p-3 space-y-2">
+                <p className="text-[11px] text-amber-800 dark:text-amber-200 leading-relaxed">
+                  {b(
+                    'প্রথম Android APK রিলিজ ফাইলটি এখনো GitHub Actions থেকে তৈরি হয়নি। আপডেট পুশ করার পর Actions সবুজ হলে এখান থেকেই সরাসরি APK ডাউনলোড চালু হয়ে যাবে।',
+                    'The first Android APK release file has not been published on GitHub yet. Once you push and Actions completes, direct APK download activates automatically.',
+                    lang
+                  )}
+                </p>
+                <a
+                  href={apkActionsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  data-testid="pwa-modal-apk-pending-btn"
+                  className="w-full h-9 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold inline-flex items-center justify-center gap-2 transition-colors"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>{b('GitHub Actions-এ APK বিল্ড দেখুন', 'Open GitHub Actions Build', lang)}</span>
+                </a>
+              </div>
             )}
 
             <div className="rounded-xl bg-slate-50 dark:bg-slate-800/70 p-3 text-[11px] text-slate-600 dark:text-slate-300">
