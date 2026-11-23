@@ -22,6 +22,7 @@ import {
   Camera,
   Lock,
   Settings,
+  Share2,
 } from 'lucide-react';
 import { PWAInstallButton } from './PWAInstallBanner';
 import { OfficialAppLogo } from './OfficialAppLogo';
@@ -71,6 +72,7 @@ interface TopHeaderProps {
   onOpenOnlineSchoolReg: () => void;
   onOpenPortalHub?: () => void;
   onOpenContactAdmin?: () => void;
+  onOpenAppDownloadAndShare?: () => void;
   onNavigateTab: (tab: string) => void;
   globalSearchResults?: GlobalAcademicSearchResult[];
   onSelectGlobalSearchResult?: (item: GlobalAcademicSearchResult) => void;
@@ -111,6 +113,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   onOpenOnlineSchoolReg,
   onOpenPortalHub,
   onOpenContactAdmin,
+  onOpenAppDownloadAndShare,
   onNavigateTab,
   globalSearchResults = [],
   onSelectGlobalSearchResult,
@@ -448,8 +451,22 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
           </span>
         </button>
 
-        {/* PWA Install App Button */}
+        {/* PWA Install App & Direct APK Download Button */}
         <PWAInstallButton lang={lang} variant="compact" />
+
+        {/* Apps Download & Share Modal Trigger */}
+        {onOpenAppDownloadAndShare && (
+          <button
+            type="button"
+            onClick={onOpenAppDownloadAndShare}
+            data-testid="header-apps-download-share-btn"
+            title={b('অ্যাপস ডাউনলোড ও বন্ধুদের শেয়ার করুন', 'Download Apps & Share with Friends', lang)}
+            className="inline-flex items-center gap-1 h-9 px-2 rounded-lg text-xs font-semibold border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-200 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 whitespace-nowrap shrink-0 cursor-pointer"
+          >
+            <Share2 className="w-3.5 h-3.5 shrink-0" />
+            <span className="hidden 2xl:inline">{b('শেয়ার ও অ্যাপ', 'Share & Apps', lang)}</span>
+          </button>
+        )}
 
         {/* Language Toggle */}
         <button
@@ -716,6 +733,21 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                 >
                   <Lock className="w-4 h-4" />
                   {b('স্কুল লক আনলক করুন', 'Switch / Unlock School', lang)}
+                </button>
+              )}
+
+              {onOpenAppDownloadAndShare && (
+                <button
+                  type="button"
+                  data-testid="profile-apps-download-share-btn"
+                  onClick={() => {
+                    onOpenAppDownloadAndShare();
+                    setProfileOpen(false);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium rounded-lg text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/30 cursor-pointer"
+                >
+                  <Share2 className="w-4 h-4" />
+                  {b('অ্যাপস ডাউনলোড ও শেয়ার করুন', 'Download Apps & Share', lang)}
                 </button>
               )}
 

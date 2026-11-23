@@ -172,7 +172,7 @@ export function createEmptyDeploymentLinksRecord(): DeploymentLinksRecord {
 export function createDefaultDeploymentLinksRecord(): DeploymentLinksRecord {
   return {
     webAppUrl: VERIFIED_PUBLISHED_WEB_APP_URL,
-    androidApkUrl: '',
+    androidApkUrl: VERIFIED_GITHUB_APK_RELEASE_URL,
     githubRepoUrl: VERIFIED_GITHUB_REPO_URL,
     apiBaseUrl: VERIFIED_SHARED_API_BASE_URL,
   };
@@ -283,6 +283,71 @@ export function resolveAndroidApkDownloadUrl(
   envOverrides: DeploymentLinksEnvOverrides = readViteEnvDeploymentOverrides()
 ): string {
   return pickVerifiedUrl(storedUrl, envOverrides.androidApkUrl, 'apk');
+}
+
+export function resolveLiveWebAppUrl(
+  storedUrl?: string,
+  envOverrides: DeploymentLinksEnvOverrides = readViteEnvDeploymentOverrides()
+): string {
+  return (
+    pickVerifiedUrl(storedUrl, envOverrides.webAppUrl, 'web') ||
+    VERIFIED_PUBLISHED_WEB_APP_URL
+  );
+}
+
+export function buildAppShareMessage(
+  webUrl: string,
+  apkUrl: string,
+  lang: 'bn' | 'en' = 'bn'
+): string {
+  const safeWeb = webUrl.trim() || VERIFIED_PUBLISHED_WEB_APP_URL;
+  const safeApk = apkUrl.trim() || VERIFIED_GITHUB_APK_RELEASE_URL;
+  if (lang === 'bn') {
+    return [
+      'প্রাথমিক বিদ্যালয় ব্যবস্থাপনা পদ্ধতি (PSMS Bangladesh)',
+      'কম্পিউটার ব্রাউজার ও অ্যান্ড্রয়েড মোবাইল অ্যাপ — একসাথে সব সেবা:',
+      '',
+      `🌐 ওয়েব ব্রাউজার লিংক (Web App): ${safeWeb}`,
+      `📱 Android APK ডাউনলোড লিংক: ${safeApk}`,
+    ].join('\n');
+  }
+  return [
+    'Primary School Management System (PSMS Bangladesh)',
+    'Access via Computer Web Browser or Android Mobile App:',
+    '',
+    `🌐 Web Browsing Link: ${safeWeb}`,
+    `📱 Android APK Download: ${safeApk}`,
+  ].join('\n');
+}
+
+export interface AppSocialShareLinks {
+  message: string;
+  whatsappUrl: string;
+  telegramUrl: string;
+  facebookUrl: string;
+  emailUrl: string;
+}
+
+export function buildSocialShareUrls(
+  webUrl: string,
+  apkUrl: string,
+  lang: 'bn' | 'en' = 'bn'
+): AppSocialShareLinks {
+  const safeWeb = webUrl.trim() || VERIFIED_PUBLISHED_WEB_APP_URL;
+  const safeApk = apkUrl.trim() || VERIFIED_GITHUB_APK_RELEASE_URL;
+  const message = buildAppShareMessage(safeWeb, safeApk, lang);
+  const subject =
+    lang === 'bn'
+      ? 'PSMS Bangladesh — Web ও Android APK ডাউনলোড লিংক'
+      : 'PSMS Bangladesh — Web App & Android APK Download';
+
+  return {
+    message,
+    whatsappUrl: `https://wa.me/?text=${encodeURIComponent(message)}`,
+    telegramUrl: `https://t.me/share/url?url=${encodeURIComponent(safeWeb)}&text=${encodeURIComponent(message)}`,
+    facebookUrl: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(safeWeb)}`,
+    emailUrl: `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`,
+  };
 }
 
 export function resolveDeploymentLinksState(

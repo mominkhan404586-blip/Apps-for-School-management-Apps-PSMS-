@@ -217,6 +217,7 @@ import { ImageCropModal } from './components/ImageCropModal';
 import { CoverGalleryModal } from './components/CoverGalleryModal';
 import { SettingsCenterView } from './components/SettingsCenterView';
 import { OfflineIndicator } from './components/PWAInstallBanner';
+import { AppDownloadAndShareModal } from './components/AppDownloadAndShareModal';
 import {
   canPerformActionUnderSettings,
   createDefaultSettingsState,
@@ -517,6 +518,7 @@ export default function App() {
   });
   const [addAdminOpen, setAddAdminOpen] = useState(false);
   const [contactAdminModalOpen, setContactAdminModalOpen] = useState(false);
+  const [appDownloadShareModalOpen, setAppDownloadShareModalOpen] = useState(false);
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [loginPresetMode, setLoginPresetMode] = useState<LoginModalPresetMode>('teacher');
   const [landingHubOpen, setLandingHubOpen] = useState(false);
@@ -4907,6 +4909,7 @@ export default function App() {
             onNavigateFromNotification={handleNavigateFromNotification}
             onMarkNotificationRead={handleMarkNotificationRead}
             onOpenContactAdmin={() => setContactAdminModalOpen(true)}
+            onOpenAppDownloadAndShare={() => setAppDownloadShareModalOpen(true)}
             centralAdminPhotoUrl={activeCentralAdmin?.photoUrl}
             guardianPhotoUrl={guardianPhotoUrl}
             onOpenPhotoEditor={() => openProfilePhotoEditorForRole(role)}
@@ -4936,6 +4939,7 @@ export default function App() {
               activeGuardianChild={activeGuardianChild}
               activeTeacher={activeTeacherRecord}
               onOpenContactAdmin={() => setContactAdminModalOpen(true)}
+              onOpenAppDownloadAndShare={() => setAppDownloadShareModalOpen(true)}
               onOpenPhotoEditor={() => openProfilePhotoEditorForRole(role)}
               previewViewMode={effectiveDeviceViewMode}
             />
@@ -5663,6 +5667,13 @@ export default function App() {
         onOpenStatusTracker={() => setStatusTrackerOpen(true)}
         onOpenTeacherRegistration={() => setPublicTeacherRegOpen(true)}
         onOpenContactAdmin={() => setContactAdminModalOpen(true)}
+        onOpenAppDownloadAndShare={() => setAppDownloadShareModalOpen(true)}
+      />
+
+      <AppDownloadAndShareModal
+        open={appDownloadShareModalOpen}
+        lang={lang}
+        onClose={() => setAppDownloadShareModalOpen(false)}
       />
 
       <ContactAdminModal

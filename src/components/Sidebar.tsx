@@ -33,6 +33,7 @@ import {
   MapPin,
   Layers,
   Camera,
+  Download,
   Settings,
 } from 'lucide-react';
 import type { Language, Role, SchoolRecord, StudentRecord, TeacherRecord } from '../types';
@@ -173,6 +174,7 @@ interface SidebarProps {
   activeGuardianChild?: StudentRecord;
   activeTeacher?: TeacherRecord;
   onOpenContactAdmin?: () => void;
+  onOpenAppDownloadAndShare?: () => void;
   onOpenPhotoEditor?: () => void;
   previewViewMode?: DeviceViewMode;
 }
@@ -191,6 +193,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activeGuardianChild,
   activeTeacher,
   onOpenContactAdmin,
+  onOpenAppDownloadAndShare,
   onOpenPhotoEditor,
   previewViewMode = 'auto',
 }) => {
@@ -422,12 +425,33 @@ export const Sidebar: React.FC<SidebarProps> = ({
         )}
       </nav>
 
-      {(footerItems.length > 0 || onOpenContactAdmin) && (
+      {(footerItems.length > 0 || onOpenContactAdmin || onOpenAppDownloadAndShare) && (
         <div
           className={`p-2.5 border-t space-y-1 ${
             isNavySidebar ? 'border-white/10' : 'border-slate-200 dark:border-slate-800'
           }`}
         >
+          {onOpenAppDownloadAndShare && (
+            <button
+              type="button"
+              data-testid="sidebar-apps-download-share-btn"
+              onClick={() => {
+                onOpenAppDownloadAndShare();
+                if (isMobile) onCloseMobile();
+              }}
+              title={collapsed && !isMobile ? b('অ্যাপস ডাউনলোড ও শেয়ার করুন', 'Download Apps & Share', lang) : undefined}
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-semibold transition-colors cursor-pointer ${
+                isNavySidebar
+                  ? 'bg-blue-600/20 text-blue-200 hover:bg-blue-600/35 hover:text-white border border-blue-400/25'
+                  : 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/60 border border-blue-200/70 dark:border-blue-800/60'
+              } ${collapsed && !isMobile ? 'justify-center px-2' : ''}`}
+            >
+              <Download className="w-4 h-4 shrink-0" />
+              {(!collapsed || isMobile) && (
+                <span className="truncate">{b('অ্যাপস ডাউনলোড ও শেয়ার', 'Download Apps & Share', lang)}</span>
+              )}
+            </button>
+          )}
           {footerItems.map((i) => renderItem(i, isMobile))}
           {onOpenContactAdmin && (
             <button

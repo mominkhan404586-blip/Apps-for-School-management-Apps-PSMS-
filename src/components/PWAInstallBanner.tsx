@@ -3,7 +3,11 @@ import { Download, ExternalLink, Share, Smartphone, WifiOff, X } from 'lucide-re
 import { useOnlineStatus, usePWAInstall } from '../hooks/usePWAInstall';
 import type { Language } from '../types';
 import { b } from '../i18n/translations';
-import { resolveAndroidApkDownloadUrl, resolveApiUrl } from '../utils/deploymentConfig';
+import {
+  VERIFIED_GITHUB_APK_RELEASE_URL,
+  resolveAndroidApkDownloadUrl,
+  resolveApiUrl,
+} from '../utils/deploymentConfig';
 
 interface PWAInstallButtonProps {
   lang?: Language;
@@ -16,7 +20,9 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
 }) => {
   const { canInstallNatively, isInstalled, isIOS, isAndroid, promptInstall } = usePWAInstall();
   const [showGuideModal, setShowGuideModal] = useState(false);
-  const [androidApkUrl, setAndroidApkUrl] = useState<string>(() => resolveAndroidApkDownloadUrl());
+  const [androidApkUrl, setAndroidApkUrl] = useState<string>(
+    () => resolveAndroidApkDownloadUrl() || VERIFIED_GITHUB_APK_RELEASE_URL
+  );
   const [apkReleaseReady, setApkReleaseReady] = useState<boolean>(true);
   const [apkActionsUrl, setApkActionsUrl] = useState<string>('');
 
@@ -133,16 +139,33 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
           </div>
         </div>
       ) : (
-        <button
-          type="button"
-          onClick={handleClick}
-          data-testid="pwa-install-btn"
-          title={b('Android / Desktop অ্যাপ ইনস্টল করুন', 'Install Android / Web App', lang)}
-          className="inline-flex items-center gap-1.5 h-9 px-2.5 rounded-lg text-xs font-semibold border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 whitespace-nowrap shrink-0 cursor-pointer"
-        >
-          <Download className="w-3.5 h-3.5" />
-          <span className="hidden 2xl:inline">{b('অ্যাপ ইনস্টল', 'Install App', lang)}</span>
-        </button>
+        <div className="inline-flex items-center gap-1.5 shrink-0">
+          {showApkDownload && (
+            <a
+              href={androidApkUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              download
+              data-testid="header-android-apk-download-btn"
+              title={b('সরাসরি Android APK ডাউনলোড করুন', 'Download Android APK directly', lang)}
+              className="inline-flex items-center gap-1 h-9 px-2 2xl:px-2.5 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white whitespace-nowrap shrink-0 transition-colors"
+            >
+              <Smartphone className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden 2xl:inline">{b('APK ডাউনলোড', 'Android APK', lang)}</span>
+              <span className="2xl:hidden">APK</span>
+            </a>
+          )}
+          <button
+            type="button"
+            onClick={handleClick}
+            data-testid="pwa-install-btn"
+            title={b('Android / Desktop অ্যাপ ইনস্টল করুন', 'Install Android / Web App', lang)}
+            className="inline-flex items-center gap-1.5 h-9 px-2.5 rounded-lg text-xs font-semibold border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 whitespace-nowrap shrink-0 cursor-pointer"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span className="hidden 2xl:inline">{b('অ্যাপ ইনস্টল', 'Install App', lang)}</span>
+          </button>
+        </div>
       )}
 
       {showGuideModal && (

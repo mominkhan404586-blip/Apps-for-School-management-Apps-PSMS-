@@ -12,6 +12,7 @@ import {
   type SystemSettingsState,
 } from './src/utils/settingsEngine';
 import {
+  VERIFIED_GITHUB_APK_RELEASE_URL,
   VERIFIED_GITHUB_REPO_URL,
   VERIFIED_PUBLISHED_WEB_APP_URL,
   VERIFIED_SHARED_API_BASE_URL,
@@ -63,7 +64,7 @@ function ensureDbFile(): SharedDatabaseSchema {
       androidApkUrl:
         rawLinks.androidApkUrl && !isRetiredDeploymentUrl(rawLinks.androidApkUrl)
           ? rawLinks.androidApkUrl
-          : '',
+          : VERIFIED_GITHUB_APK_RELEASE_URL,
       githubRepoUrl:
         rawLinks.githubRepoUrl && !isRetiredDeploymentUrl(rawLinks.githubRepoUrl)
           ? rawLinks.githubRepoUrl

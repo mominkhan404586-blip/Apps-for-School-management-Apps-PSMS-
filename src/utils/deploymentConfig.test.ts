@@ -6,6 +6,8 @@ import {
   VERIFIED_GITHUB_REPO_URL,
   VERIFIED_PUBLISHED_WEB_APP_URL,
   WEB_HOSTING_PROJECT_SLUG,
+  buildAppShareMessage,
+  buildSocialShareUrls,
   createDefaultDeploymentLinksRecord,
   createEmptyDeploymentLinksRecord,
   detectDeploymentEnvironment,
@@ -15,6 +17,7 @@ import {
   resolveAndroidApkDownloadUrl,
   resolveApiUrl,
   resolveDeploymentLinksState,
+  resolveLiveWebAppUrl,
   validateDeploymentUrl,
 } from './deploymentConfig';
 
@@ -108,7 +111,7 @@ test('resolveApiUrl keeps relative /api paths for same-origin web and prefixes c
   );
 });
 
-test('createDefaultDeploymentLinksRecord exposes verified Cloud Run Web App + new GitHub repo and resolves env APK release URL', () => {
+test('createDefaultDeploymentLinksRecord exposes verified Cloud Run Web App + new GitHub repo + verified GitHub APK release URL', () => {
   const defaults = createDefaultDeploymentLinksRecord();
   const state = resolveDeploymentLinksState(defaults, {});
 
@@ -117,8 +120,9 @@ test('createDefaultDeploymentLinksRecord exposes verified Cloud Run Web App + ne
   assert.equal(state.webApp.statusEn, 'Live / Published');
   assert.equal(state.apiBaseUrl, VERIFIED_PUBLISHED_WEB_APP_URL);
 
-  assert.equal(state.androidApk.available, false);
-  assert.equal(state.androidApk.statusEn, 'APK Not Available');
+  assert.equal(state.androidApk.available, true);
+  assert.equal(state.androidApk.url, VERIFIED_GITHUB_APK_RELEASE_URL);
+  assert.equal(state.androidApk.statusEn, 'APK Available');
 
   assert.equal(state.githubRepo.connected, true);
   assert.equal(state.githubRepo.url, VERIFIED_GITHUB_REPO_URL);
@@ -161,4 +165,18 @@ test('detectRuntimeEnvironment & detectDeploymentEnvironment automatically disti
   );
   assert.equal(devProfile.isDevelopment, true);
   assert.equal(devProfile.showDevicePreviewControls, true);
+});
+
+test('buildAppShareMessage & buildSocialShareUrls include both Web Browsing and APK Download links cleanly', () => {
+  assert.equal(resolveLiveWebAppUrl('', {}), VERIFIED_PUBLISHED_WEB_APP_URL);
+  const bnMsg = buildAppShareMessage(VERIFIED_PUBLISHED_WEB_APP_URL, VERIFIED_GITHUB_APK_RELEASE_URL, 'bn');
+  assert.ok(bnMsg.includes(VERIFIED_PUBLISHED_WEB_APP_URL));
+  assert.ok(bnMsg.includes(VERIFIED_GITHUB_APK_RELEASE_URL));
+
+  const links = buildSocialShareUrls(VERIFIED_PUBLISHED_WEB_APP_URL, VERIFIED_GITHUB_APK_RELEASE_URL, 'en');
+  assert.ok(links.whatsappUrl.startsWith('https://wa.me/?text='));
+  assert.ok(links.telegramUrl.startsWith('https://t.me/share/url?url='));
+  assert.ok(links.facebookUrl.startsWith('https://www.facebook.com/sharer/sharer.php?u='));
+  assert.ok(links.emailUrl.startsWith('mailto:?subject='));
+  assert.ok(decodeURIComponent(links.whatsappUrl).includes(VERIFIED_GITHUB_APK_RELEASE_URL));
 });

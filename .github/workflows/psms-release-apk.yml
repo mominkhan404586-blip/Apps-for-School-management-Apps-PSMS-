@@ -1,4 +1,4 @@
-name: Build & Deploy Web App and Android APK
+name: PSMS Web & Android APK Release
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   verify-and-build-web:
-    name: Verify & Build Web App (PSMS Bangladesh)
+    name: 1. Verify & Build Web App (PSMS Bangladesh)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -46,7 +46,7 @@ jobs:
           if-no-files-found: error
 
   build-android-apk:
-    name: Build Android APK (Unified Backend & DB)
+    name: 2. Build & Publish Android APK
     runs-on: ubuntu-latest
     needs: verify-and-build-web
     steps:
@@ -77,13 +77,17 @@ jobs:
       - name: Install Dependencies
         run: npm install --no-audit --no-fund --legacy-peer-deps
 
-      - name: Verify Capacitor Android Subproject
+      - name: Verify Capacitor Android Project & Signing Config
         run: |
           if [ ! -f "node_modules/@capacitor/android/capacitor/build.gradle" ]; then
             echo "::error::Missing node_modules/@capacitor/android/capacitor project required by android/settings.gradle"
             exit 1
           fi
-          echo "Verified :capacitor-android at node_modules/@capacitor/android/capacitor"
+          if [ ! -f "android/app/build.gradle" ]; then
+            echo "::error::Missing android/app/build.gradle"
+            exit 1
+          fi
+          echo "Verified :capacitor-android and android/app/build.gradle"
 
       - name: Sync Web Bundle to Capacitor Android Project
         env:
@@ -108,9 +112,11 @@ jobs:
             echo "PSMS_KEY_ALIAS=${KEY_ALIAS_VAL}" >> "$GITHUB_ENV"
             echo "PSMS_KEY_PASS=${KEY_PASS_VAL}" >> "$GITHUB_ENV"
             echo "has_keystore=true" >> "$GITHUB_OUTPUT"
+            echo "build_variant=Signed Release APK" >> "$GITHUB_OUTPUT"
             echo "Release keystore mapped from GitHub Secrets."
           else
             echo "has_keystore=false" >> "$GITHUB_OUTPUT"
+            echo "build_variant=Debug APK (Direct Installable)" >> "$GITHUB_OUTPUT"
             echo "Keystore secrets not configured; falling back to Debug APK build."
           fi
 
@@ -138,7 +144,6 @@ jobs:
 
           mkdir -p ../android-release-output
           cp "$APK_SRC" ../android-release-output/psms-android.apk
-          cp "$APK_SRC" ../android-release-output/
           ls -lh ../android-release-output
 
       - name: Clean Temporary Keystore
@@ -149,7 +154,7 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: psms-android-apk
-          path: android-release-output/*.apk
+          path: android-release-output/psms-android.apk
           if-no-files-found: error
 
       - name: Publish Android APK to GitHub Release
@@ -157,13 +162,29 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="v2026.1.0"
-          NOTES="PSMS Bangladesh Android APK (connected to unified Cloud Run backend: https://school-management-system-sms-798667902569.asia-southeast1.run.app)."
+          NOTES="PSMS Bangladesh Android APK (${{ steps.keystore.outputs.build_variant }}) — Unified Cloud Run Backend & Database: https://school-management-system-sms-798667902569.asia-southeast1.run.app"
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" android-release-output/psms-android.apk --clobber
-            gh release edit "$TAG" --latest --notes "$NOTES"
+            gh release edit "$TAG" --draft=false --latest --notes "$NOTES"
           else
             gh release create "$TAG" android-release-output/psms-android.apk \
               --title "PSMS Bangladesh Android APK ($TAG)" \
               --notes "$NOTES" \
               --latest
           fi
+
+      - name: Write APK Download Summary
+        run: |
+          APK_SIZE=$(du -h android-release-output/psms-android.apk | cut -f1)
+          APK_SHA=$(sha256sum android-release-output/psms-android.apk | cut -d' ' -f1)
+          DOWNLOAD_URL="${{ github.server_url }}/${{ github.repository }}/releases/latest/download/psms-android.apk"
+          RELEASE_URL="${{ github.server_url }}/${{ github.repository }}/releases/latest"
+          {
+            echo "## PSMS Bangladesh Android APK Ready"
+            echo ""
+            echo "- **Build Type:** ${{ steps.keystore.outputs.build_variant }}"
+            echo "- **File:** \`psms-android.apk\` (\`${APK_SIZE}\`)"
+            echo "- **SHA-256:** \`${APK_SHA}\`"
+            echo "- **Direct Download Link:** ${DOWNLOAD_URL}"
+            echo "- **GitHub Release Page:** ${RELEASE_URL}"
+          } >> "$GITHUB_STEP_SUMMARY"

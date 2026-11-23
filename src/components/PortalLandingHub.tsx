@@ -11,6 +11,7 @@ import {
   Lock,
   MessageSquare,
   Moon,
+  Share2,
   ShieldCheck,
   Sun,
   UserPlus,
@@ -34,6 +35,7 @@ interface PortalLandingHubProps {
   onOpenStatusTracker: () => void;
   onOpenTeacherRegistration: () => void;
   onOpenContactAdmin?: () => void;
+  onOpenAppDownloadAndShare?: () => void;
 }
 
 /**
@@ -53,6 +55,7 @@ export const PortalLandingHub: React.FC<PortalLandingHubProps> = ({
   onOpenStatusTracker,
   onOpenTeacherRegistration,
   onOpenContactAdmin,
+  onOpenAppDownloadAndShare,
 }) => {
   const [quickInfoTip, setQuickInfoTip] = useState<'none' | 'help'>('none');
 
@@ -431,8 +434,21 @@ export const PortalLandingHub: React.FC<PortalLandingHubProps> = ({
           </section>
 
           {/* Install PSMS Android / Web App Card */}
-          <div className="max-w-4xl mx-auto">
+          <div className="max-w-4xl mx-auto space-y-3">
             <PWAInstallButton lang={lang} variant="card" />
+            {onOpenAppDownloadAndShare && (
+              <div className="flex justify-center">
+                <button
+                  type="button"
+                  data-testid="landing-apps-download-share-btn"
+                  onClick={onOpenAppDownloadAndShare}
+                  className="inline-flex items-center gap-2 h-10 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold cursor-pointer transition-colors"
+                >
+                  <Share2 className="w-4 h-4" />
+                  <span>{b('ওয়েব লিংক, APK ডাউনলোড ও বন্ধুদের শেয়ার করুন', 'Web Link, APK Download & Share with Friends', lang)}</span>
+                </button>
+              </div>
+            )}
           </div>
         </main>
 
