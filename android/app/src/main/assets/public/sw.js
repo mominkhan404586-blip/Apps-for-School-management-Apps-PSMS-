@@ -93,7 +93,7 @@ define(['./workbox-d488705a'], (function (workbox) { 'use strict';
     "revision": "a2fbe03caac9257068e95a84a241802d"
   }, {
     "url": "index.html",
-    "revision": "6fd80264eea1a6b3629f13960654a671"
+    "revision": "3275bb43369a638f895ee4d824f3cabd"
   }, {
     "url": "icon.svg",
     "revision": "1371b06582439a93d094b93acd717323"
@@ -110,10 +110,10 @@ define(['./workbox-d488705a'], (function (workbox) { 'use strict';
     "url": "apple-touch-icon.png",
     "revision": "dc637e742e7341db7f4943311e408c52"
   }, {
-    "url": "assets/index-D8LkwKCv.js",
+    "url": "assets/index-Dan1WQpN.css",
     "revision": null
   }, {
-    "url": "assets/index-B5Wj-8H0.css",
+    "url": "assets/index-Cocrei_y.js",
     "revision": null
   }, {
     "url": "assets/aistudio/teacher_reg_modal_47340f4f.png",

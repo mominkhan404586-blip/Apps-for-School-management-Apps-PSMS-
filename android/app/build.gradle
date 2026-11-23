@@ -2,12 +2,12 @@ apply plugin: 'com.android.application'
 
 android {
     namespace "bd.gov.dpe.psms"
-    compileSdkVersion 35
+    compileSdkVersion 36
 
     defaultConfig {
         applicationId "bd.gov.dpe.psms"
-        minSdkVersion 23
-        targetSdkVersion 35
+        minSdkVersion 24
+        targetSdkVersion 36
         versionCode 1
         versionName "2026.1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
@@ -44,8 +44,8 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
     }
 }
 
@@ -57,7 +57,7 @@ repositories {
 
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
-    implementation "androidx.appcompat:appcompat:1.7.0"
+    implementation "androidx.appcompat:appcompat:1.7.1"
     implementation "androidx.core:core-splashscreen:1.0.1"
     implementation project(':capacitor-android')
 }
