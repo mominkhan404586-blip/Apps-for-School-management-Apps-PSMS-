@@ -11,7 +11,6 @@ const config: CapacitorConfig = {
       'localhost',
       '10.0.2.2',
       '*.psms.gov.bd',
-      '*.pages.dev',
       '*.run.app',
       '*.web.app',
       '*.firebaseapp.com',

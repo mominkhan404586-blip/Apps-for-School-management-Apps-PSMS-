@@ -11,8 +11,12 @@ import {
   type SystemSettingsState,
 } from './src/utils/settingsEngine';
 import {
+  VERIFIED_GITHUB_REPO_URL,
+  VERIFIED_PUBLISHED_WEB_APP_URL,
+  VERIFIED_SHARED_API_BASE_URL,
   createDefaultDeploymentLinksRecord,
   createEmptyDeploymentLinksRecord,
+  isRetiredDeploymentUrl,
   resolveDeploymentLinksState,
   validateDeploymentUrl,
   type DeploymentLinksRecord,
@@ -48,12 +52,34 @@ function ensureDbFile(): SharedDatabaseSchema {
   try {
     const raw = fs.readFileSync(DB_FILE, 'utf8');
     const parsed = JSON.parse(raw) as Partial<SharedDatabaseSchema>;
+    const defaults = createDefaultDeploymentLinksRecord();
+    const rawLinks = parsed.deploymentLinks ?? defaults;
+    const normalizedLinks: DeploymentLinksRecord = {
+      webAppUrl:
+        rawLinks.webAppUrl && !isRetiredDeploymentUrl(rawLinks.webAppUrl)
+          ? rawLinks.webAppUrl
+          : VERIFIED_PUBLISHED_WEB_APP_URL,
+      androidApkUrl:
+        rawLinks.androidApkUrl && !isRetiredDeploymentUrl(rawLinks.androidApkUrl)
+          ? rawLinks.androidApkUrl
+          : '',
+      githubRepoUrl:
+        rawLinks.githubRepoUrl && !isRetiredDeploymentUrl(rawLinks.githubRepoUrl)
+          ? rawLinks.githubRepoUrl
+          : VERIFIED_GITHUB_REPO_URL,
+      apiBaseUrl:
+        rawLinks.apiBaseUrl && !isRetiredDeploymentUrl(rawLinks.apiBaseUrl)
+          ? rawLinks.apiBaseUrl
+          : VERIFIED_SHARED_API_BASE_URL,
+      updatedAt: rawLinks.updatedAt,
+      updatedBy: rawLinks.updatedBy,
+    };
     return {
       schemaVersion: parsed.schemaVersion ?? 1,
       lastSyncedAt: parsed.lastSyncedAt ?? new Date().toISOString(),
       settings: parsed.settings ?? createDefaultSettingsState('bn', 'light'),
       auditLogs: Array.isArray(parsed.auditLogs) ? parsed.auditLogs : [],
-      deploymentLinks: parsed.deploymentLinks ?? createDefaultDeploymentLinksRecord(),
+      deploymentLinks: normalizedLinks,
     };
   } catch {
     const fallback: SharedDatabaseSchema = {

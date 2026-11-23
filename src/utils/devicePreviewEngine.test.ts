@@ -171,7 +171,7 @@ test('shouldShowDeveloperDevicePreviewControls shows bar ONLY in Developer/Previ
   assert.equal(
     shouldShowDeveloperDevicePreviewControls({
       isDevBuild: false,
-      hostname: 'school-management-nexus-bd.pages.dev',
+      hostname: 'school-portal-demo.pages.dev',
       search: '',
       isCapacitorNative: false,
       isEmbeddedPreview: false,

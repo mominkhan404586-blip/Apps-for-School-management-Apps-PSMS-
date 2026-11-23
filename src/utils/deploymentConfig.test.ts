@@ -2,11 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ANDROID_APP_PACKAGE_ID,
+  VERIFIED_GITHUB_REPO_URL,
   VERIFIED_PUBLISHED_WEB_APP_URL,
   WEB_HOSTING_PROJECT_SLUG,
   createDefaultDeploymentLinksRecord,
   createEmptyDeploymentLinksRecord,
   isPlaceholderOrFakeUrl,
+  isRetiredDeploymentUrl,
   resolveApiUrl,
   resolveDeploymentLinksState,
   validateDeploymentUrl,
@@ -32,10 +34,15 @@ test('unconfigured deployment state shows exact Not Published / Not Available / 
   assert.equal(state.githubRepo.statusEn, 'GitHub Repository Not Connected');
 });
 
-test('placeholder or fake URLs are rejected and never treated as published', () => {
+test('placeholder, fake, or retired URLs are rejected and never treated as active', () => {
   assert.equal(isPlaceholderOrFakeUrl(''), true);
   assert.equal(isPlaceholderOrFakeUrl('MY_APP_URL'), true);
   assert.equal(isPlaceholderOrFakeUrl('https://example.com/app.apk'), true);
+
+  assert.equal(isRetiredDeploymentUrl('https://school-management-nexus-bd.pages.dev'), true);
+  assert.equal(isRetiredDeploymentUrl('https://github.com/mominkhan404586-blip/School-Management-System'), true);
+  assert.equal(isRetiredDeploymentUrl(VERIFIED_GITHUB_REPO_URL), false);
+  assert.equal(isRetiredDeploymentUrl(VERIFIED_PUBLISHED_WEB_APP_URL), false);
 
   const webInvalid = validateDeploymentUrl('https://example.com', 'web');
   assert.equal(webInvalid.valid, false);
@@ -48,56 +55,59 @@ test('placeholder or fake URLs are rejected and never treated as published', () 
 
   const state = resolveDeploymentLinksState(
     {
-      webAppUrl: 'MY_APP_URL',
+      webAppUrl: 'https://school-management-nexus-bd.pages.dev',
       androidApkUrl: 'https://example.com/psms.apk',
-      githubRepoUrl: 'https://not-github.com/repo',
+      githubRepoUrl: 'https://github.com/mominkhan404586-blip/School-Management-System',
     },
-    {}
+    {
+      webAppUrl: VERIFIED_PUBLISHED_WEB_APP_URL,
+      githubRepoUrl: VERIFIED_GITHUB_REPO_URL,
+    }
   );
-  assert.equal(state.webApp.published, false);
+  assert.equal(state.webApp.url, VERIFIED_PUBLISHED_WEB_APP_URL);
   assert.equal(state.androidApk.available, false);
-  assert.equal(state.githubRepo.connected, false);
+  assert.equal(state.githubRepo.url, VERIFIED_GITHUB_REPO_URL);
 });
 
 test('real https deployment URLs resolve cleanly and enable published/available/connected statuses', () => {
   const state = resolveDeploymentLinksState(
     {
-      webAppUrl: 'https://school-management-nexus-bd.pages.dev/',
-      androidApkUrl: 'https://github.com/dpe-bd/psms/releases/download/v2026.1.0/psms-release.apk',
-      githubRepoUrl: 'https://github.com/dpe-bd/school-management-nexus-bd/',
-      apiBaseUrl: 'https://api.psms.gov.bd/',
+      webAppUrl: `${VERIFIED_PUBLISHED_WEB_APP_URL}/`,
+      androidApkUrl: `${VERIFIED_GITHUB_REPO_URL}/releases/download/v2026.1.0/psms-release.apk`,
+      githubRepoUrl: `${VERIFIED_GITHUB_REPO_URL}/`,
+      apiBaseUrl: `${VERIFIED_PUBLISHED_WEB_APP_URL}/`,
     },
     {}
   );
 
   assert.equal(state.webApp.published, true);
-  assert.equal(state.webApp.url, 'https://school-management-nexus-bd.pages.dev');
+  assert.equal(state.webApp.url, VERIFIED_PUBLISHED_WEB_APP_URL);
   assert.equal(state.webApp.statusEn, 'Live / Published');
 
   assert.equal(state.androidApk.available, true);
   assert.equal(
     state.androidApk.url,
-    'https://github.com/dpe-bd/psms/releases/download/v2026.1.0/psms-release.apk'
+    `${VERIFIED_GITHUB_REPO_URL}/releases/download/v2026.1.0/psms-release.apk`
   );
   assert.equal(state.androidApk.statusEn, 'APK Available');
 
   assert.equal(state.githubRepo.connected, true);
-  assert.equal(state.githubRepo.url, 'https://github.com/dpe-bd/school-management-nexus-bd');
+  assert.equal(state.githubRepo.url, VERIFIED_GITHUB_REPO_URL);
   assert.equal(state.githubRepo.statusEn, 'Connected');
 
-  assert.equal(state.apiBaseUrl, 'https://api.psms.gov.bd');
+  assert.equal(state.apiBaseUrl, VERIFIED_PUBLISHED_WEB_APP_URL);
 });
 
 test('resolveApiUrl keeps relative /api paths for same-origin web and prefixes configured backend origin for Android APK', () => {
   assert.equal(resolveApiUrl('/api/health', ''), '/api/health');
   assert.equal(resolveApiUrl('api/settings', ''), '/api/settings');
   assert.equal(
-    resolveApiUrl('/api/settings', 'https://api.psms.gov.bd/'),
-    'https://api.psms.gov.bd/api/settings'
+    resolveApiUrl('/api/settings', `${VERIFIED_PUBLISHED_WEB_APP_URL}/`),
+    `${VERIFIED_PUBLISHED_WEB_APP_URL}/api/settings`
   );
 });
 
-test('createDefaultDeploymentLinksRecord exposes verified published Cloud Run Web App URL and keeps APK & GitHub unset until released', () => {
+test('createDefaultDeploymentLinksRecord exposes verified Cloud Run Web App + new GitHub repo and keeps APK unset until released', () => {
   const defaults = createDefaultDeploymentLinksRecord();
   const state = resolveDeploymentLinksState(defaults, {});
 
@@ -109,6 +119,7 @@ test('createDefaultDeploymentLinksRecord exposes verified published Cloud Run We
   assert.equal(state.androidApk.available, false);
   assert.equal(state.androidApk.statusEn, 'APK Not Available');
 
-  assert.equal(state.githubRepo.connected, false);
-  assert.equal(state.githubRepo.statusEn, 'GitHub Repository Not Connected');
+  assert.equal(state.githubRepo.connected, true);
+  assert.equal(state.githubRepo.url, VERIFIED_GITHUB_REPO_URL);
+  assert.equal(state.githubRepo.statusEn, 'Connected');
 });

@@ -2292,8 +2292,8 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
                     ) : (
                       <div className="text-[11px] text-slate-500 dark:text-slate-400">
                         {b(
-                          `টার্গেট প্রজেক্ট: ${deploymentState.projectSlug} (প্রকৃত ডিপ্লয়মেন্টের পর লাইভ URL সক্রিয় হবে)`,
-                          `Target project: ${deploymentState.projectSlug} (activates after live publish)`,
+                          'প্রকাশিত Cloud Run ওয়েব লিংক কনফিগার হলে এখানে লাইভ URL সক্রিয় হবে।',
+                          'Live published Cloud Run Web App URL appears here once configured.',
                           lang
                         )}
                       </div>

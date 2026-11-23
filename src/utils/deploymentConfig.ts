@@ -1,10 +1,12 @@
-export const WEB_HOSTING_PROJECT_SLUG = 'school-management-nexus-bd';
+export const WEB_HOSTING_PROJECT_SLUG = 'school-management-system-sms';
 export const ANDROID_APP_PACKAGE_ID = 'bd.gov.dpe.psms';
 export const ANDROID_APP_VERSION = '2026.1.0';
 export const VERIFIED_PUBLISHED_WEB_APP_URL =
   'https://school-management-system-sms-798667902569.asia-southeast1.run.app';
 export const VERIFIED_SHARED_API_BASE_URL =
   'https://school-management-system-sms-798667902569.asia-southeast1.run.app';
+export const VERIFIED_GITHUB_REPO_URL =
+  'https://github.com/mominkhan404586-blip/Apps-for-School-management-Apps-PSMS-';
 
 export interface DeploymentLinksRecord {
   webAppUrl: string;
@@ -61,11 +63,22 @@ const PLACEHOLDER_PATTERNS = [
   'changeme',
 ];
 
+const RETIRED_DEPLOYMENT_PATTERNS = [
+  'school-management-nexus-bd.pages.dev',
+  'mominkhan404586-blip/school-management-system',
+];
+
 export function isPlaceholderOrFakeUrl(raw: string): boolean {
   const trimmed = raw.trim();
   if (!trimmed) return true;
   const lower = trimmed.toLowerCase();
   return PLACEHOLDER_PATTERNS.some((pat) => lower.includes(pat.toLowerCase()));
+}
+
+export function isRetiredDeploymentUrl(raw: string | undefined | null): boolean {
+  const trimmed = (raw ?? '').trim().toLowerCase().replace(/\/+$/, '');
+  if (!trimmed) return false;
+  return RETIRED_DEPLOYMENT_PATTERNS.some((pat) => trimmed.includes(pat));
 }
 
 export function validateDeploymentUrl(
@@ -140,7 +153,7 @@ export function createDefaultDeploymentLinksRecord(): DeploymentLinksRecord {
   return {
     webAppUrl: VERIFIED_PUBLISHED_WEB_APP_URL,
     androidApkUrl: '',
-    githubRepoUrl: '',
+    githubRepoUrl: VERIFIED_GITHUB_REPO_URL,
     apiBaseUrl: VERIFIED_SHARED_API_BASE_URL,
   };
 }
@@ -162,9 +175,13 @@ function pickVerifiedUrl(
   kind: DeploymentUrlKind
 ): string {
   const p = validateDeploymentUrl(primary, kind);
-  if (p.valid && p.normalized) return p.normalized;
+  if (p.valid && p.normalized && !isRetiredDeploymentUrl(p.normalized)) {
+    return p.normalized;
+  }
   const f = validateDeploymentUrl(fallback, kind);
-  if (f.valid && f.normalized) return f.normalized;
+  if (f.valid && f.normalized && !isRetiredDeploymentUrl(f.normalized)) {
+    return f.normalized;
+  }
   return '';
 }
 
