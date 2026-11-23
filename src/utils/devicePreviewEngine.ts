@@ -1,3 +1,5 @@
+import { detectRuntimeEnvironment } from './deploymentConfig';
+
 export type DeviceViewMode = 'auto' | 'mobile' | 'tablet' | 'desktop';
 export type DeviceOrientation = 'portrait' | 'landscape';
 export type PlatformTarget = 'web' | 'android';
@@ -207,6 +209,8 @@ export function detectAutomaticDeviceCategory(viewportWidth: number): DetectedDe
 
 export interface DeveloperPreviewVisibilityInput {
   isDevBuild: boolean;
+  isProdBuild?: boolean;
+  buildMode?: string;
   hostname: string;
   search: string;
   isCapacitorNative: boolean;
@@ -223,38 +227,15 @@ export function shouldShowDeveloperDevicePreviewControls(
   if (params.get('endUserPreview') === '1' || params.get('publishedPreview') === '1') {
     return false;
   }
-  if (params.get('devPreview') === '1' || params.get('devicePreview') === '1') {
-    return true;
-  }
-
-  const host = (input.hostname || '').trim().toLowerCase();
-  if (host.startsWith('ais-pre-')) {
-    return false;
-  }
-  if (
-    host.endsWith('.pages.dev') ||
-    host.endsWith('.web.app') ||
-    host.endsWith('.firebaseapp.com')
-  ) {
-    return false;
-  }
-  if (host.endsWith('.run.app') && !host.startsWith('ais-dev-')) {
-    return false;
-  }
-
-  if (!input.isDevBuild) {
-    return false;
-  }
-
-  if (!host) {
-    return true;
-  }
 
   return (
-    host === 'localhost' ||
-    host === '127.0.0.1' ||
-    host === '[::1]' ||
-    host.startsWith('ais-dev-')
+    detectRuntimeEnvironment({
+      isDevBuild: input.isDevBuild,
+      isProdBuild: input.isProdBuild,
+      buildMode: input.buildMode,
+      hostname: input.hostname,
+      isCapacitorNative: input.isCapacitorNative,
+    }) === 'development'
   );
 }
 

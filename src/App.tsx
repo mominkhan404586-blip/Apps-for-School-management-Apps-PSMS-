@@ -317,11 +317,15 @@ function readInitialPreviewBootstrap(): InitialPreviewBootstrap {
       ? paramPlatform
       : detectRuntimePlatform(navigator.userAgent, isCapNative);
 
-  const isDevBuild = Boolean(
-    (import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV
-  );
+  const envMeta = (
+    import.meta as unknown as { env?: { DEV?: boolean; PROD?: boolean; MODE?: string } }
+  ).env;
+  const isDevBuild = Boolean(envMeta?.DEV);
+  const isProdBuild = Boolean(envMeta?.PROD);
   const showDevControls = shouldShowDeveloperDevicePreviewControls({
     isDevBuild,
+    isProdBuild,
+    buildMode: envMeta?.MODE,
     hostname: window.location.hostname,
     search: window.location.search,
     isCapacitorNative: isCapNative,

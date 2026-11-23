@@ -18,8 +18,9 @@ android {
 
     signingConfigs {
         release {
-            if (System.getenv("PSMS_KEYSTORE_PATH") != null) {
-                storeFile file(System.getenv("PSMS_KEYSTORE_PATH"))
+            def keystorePath = System.getenv("PSMS_KEYSTORE_PATH")?.trim()
+            if (keystorePath && file(keystorePath).exists()) {
+                storeFile file(keystorePath)
                 storePassword System.getenv("PSMS_KEYSTORE_PASS") ?: ""
                 keyAlias System.getenv("PSMS_KEY_ALIAS") ?: "psms"
                 keyPassword System.getenv("PSMS_KEY_PASS") ?: ""
@@ -37,7 +38,8 @@ android {
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            if (System.getenv("PSMS_KEYSTORE_PATH") != null) {
+            def keystorePath = System.getenv("PSMS_KEYSTORE_PATH")?.trim()
+            if (keystorePath && file(keystorePath).exists()) {
                 signingConfig signingConfigs.release
             }
         }

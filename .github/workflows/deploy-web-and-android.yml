@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   verify-and-build-web:
@@ -34,7 +34,7 @@ jobs:
         env:
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || 'https://school-management-system-sms-798667902569.asia-southeast1.run.app' }}
           VITE_LIVE_WEB_APP_URL: ${{ vars.VITE_LIVE_WEB_APP_URL || 'https://school-management-system-sms-798667902569.asia-southeast1.run.app' }}
-          VITE_ANDROID_APK_URL: ${{ vars.VITE_ANDROID_APK_URL }}
+          VITE_ANDROID_APK_URL: ${{ vars.VITE_ANDROID_APK_URL || format('{0}/{1}/releases/latest/download/psms-android.apk', github.server_url, github.repository) }}
           VITE_GITHUB_REPO_URL: ${{ github.server_url }}/${{ github.repository }}
         run: npm run build
 
@@ -75,27 +75,93 @@ jobs:
       - name: Install Dependencies
         run: npm install --no-audit --no-fund --legacy-peer-deps
 
+      - name: Verify Capacitor Android Subproject
+        run: |
+          if [ ! -f "node_modules/@capacitor/android/capacitor/build.gradle" ]; then
+            echo "::error::Missing node_modules/@capacitor/android/capacitor project required by android/settings.gradle"
+            exit 1
+          fi
+          echo "Verified :capacitor-android at node_modules/@capacitor/android/capacitor"
+
       - name: Sync Web Bundle to Capacitor Android Project
         env:
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || 'https://school-management-system-sms-798667902569.asia-southeast1.run.app' }}
           VITE_LIVE_WEB_APP_URL: ${{ vars.VITE_LIVE_WEB_APP_URL || 'https://school-management-system-sms-798667902569.asia-southeast1.run.app' }}
-          VITE_ANDROID_APK_URL: ${{ vars.VITE_ANDROID_APK_URL }}
+          VITE_ANDROID_APK_URL: ${{ vars.VITE_ANDROID_APK_URL || format('{0}/{1}/releases/latest/download/psms-android.apk', github.server_url, github.repository) }}
           VITE_GITHUB_REPO_URL: ${{ github.server_url }}/${{ github.repository }}
         run: npm run android:sync
 
-      - name: Build Android Debug APK
+      - name: Configure Android Keystore from GitHub Secrets
+        id: keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.PSMS_KEYSTORE_BASE64 || secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASS: ${{ secrets.PSMS_KEYSTORE_PASS || secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS_VAL: ${{ secrets.PSMS_KEY_ALIAS || secrets.ANDROID_KEY_ALIAS || 'psms' }}
+          KEY_PASS_VAL: ${{ secrets.PSMS_KEY_PASS || secrets.ANDROID_KEY_PASSWORD || secrets.PSMS_KEYSTORE_PASS || secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ] && [ -n "$KEYSTORE_PASS" ]; then
+            echo "$KEYSTORE_B64" | base64 --decode > "${RUNNER_TEMP}/psms-release.jks"
+            echo "PSMS_KEYSTORE_PATH=${RUNNER_TEMP}/psms-release.jks" >> "$GITHUB_ENV"
+            echo "PSMS_KEYSTORE_PASS=${KEYSTORE_PASS}" >> "$GITHUB_ENV"
+            echo "PSMS_KEY_ALIAS=${KEY_ALIAS_VAL}" >> "$GITHUB_ENV"
+            echo "PSMS_KEY_PASS=${KEY_PASS_VAL}" >> "$GITHUB_ENV"
+            echo "has_keystore=true" >> "$GITHUB_OUTPUT"
+            echo "Release keystore mapped from GitHub Secrets."
+          else
+            echo "has_keystore=false" >> "$GITHUB_OUTPUT"
+            echo "Keystore secrets not configured; falling back to Debug APK build."
+          fi
+
+      - name: Build Android APK
         run: |
           cd android
+          GRADLE_CMD="gradle"
           if [ -f "./gradlew" ]; then
             chmod +x ./gradlew
-            ./gradlew assembleDebug --no-daemon
-          else
-            gradle assembleDebug --no-daemon
+            GRADLE_CMD="./gradlew"
           fi
+
+          if [ "${{ steps.keystore.outputs.has_keystore }}" = "true" ]; then
+            "$GRADLE_CMD" assembleRelease --no-daemon
+            APK_SRC=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          else
+            "$GRADLE_CMD" assembleDebug --no-daemon
+            APK_SRC=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          fi
+
+          if [ -z "$APK_SRC" ] || [ ! -f "$APK_SRC" ]; then
+            echo "::error::APK file was not generated."
+            exit 1
+          fi
+
+          mkdir -p ../android-release-output
+          cp "$APK_SRC" ../android-release-output/psms-android.apk
+          cp "$APK_SRC" ../android-release-output/
+          ls -lh ../android-release-output
+
+      - name: Clean Temporary Keystore
+        if: always()
+        run: rm -f "${RUNNER_TEMP}/psms-release.jks"
 
       - name: Upload Android APK Artifact
         uses: actions/upload-artifact@v6
         with:
           name: psms-android-apk
-          path: android/app/build/outputs/apk/**/*.apk
+          path: android-release-output/*.apk
           if-no-files-found: error
+
+      - name: Publish Android APK to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v2026.1.0"
+          NOTES="PSMS Bangladesh Android APK (connected to unified Cloud Run backend: https://school-management-system-sms-798667902569.asia-southeast1.run.app)."
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" android-release-output/psms-android.apk --clobber
+            gh release edit "$TAG" --latest --notes "$NOTES"
+          else
+            gh release create "$TAG" android-release-output/psms-android.apk \
+              --title "PSMS Bangladesh Android APK ($TAG)" \
+              --notes "$NOTES" \
+              --latest
+          fi

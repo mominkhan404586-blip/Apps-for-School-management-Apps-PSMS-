@@ -199,6 +199,19 @@ test('shouldShowDeveloperDevicePreviewControls shows bar ONLY in Developer/Previ
     false
   );
 
+  assert.equal(
+    shouldShowDeveloperDevicePreviewControls({
+      isDevBuild: false,
+      isProdBuild: true,
+      buildMode: 'production',
+      hostname: 'localhost',
+      search: '?devPreview=1',
+      isCapacitorNative: false,
+      isEmbeddedPreview: false,
+    }),
+    false
+  );
+
   // End-user mode forces effective view mode to automatic responsive layout
   assert.equal(resolveEffectiveViewMode('mobile', false, false), 'auto');
   assert.equal(resolveEffectiveViewMode('mobile', true, false), 'mobile');

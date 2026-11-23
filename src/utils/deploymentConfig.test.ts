@@ -2,13 +2,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ANDROID_APP_PACKAGE_ID,
+  VERIFIED_GITHUB_APK_RELEASE_URL,
   VERIFIED_GITHUB_REPO_URL,
   VERIFIED_PUBLISHED_WEB_APP_URL,
   WEB_HOSTING_PROJECT_SLUG,
   createDefaultDeploymentLinksRecord,
   createEmptyDeploymentLinksRecord,
+  detectDeploymentEnvironment,
+  detectRuntimeEnvironment,
   isPlaceholderOrFakeUrl,
   isRetiredDeploymentUrl,
+  resolveAndroidApkDownloadUrl,
   resolveApiUrl,
   resolveDeploymentLinksState,
   validateDeploymentUrl,
@@ -73,7 +77,7 @@ test('real https deployment URLs resolve cleanly and enable published/available/
   const state = resolveDeploymentLinksState(
     {
       webAppUrl: `${VERIFIED_PUBLISHED_WEB_APP_URL}/`,
-      androidApkUrl: `${VERIFIED_GITHUB_REPO_URL}/releases/download/v2026.1.0/psms-release.apk`,
+      androidApkUrl: `${VERIFIED_GITHUB_APK_RELEASE_URL}`,
       githubRepoUrl: `${VERIFIED_GITHUB_REPO_URL}/`,
       apiBaseUrl: `${VERIFIED_PUBLISHED_WEB_APP_URL}/`,
     },
@@ -85,10 +89,7 @@ test('real https deployment URLs resolve cleanly and enable published/available/
   assert.equal(state.webApp.statusEn, 'Live / Published');
 
   assert.equal(state.androidApk.available, true);
-  assert.equal(
-    state.androidApk.url,
-    `${VERIFIED_GITHUB_REPO_URL}/releases/download/v2026.1.0/psms-release.apk`
-  );
+  assert.equal(state.androidApk.url, VERIFIED_GITHUB_APK_RELEASE_URL);
   assert.equal(state.androidApk.statusEn, 'APK Available');
 
   assert.equal(state.githubRepo.connected, true);
@@ -107,7 +108,7 @@ test('resolveApiUrl keeps relative /api paths for same-origin web and prefixes c
   );
 });
 
-test('createDefaultDeploymentLinksRecord exposes verified Cloud Run Web App + new GitHub repo and keeps APK unset until released', () => {
+test('createDefaultDeploymentLinksRecord exposes verified Cloud Run Web App + new GitHub repo and resolves env APK release URL', () => {
   const defaults = createDefaultDeploymentLinksRecord();
   const state = resolveDeploymentLinksState(defaults, {});
 
@@ -122,4 +123,42 @@ test('createDefaultDeploymentLinksRecord exposes verified Cloud Run Web App + ne
   assert.equal(state.githubRepo.connected, true);
   assert.equal(state.githubRepo.url, VERIFIED_GITHUB_REPO_URL);
   assert.equal(state.githubRepo.statusEn, 'Connected');
+
+  assert.equal(
+    resolveAndroidApkDownloadUrl('', { androidApkUrl: VERIFIED_GITHUB_APK_RELEASE_URL }),
+    VERIFIED_GITHUB_APK_RELEASE_URL
+  );
+});
+
+test('detectRuntimeEnvironment & detectDeploymentEnvironment automatically distinguish production vs development by build mode', () => {
+  assert.equal(
+    detectRuntimeEnvironment({ isDevBuild: true, isProdBuild: false, buildMode: 'development', hostname: 'localhost' }),
+    'development'
+  );
+  assert.equal(
+    detectRuntimeEnvironment({ isDevBuild: false, isProdBuild: true, buildMode: 'production', hostname: 'localhost' }),
+    'production'
+  );
+  assert.equal(
+    detectRuntimeEnvironment({ isDevBuild: true, hostname: 'ais-pre-xyz.asia-east1.run.app' }),
+    'production'
+  );
+  assert.equal(
+    detectRuntimeEnvironment({ isDevBuild: true, hostname: 'localhost', isCapacitorNative: true }),
+    'production'
+  );
+
+  const prodProfile = detectDeploymentEnvironment(
+    { isProdBuild: true, buildMode: 'production', hostname: 'school-management-system-sms-798667902569.asia-southeast1.run.app' },
+    { androidApkUrl: VERIFIED_GITHUB_APK_RELEASE_URL }
+  );
+  assert.equal(prodProfile.isProduction, true);
+  assert.equal(prodProfile.showDevicePreviewControls, false);
+
+  const devProfile = detectDeploymentEnvironment(
+    { isDevBuild: true, isProdBuild: false, buildMode: 'development', hostname: 'localhost' },
+    { androidApkUrl: VERIFIED_GITHUB_APK_RELEASE_URL }
+  );
+  assert.equal(devProfile.isDevelopment, true);
+  assert.equal(devProfile.showDevicePreviewControls, true);
 });

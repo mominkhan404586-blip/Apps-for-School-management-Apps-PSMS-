@@ -7,6 +7,26 @@ export const VERIFIED_SHARED_API_BASE_URL =
   'https://school-management-system-sms-798667902569.asia-southeast1.run.app';
 export const VERIFIED_GITHUB_REPO_URL =
   'https://github.com/mominkhan404586-blip/Apps-for-School-management-Apps-PSMS-';
+export const VERIFIED_GITHUB_APK_RELEASE_URL =
+  'https://github.com/mominkhan404586-blip/Apps-for-School-management-Apps-PSMS-/releases/latest/download/psms-android.apk';
+
+export type RuntimeEnvironmentMode = 'production' | 'development';
+
+export interface EnvironmentDetectionInput {
+  isProdBuild?: boolean;
+  isDevBuild?: boolean;
+  buildMode?: string;
+  hostname?: string;
+  isCapacitorNative?: boolean;
+}
+
+export interface DeploymentEnvironmentProfile {
+  mode: RuntimeEnvironmentMode;
+  isProduction: boolean;
+  isDevelopment: boolean;
+  showDevicePreviewControls: boolean;
+  envOverrides: DeploymentLinksEnvOverrides;
+}
 
 export interface DeploymentLinksRecord {
   webAppUrl: string;
@@ -169,6 +189,79 @@ export function readViteEnvDeploymentOverrides(): DeploymentLinksEnvOverrides {
   };
 }
 
+export function detectRuntimeEnvironment(
+  input: EnvironmentDetectionInput = {}
+): RuntimeEnvironmentMode {
+  if (input.isCapacitorNative) {
+    return 'production';
+  }
+
+  const normalizedBuildMode = (input.buildMode ?? '').trim().toLowerCase();
+  if (
+    input.isProdBuild === true ||
+    normalizedBuildMode === 'production' ||
+    input.isDevBuild === false
+  ) {
+    return 'production';
+  }
+
+  const host = (input.hostname ?? '').trim().toLowerCase();
+  if (host) {
+    if (host.startsWith('ais-pre-')) {
+      return 'production';
+    }
+    if (
+      host.endsWith('.pages.dev') ||
+      host.endsWith('.web.app') ||
+      host.endsWith('.firebaseapp.com')
+    ) {
+      return 'production';
+    }
+    if (host.endsWith('.run.app') && !host.startsWith('ais-dev-')) {
+      return 'production';
+    }
+    const isDevHost =
+      host === 'localhost' ||
+      host === '127.0.0.1' ||
+      host === '[::1]' ||
+      host.startsWith('ais-dev-');
+    if (!isDevHost) {
+      return 'production';
+    }
+  }
+
+  if (input.isDevBuild === true || normalizedBuildMode === 'development') {
+    return 'development';
+  }
+
+  const metaEnv = (
+    import.meta as unknown as { env?: { DEV?: boolean; PROD?: boolean; MODE?: string } }
+  )?.env;
+  if (metaEnv?.PROD || metaEnv?.MODE === 'production') {
+    return 'production';
+  }
+  if (metaEnv?.DEV || metaEnv?.MODE === 'development') {
+    return 'development';
+  }
+
+  return 'production';
+}
+
+export function detectDeploymentEnvironment(
+  input: EnvironmentDetectionInput = {},
+  envOverrides: DeploymentLinksEnvOverrides = readViteEnvDeploymentOverrides()
+): DeploymentEnvironmentProfile {
+  const mode = detectRuntimeEnvironment(input);
+  const isProduction = mode === 'production';
+  return {
+    mode,
+    isProduction,
+    isDevelopment: !isProduction,
+    showDevicePreviewControls: !isProduction && !input.isCapacitorNative,
+    envOverrides,
+  };
+}
+
 function pickVerifiedUrl(
   primary: string | undefined,
   fallback: string | undefined,
@@ -183,6 +276,13 @@ function pickVerifiedUrl(
     return f.normalized;
   }
   return '';
+}
+
+export function resolveAndroidApkDownloadUrl(
+  storedUrl?: string,
+  envOverrides: DeploymentLinksEnvOverrides = readViteEnvDeploymentOverrides()
+): string {
+  return pickVerifiedUrl(storedUrl, envOverrides.androidApkUrl, 'apk');
 }
 
 export function resolveDeploymentLinksState(
