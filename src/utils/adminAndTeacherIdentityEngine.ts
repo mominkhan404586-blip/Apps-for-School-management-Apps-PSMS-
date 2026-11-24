@@ -23,11 +23,10 @@ const MAIN_ADMIN_IDENTITY_TOKENS = [
   'মোঃ মোমিন খান',
   'Md. Momin Khan',
   'mominkhan404586@gmail.com',
-  'admin12131',
 ];
 
 /**
- * Protects the Main Central Admin's personal identity (name, email, personal username)
+ * Protects the Main Central Admin's personal identity (name, email)
  * from all non-central roles (`school_admin`, `teacher`, `student`, `guardian`).
  */
 export function sanitizeActorDisplayForRole(
@@ -47,8 +46,15 @@ export function sanitizeActorDisplayForRole(
   return raw;
 }
 
-export function isMainCentralAdmin(account: Pick<AdminAccount, 'id' | 'username' | 'isMainOwner'>): boolean {
-  return Boolean(account.isMainOwner || account.id === 'adm-1' || account.username === 'admin12131');
+export function isMainCentralAdmin(
+  account: Pick<AdminAccount, 'id' | 'username' | 'isMainOwner'> & { email?: string }
+): boolean {
+  return Boolean(
+    account.isMainOwner ||
+      account.id === 'adm-1' ||
+      account.email?.trim().toLowerCase() === 'mominkhan404586@gmail.com' ||
+      account.username?.trim().toLowerCase() === 'mominkhan404586@gmail.com'
+  );
 }
 
 export interface CreateSubordinateAdminPayload {

@@ -1,0 +1,397 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net — Default Deny Everything
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Hardened Global Primitives
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isBootstrappedAdmin() {
+      return isVerifiedUser() && request.auth.token.email == 'mominkhan404586@gmail.com';
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() || (isVerifiedUser() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+    }
+
+    // 3. Entity Validators (Zero DB Reads — Static Validation Blueprints)
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'email', 'displayName', 'role', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'email', 'displayName', 'role', 'schoolId', 'teacherId', 'studentId', 'status', 'createdAt', 'updatedAt'])
+        && isValidId(data.uid)
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 254
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 120
+        && data.role in ['central_admin', 'school_admin', 'teacher', 'guardian', 'student', 'pending']
+        && data.status in ['active', 'pending', 'suspended']
+        && (!('schoolId' in data) || (data.schoolId is string && data.schoolId.size() <= 64))
+        && (!('teacherId' in data) || (data.teacherId is string && data.teacherId.size() <= 64))
+        && (!('studentId' in data) || (data.studentId is string && data.studentId.size() <= 64))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidUserPreferences(data) {
+      return data.keys().hasAll(['uid', 'lang', 'theme', 'fontSize', 'pushNotifications', 'emailNotifications', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'lang', 'theme', 'fontSize', 'pushNotifications', 'emailNotifications', 'updatedAt'])
+        && isValidId(data.uid)
+        && data.lang in ['bn', 'en']
+        && data.theme in ['light', 'dark', 'system']
+        && data.fontSize in ['small', 'normal', 'large']
+        && data.pushNotifications is bool
+        && data.emailNotifications is bool
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAdminRegistry(data) {
+      return data.keys().hasAll(['uid', 'email', 'displayName', 'accessLevel', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'email', 'displayName', 'accessLevel', 'createdAt', 'updatedAt'])
+        && isValidId(data.uid)
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 254
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 120
+        && data.accessLevel in ['Super Central Admin', 'Audit Officer', 'Regional Reviewer']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidSchoolSummary(data) {
+      return data.keys().hasAll(['schoolId', 'ownerUid', 'nameBn', 'nameEn', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['schoolId', 'ownerUid', 'nameBn', 'nameEn', 'eiin', 'status', 'createdAt', 'updatedAt'])
+        && isValidId(data.schoolId)
+        && isValidId(data.ownerUid)
+        && data.nameBn is string && data.nameBn.size() >= 1 && data.nameBn.size() <= 200
+        && data.nameEn is string && data.nameEn.size() >= 1 && data.nameEn.size() <= 200
+        && (!('eiin' in data) || (data.eiin is string && data.eiin.size() <= 32))
+        && data.status in ['pending', 'under_review', 'active', 'suspended', 'deactivated']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidNoticeRecord(data) {
+      return data.keys().hasAll(['noticeId', 'createdByUid', 'title', 'body', 'audience', 'priority', 'status', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['noticeId', 'createdByUid', 'schoolId', 'title', 'body', 'audience', 'priority', 'status', 'createdAt', 'updatedAt'])
+        && isValidId(data.noticeId)
+        && data.noticeId.size() <= 64
+        && isValidId(data.createdByUid)
+        && (!('schoolId' in data) || (data.schoolId is string && data.schoolId.size() <= 64))
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 200
+        && data.body is string && data.body.size() >= 1 && data.body.size() <= 2000
+        && data.audience in ['all', 'teachers', 'students', 'guardians', 'school']
+        && data.priority in ['normal', 'important', 'urgent']
+        && data.status in ['published', 'archived']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAuditLogRecord(data) {
+      return data.keys().hasAll(['createdByUid', 'role', 'what', 'targetName', 'createdAt'])
+        && data.keys().hasOnly(['createdByUid', 'role', 'what', 'targetName', 'schoolId', 'createdAt'])
+        && isValidId(data.createdByUid)
+        && data.createdByUid == request.auth.uid
+        && data.role in ['central_admin', 'school_admin', 'teacher', 'guardian', 'student']
+        && data.what is string && data.what.size() >= 1 && data.what.size() <= 240
+        && data.targetName is string && data.targetName.size() >= 1 && data.targetName.size() <= 240
+        && (!('schoolId' in data) || (data.schoolId is string && data.schoolId.size() <= 64))
+        && data.createdAt is timestamp
+        && data.createdAt == request.time;
+    }
+
+    function isValidAppConfigRecord(data) {
+      return data.keys().hasAll(['updatedByUid', 'webAppUrl', 'androidApkUrl', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['updatedByUid', 'webAppUrl', 'androidApkUrl', 'createdAt', 'updatedAt'])
+        && isValidId(data.updatedByUid)
+        && data.updatedByUid == request.auth.uid
+        && data.webAppUrl is string && data.webAppUrl.size() <= 500
+        && data.androidApkUrl is string && data.androidApkUrl.size() <= 500
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCloudBackupRecord(data) {
+      return data.keys().hasAll([
+          'ownerUid',
+          'email',
+          'role',
+          'displayName',
+          'language',
+          'themePreference',
+          'schoolCount',
+          'teacherCount',
+          'studentCount',
+          'settingsVersion',
+          'backupSettings',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerUid',
+          'email',
+          'role',
+          'displayName',
+          'language',
+          'themePreference',
+          'schoolCount',
+          'teacherCount',
+          'studentCount',
+          'settingsVersion',
+          'note',
+          'backupSettings',
+          'createdAt',
+          'updatedAt'
+        ])
+        && isValidId(data.ownerUid)
+        && data.ownerUid == request.auth.uid
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 254
+        && data.role in ['central_admin', 'school_admin', 'teacher', 'guardian', 'student', 'pending']
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 120
+        && data.language in ['bn', 'en']
+        && data.themePreference in ['light', 'dark', 'system']
+        && data.schoolCount is int && data.schoolCount >= 0 && data.schoolCount <= 100000
+        && data.teacherCount is int && data.teacherCount >= 0 && data.teacherCount <= 1000000
+        && data.studentCount is int && data.studentCount >= 0 && data.studentCount <= 10000000
+        && data.settingsVersion is int && data.settingsVersion >= 1 && data.settingsVersion <= 1000000
+        && (!('note' in data) || (data.note is string && data.note.size() <= 240))
+        && data.backupSettings is map
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // 4. Collection Rules
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isSignedIn() && (existing().uid == request.auth.uid || isBootstrappedAdmin());
+
+      allow create: if isVerifiedUser()
+        && isValidId(userId)
+        && isValidUserProfile(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() ||
+          (isOwner(userId)
+            && incoming().uid == request.auth.uid
+            && incoming().role == 'pending'
+            && incoming().status == 'pending')
+        );
+
+      allow update: if isVerifiedUser()
+        && isValidId(userId)
+        && isValidUserProfile(incoming())
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() ||
+          (isOwner(userId)
+            && incoming().role == existing().role
+            && incoming().status == existing().status
+            && existing().status != 'suspended'
+            && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'updatedAt']))
+        );
+
+      allow delete: if isValidId(userId) && isAdmin();
+
+      match /private/{docId} {
+        allow get: if isVerifiedUser() && isValidId(userId) && docId == 'preferences' && (isOwner(userId) || isAdmin());
+        allow list: if false;
+
+        allow create: if isVerifiedUser()
+          && isValidId(userId)
+          && docId == 'preferences'
+          && isValidUserPreferences(incoming())
+          && (isOwner(userId) || isAdmin())
+          && incoming().uid == userId
+          && incoming().updatedAt == request.time;
+
+        allow update: if isVerifiedUser()
+          && isValidId(userId)
+          && docId == 'preferences'
+          && isValidUserPreferences(incoming())
+          && (isOwner(userId) || isAdmin())
+          && incoming().uid == existing().uid
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['lang', 'theme', 'fontSize', 'pushNotifications', 'emailNotifications', 'updatedAt']);
+
+        allow delete: if isValidId(userId) && docId == 'preferences' && isAdmin();
+      }
+    }
+
+    match /admins/{adminId} {
+      allow get: if isValidId(adminId) && isAdmin();
+      allow list: if isBootstrappedAdmin();
+
+      allow create: if isValidId(adminId)
+        && isAdmin()
+        && isValidAdminRegistry(incoming())
+        && incoming().uid == adminId
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isValidId(adminId)
+        && isAdmin()
+        && isValidAdminRegistry(incoming())
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'accessLevel', 'updatedAt']);
+
+      allow delete: if isValidId(adminId) && isAdmin();
+    }
+
+    match /schools/{schoolId} {
+      allow get: if isSignedIn() && isValidId(schoolId) && (existing().ownerUid == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (existing().ownerUid == request.auth.uid || isBootstrappedAdmin());
+
+      allow create: if isVerifiedUser()
+        && isValidId(schoolId)
+        && isValidSchoolSummary(incoming())
+        && incoming().schoolId == schoolId
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() ||
+          (incoming().ownerUid == request.auth.uid && incoming().status == 'pending')
+        );
+
+      allow update: if isVerifiedUser()
+        && isValidId(schoolId)
+        && isValidSchoolSummary(incoming())
+        && incoming().schoolId == existing().schoolId
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() ||
+          (existing().ownerUid == request.auth.uid
+            && existing().status != 'deactivated'
+            && incoming().status == existing().status
+            && incoming().diff(existing()).affectedKeys().hasOnly(['nameBn', 'nameEn', 'eiin', 'updatedAt']))
+        );
+
+      allow delete: if isValidId(schoolId) && isAdmin();
+    }
+
+    match /notices/{noticeId} {
+      allow get: if isSignedIn() && isValidId(noticeId) && (existing().createdByUid == request.auth.uid || existing().audience == 'all' || isAdmin());
+      allow list: if isSignedIn() && (existing().createdByUid == request.auth.uid || existing().audience == 'all' || isBootstrappedAdmin());
+
+      allow create: if isVerifiedUser()
+        && isValidId(noticeId)
+        && isValidNoticeRecord(incoming())
+        && incoming().noticeId == noticeId
+        && incoming().createdByUid == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && (isAdmin() || incoming().audience != 'all');
+
+      allow update: if isVerifiedUser()
+        && isValidId(noticeId)
+        && isValidNoticeRecord(incoming())
+        && incoming().noticeId == existing().noticeId
+        && incoming().createdByUid == existing().createdByUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() ||
+          (existing().createdByUid == request.auth.uid
+            && existing().status != 'archived'
+            && incoming().diff(existing()).affectedKeys().hasOnly(['title', 'body', 'priority', 'status', 'updatedAt']))
+        );
+
+      allow delete: if isValidId(noticeId) && isAdmin();
+    }
+
+    match /audit_logs/{logId} {
+      allow get: if isSignedIn() && isValidId(logId) && (existing().createdByUid == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (existing().createdByUid == request.auth.uid || isBootstrappedAdmin());
+
+      allow create: if isVerifiedUser()
+        && isValidId(logId)
+        && isValidAuditLogRecord(incoming());
+
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    match /app_settings/{settingId} {
+      allow get: if isSignedIn() && isValidId(settingId);
+      allow list: if false;
+
+      allow create: if isValidId(settingId)
+        && isAdmin()
+        && isValidAppConfigRecord(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isValidId(settingId)
+        && isAdmin()
+        && isValidAppConfigRecord(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['updatedByUid', 'webAppUrl', 'androidApkUrl', 'updatedAt']);
+
+      allow delete: if isValidId(settingId) && isAdmin();
+    }
+
+    match /cloud_backups/{backupId} {
+      allow get: if isVerifiedUser() && isValidId(backupId) && (isOwner(backupId) || isAdmin());
+      allow list: if isVerifiedUser() && (existing().ownerUid == request.auth.uid || isBootstrappedAdmin());
+
+      allow create: if isVerifiedUser()
+        && isValidId(backupId)
+        && isOwner(backupId)
+        && isValidCloudBackupRecord(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isVerifiedUser()
+        && isValidId(backupId)
+        && isOwner(backupId)
+        && isValidCloudBackupRecord(incoming())
+        && incoming().ownerUid == existing().ownerUid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'email',
+          'role',
+          'displayName',
+          'language',
+          'themePreference',
+          'schoolCount',
+          'teacherCount',
+          'studentCount',
+          'settingsVersion',
+          'note',
+          'backupSettings',
+          'updatedAt'
+        ]);
+
+      allow delete: if isVerifiedUser() && isValidId(backupId) && (isOwner(backupId) || isAdmin());
+    }
+  }
+}

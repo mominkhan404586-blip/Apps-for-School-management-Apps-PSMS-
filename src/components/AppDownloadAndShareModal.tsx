@@ -15,6 +15,7 @@ import {
 import type { Language } from '../types';
 import { b } from '../i18n/translations';
 import { usePWAInstall } from '../hooks/usePWAInstall';
+import { InstallInstructions } from './InstallInstructions';
 import {
   VERIFIED_GITHUB_APK_RELEASE_URL,
   VERIFIED_PUBLISHED_WEB_APP_URL,
@@ -35,7 +36,7 @@ export const AppDownloadAndShareModal: React.FC<AppDownloadAndShareModalProps> =
   lang,
   onClose,
 }) => {
-  const { canInstallNatively, isInstalled, promptInstall } = usePWAInstall();
+  const { canInstallNatively, isInstalled, isIOS, isAndroid, promptInstall } = usePWAInstall();
   const [webUrl, setWebUrl] = useState<string>(
     () => resolveLiveWebAppUrl() || VERIFIED_PUBLISHED_WEB_APP_URL
   );
@@ -46,6 +47,7 @@ export const AppDownloadAndShareModal: React.FC<AppDownloadAndShareModalProps> =
   const [apkActionsUrl, setApkActionsUrl] = useState<string>('');
   const [copiedKey, setCopiedKey] = useState<'web' | 'apk' | 'invite' | null>(null);
   const [shareFeedback, setShareFeedback] = useState<string | null>(null);
+  const [showInstallGuide, setShowInstallGuide] = useState<boolean>(false);
 
   useEffect(() => {
     if (!open) return;
@@ -96,6 +98,8 @@ export const AppDownloadAndShareModal: React.FC<AppDownloadAndShareModalProps> =
   if (!open) return null;
 
   const shareLinks = buildSocialShareUrls(webUrl, apkUrl, lang);
+  const supportsWebShare =
+    typeof navigator !== 'undefined' && typeof navigator.share === 'function';
 
   const copyToClipboard = async (text: string, key: 'web' | 'apk' | 'invite', feedbackText: string) => {
     try {
@@ -362,15 +366,33 @@ export const AppDownloadAndShareModal: React.FC<AppDownloadAndShareModalProps> =
                 </div>
               </div>
 
-              <button
-                type="button"
-                data-testid="modal-native-share-btn"
-                onClick={handleNativeShare}
-                className="h-9 px-3.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer shrink-0 transition-colors"
-              >
-                <Share2 className="w-3.5 h-3.5" />
-                <span>{b('বন্ধুদের শেয়ার করুন', 'Share Now', lang)}</span>
-              </button>
+              {supportsWebShare ? (
+                <button
+                  type="button"
+                  data-testid="modal-native-share-btn"
+                  onClick={handleNativeShare}
+                  className="h-9 px-3.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer shrink-0 transition-colors"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                  <span>{b('Share App / শেয়ার করুন', 'Share App', lang)}</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  data-testid="modal-copy-link-fallback-btn"
+                  onClick={() =>
+                    copyToClipboard(
+                      shareLinks.message,
+                      'invite',
+                      b('ওয়েব ও APK লিংক কপি করা হয়েছে — বন্ধুদের কাছে পেস্ট করে পাঠান।', 'Links copied to clipboard — paste anywhere to share.', lang)
+                    )
+                  }
+                  className="h-9 px-3.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer shrink-0 transition-colors"
+                >
+                  {copiedKey === 'invite' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedKey === 'invite' ? b('কপি হয়েছে ✓', 'Copied ✓', lang) : b('Copy Link (লিংক কপি)', 'Copy Link', lang)}</span>
+                </button>
+              )}
             </div>
 
             {/* Social / Quick Share Buttons */}
@@ -433,6 +455,37 @@ export const AppDownloadAndShareModal: React.FC<AppDownloadAndShareModalProps> =
                 <span>{copiedKey === 'invite' ? b('কপি ✓', 'Copied', lang) : b('সব কপি', 'Copy All', lang)}</span>
               </button>
             </div>
+          </div>
+
+          {/* 3. Device-Aware Install Instructions (iOS / Android / Desktop) */}
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 overflow-hidden">
+            <button
+              type="button"
+              data-testid="modal-install-instructions-toggle"
+              onClick={() => setShowInstallGuide((prev) => !prev)}
+              className="w-full px-4 py-3 flex items-center justify-between text-xs font-bold text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer"
+            >
+              <span>
+                {b('মোবাইল ও কম্পিউটারে অ্যাপ ইনস্টল নির্দেশিকা (iOS / Android / PWA)', 'How to Install App on Phone & PC (iOS / Android / PWA)', lang)}
+              </span>
+              <span className="text-emerald-600 dark:text-emerald-400">
+                {showInstallGuide ? b('লুকান', 'Hide', lang) : b('দেখুন', 'Show', lang)}
+              </span>
+            </button>
+            {showInstallGuide && (
+              <div className="px-4 pb-4 pt-1 border-t border-slate-100 dark:border-slate-800">
+                <InstallInstructions
+                  lang={lang}
+                  isIOS={isIOS}
+                  isAndroid={isAndroid}
+                  canInstallNatively={canInstallNatively}
+                  onTriggerNativeInstall={promptInstall}
+                  androidApkUrl={apkUrl}
+                  apkReleaseReady={apkReleaseReady}
+                  apkActionsUrl={apkActionsUrl}
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>

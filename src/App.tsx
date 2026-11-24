@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { BookOpen, Building2, GraduationCap, ShieldCheck, Users } from 'lucide-react';
+import { onAuthStateChanged } from 'firebase/auth';
+import { Bell, CalendarDays, LayoutDashboard, Settings, Share2, GraduationCap } from 'lucide-react';
 import type {
   AcademicCalendarEvent,
   AcademicCancelClassReason,
@@ -216,8 +217,37 @@ import { TeacherStudentAdmissionModal } from './components/TeacherStudentAdmissi
 import { ImageCropModal } from './components/ImageCropModal';
 import { CoverGalleryModal } from './components/CoverGalleryModal';
 import { SettingsCenterView } from './components/SettingsCenterView';
-import { OfflineIndicator } from './components/PWAInstallBanner';
+import { OfflineIndicator, PWAInstallBanner } from './components/PWAInstallBanner';
 import { AppDownloadAndShareModal } from './components/AppDownloadAndShareModal';
+import { DashboardAppQuickAccessCard } from './components/DashboardAppQuickAccessCard';
+import { AuthLoadingScreen } from './components/AuthScreens';
+import {
+  FirebaseEmailAuthModal,
+  type FirebaseEmailAuthTab,
+} from './components/FirebaseEmailAuthModal';
+import {
+  auth,
+  recordFirebaseAuditEvent,
+  reloadCurrentFirebaseUser,
+  resendFirebaseVerificationEmail,
+  resolveAndSyncFirebaseUser,
+  signInWithFirebaseEmail,
+  signInWithFirebaseGoogle,
+  signOutFirebase,
+} from './firebase';
+import {
+  BOOT_ADMIN_EMAIL,
+  canAccessRoleDashboard,
+  clearStoredPortalSession,
+  isAuthorizedSuperAdminSession,
+  mapFirebaseAuthErrorMessage,
+  persistPortalSession,
+  readStoredPortalSession,
+  resolveProtectedRouteAccess,
+  sanitizeBootstrapNavigation,
+  type AuthStatus,
+  type AuthenticatedSession,
+} from './utils/authGuard';
 import {
   canPerformActionUnderSettings,
   createDefaultSettingsState,
@@ -302,13 +332,9 @@ function readInitialPreviewBootstrap(): InitialPreviewBootstrap {
   }
   const params = new URLSearchParams(window.location.search);
   const isEmbedded = params.get('previewEmbed') === '1';
-  const paramRole = params.get('role');
-  const validRoles: Role[] = ['central_admin', 'school_admin', 'teacher', 'guardian', 'student'];
-  const initialRole: Role =
-    isEmbedded && paramRole && validRoles.includes(paramRole as Role)
-      ? (paramRole as Role)
-      : 'central_admin';
-  const initialTab = isEmbedded && params.get('tab') ? (params.get('tab') as string) : 'dashboard';
+  // Never honor ?role=... or ?tab=... before authentication resolves
+  const initialRole: Role = 'central_admin';
+  const initialTab = 'dashboard';
   const initialLang: Language = params.get('lang') === 'en' ? 'en' : 'bn';
   const initialTheme: Theme = params.get('theme') === 'dark' ? 'dark' : 'light';
   const isCapNative = Boolean(
@@ -383,6 +409,15 @@ export default function App() {
   const isEmbeddedPreview = initialBootstrap.isEmbeddedPreview;
   const isProductionEnvironment = initialBootstrap.isProductionEnvironment;
   const showDevPreviewControls = !isProductionEnvironment && initialBootstrap.showDevPreviewControls;
+
+  const [authStatus, setAuthStatus] = useState<AuthStatus>('loading');
+  const [authenticatedSession, setAuthenticatedSession] = useState<AuthenticatedSession | null>(null);
+  const [googleSigningIn, setGoogleSigningIn] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authNotice, setAuthNotice] = useState<string | null>(null);
+  const [emailAuthModalOpen, setEmailAuthModalOpen] = useState(false);
+  const [emailAuthInitialTab, setEmailAuthInitialTab] = useState<FirebaseEmailAuthTab>('signin');
+  const [emailAuthPrefill, setEmailAuthPrefill] = useState<string>('');
 
   const [role, setRole] = useState<Role>(initialBootstrap.role);
   const [activeTab, setActiveTab] = useState<string>(initialBootstrap.tab);
@@ -521,7 +556,7 @@ export default function App() {
   const [appDownloadShareModalOpen, setAppDownloadShareModalOpen] = useState(false);
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [loginPresetMode, setLoginPresetMode] = useState<LoginModalPresetMode>('teacher');
-  const [landingHubOpen, setLandingHubOpen] = useState(false);
+  const landingHubOpen = authStatus !== 'authenticated';
   const [statusTrackerOpen, setStatusTrackerOpen] = useState(false);
   const [publicTeacherRegOpen, setPublicTeacherRegOpen] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
@@ -653,7 +688,7 @@ export default function App() {
       if (data.theme === 'light' || data.theme === 'dark') {
         setTheme(data.theme);
       }
-      if (data.role) {
+      if (data.role && canAccessRoleDashboard(authenticatedSession, data.role)) {
         setRole(data.role);
       }
       if (typeof data.tab === 'string' && data.tab.length > 0) {
@@ -754,7 +789,298 @@ export default function App() {
     }
   };
 
+  const applyVerifiedSession = React.useCallback((session: AuthenticatedSession) => {
+    setAuthenticatedSession(session);
+    setRole(session.role);
+    if (session.role === 'school_admin' && session.schoolId) {
+      setActiveSchoolAdminSchoolId(session.schoolId);
+      setAuthenticatedSchoolLockId(session.schoolId);
+    } else {
+      setAuthenticatedSchoolLockId(null);
+    }
+    if (session.role === 'teacher') {
+      if (session.teacherId) setActiveTeacherPortalId(session.teacherId);
+      if (session.schoolId) setActiveTeacherSchoolId(session.schoolId);
+    }
+    if (session.role === 'student' && session.studentId) {
+      setActiveStudentPortalId(session.studentId);
+    }
+    if (session.role === 'guardian' && session.studentId) {
+      setSelectedChildId(session.studentId);
+    }
+    const nav = sanitizeBootstrapNavigation(
+      typeof window !== 'undefined' ? window.location.search : '',
+      session
+    );
+    setActiveTab(nav.tab);
+    setAuthError(null);
+    setAuthNotice(null);
+    setAuthStatus('authenticated');
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (!active) return;
+      if (firebaseUser) {
+        try {
+          const { session, pendingRoleSelection } = await resolveAndSyncFirebaseUser(firebaseUser);
+          if (!active) return;
+          if (session) {
+            persistPortalSession(session);
+            applyVerifiedSession(session);
+            return;
+          }
+          if (pendingRoleSelection) {
+            setAuthenticatedSession(null);
+            setAuthStatus('unauthenticated');
+            setAuthNotice(
+              b(
+                'Google অ্যাকাউন্ট যাচাই সম্পন্ন হয়েছে। অনুমোদিত ড্যাশবোর্ডে প্রবেশ করতে আপনার নির্ধারিত রোল পোর্টাল আইডি-পাসওয়ার্ড ব্যবহার করুন অথবা অ্যাডমিনের অনুমোদনের জন্য অপেক্ষা করুন।',
+                'Google account verified, but no portal role is assigned yet. Please sign in with your School/Teacher/Student/Guardian portal credentials or contact Central Admin.',
+                lang
+              )
+            );
+            return;
+          }
+        } catch (err) {
+          if (!active) return;
+          const stored = readStoredPortalSession();
+          if (stored) {
+            applyVerifiedSession(stored);
+            return;
+          }
+          setAuthenticatedSession(null);
+          setAuthStatus('unauthenticated');
+          setAuthError(
+            err instanceof Error
+              ? err.message
+              : b('সেশন যাচাইয়ে ত্রুটি হয়েছে। আবার লগইন করুন।', 'Session verification failed. Please sign in.', lang)
+          );
+          return;
+        }
+      }
+
+      const stored = readStoredPortalSession();
+      if (stored) {
+        applyVerifiedSession(stored);
+      } else {
+        setAuthenticatedSession(null);
+        setAuthStatus('unauthenticated');
+      }
+    });
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [applyVerifiedSession]);
+
+  const handleGoogleSignIn = async () => {
+    setAuthError(null);
+    setAuthNotice(null);
+    setGoogleSigningIn(true);
+    try {
+      const user = await signInWithFirebaseGoogle();
+      const { session, pendingRoleSelection } = await resolveAndSyncFirebaseUser(user);
+      if (session) {
+        persistPortalSession(session);
+        applyVerifiedSession(session);
+        setLoginModalOpen(false);
+        void recordFirebaseAuditEvent({
+          role: session.role,
+          what: 'Firebase Google Sign-In Verified',
+          targetName: session.email || session.displayName,
+          schoolId: session.schoolId,
+        });
+        showToast(b('Google অ্যাকাউন্ট দিয়ে নিরাপদে প্রবেশ সম্পন্ন হয়েছে।', 'Signed in via Google Firebase Auth.', lang));
+      } else if (pendingRoleSelection) {
+        setLoginModalOpen(false);
+        setAuthStatus('unauthenticated');
+        setAuthNotice(
+          b(
+            'Google অ্যাকাউন্ট যাচাই হয়েছে। রোল নির্ধারণের জন্য নিচের পোর্টাল লগইন কার্ড ব্যবহার করুন অথবা সুপার অ্যাডমিনের অনুমোদন নিন।',
+            'Google account verified. Use your portal ID below or contact Central Admin to assign your role.',
+            lang
+          )
+        );
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const isPopupIssue =
+        message.includes('popup-blocked') ||
+        message.includes('popup-closed-by-user') ||
+        message.includes('cancelled-popup-request');
+      setAuthError(
+        isPopupIssue
+          ? b(
+              'Google পপ-আপ বন্ধ বা ব্লক হয়েছে। মোবাইল অ্যাপ বা ব্রাউজারে পপ-আপ অনুমতি দিন অথবা নিচের পোর্টাল আইডি-পাসওয়ার্ড দিয়ে লগইন করুন।',
+              'Google sign-in popup was closed or blocked. Allow popups or sign in using your institutional portal ID below.',
+              lang
+            )
+          : b(
+              `Google লগইন সম্পন্ন করা যায়নি (${message})। নিচের পোর্টাল আইডি দিয়ে লগইন করতে পারেন।`,
+              `Google sign-in could not complete (${message}). You can sign in using your portal credentials below.`,
+              lang
+            )
+      );
+    } finally {
+      setGoogleSigningIn(false);
+    }
+  };
+
+  const handleSuperAdminFirebaseSignIn = async (
+    email: string,
+    password: string
+  ): Promise<{ ok: boolean; unverifiedEmail?: boolean; message?: string }> => {
+    setAuthError(null);
+    setAuthNotice(null);
+    try {
+      const user = await signInWithFirebaseEmail(email, password);
+      if (!user.emailVerified) {
+        try {
+          await resendFirebaseVerificationEmail();
+        } catch {
+          // May already have a recent verification email in flight
+        }
+        return {
+          ok: false,
+          unverifiedEmail: true,
+          message: b(
+            `${user.email ?? email} ঠিকানায় ভেরিফিকেশন লিংক পাঠানো হয়েছে। Gmail ইনবক্স থেকে লিংকে ক্লিক করে "ভেরিফিকেশন যাচাই করুন" বাটনে চাপুন অথবা নিচের Google Sign-In ব্যবহার করুন।`,
+            `Verification link sent to ${user.email ?? email}. Click the link in your inbox, then press "Verify & Enter" (or use Google Sign-In below).`,
+            lang
+          ),
+        };
+      }
+
+      const resolved = await resolveAndSyncFirebaseUser(user);
+      if (!resolved.session || !isAuthorizedSuperAdminSession(resolved.session)) {
+        await signOutFirebase();
+        return {
+          ok: false,
+          message: b(
+            `এই Firebase অ্যাকাউন্ট (${user.email ?? email}) Super Central Admin হিসেবে অনুমোদিত নয়। অনুগ্রহ করে ${BOOT_ADMIN_EMAIL} দিয়ে লগইন করুন।`,
+            `This Firebase account (${user.email ?? email}) is not authorized as Super Central Admin. Use ${BOOT_ADMIN_EMAIL}.`,
+            lang
+          ),
+        };
+      }
+
+      persistPortalSession(resolved.session);
+      applyVerifiedSession(resolved.session);
+      void recordFirebaseAuditEvent({
+        role: 'central_admin',
+        what: 'Super Central Admin Firebase Sign-In Verified',
+        targetName: resolved.session.email || resolved.session.displayName,
+      });
+      showToast(
+        b(
+          'Super Central Admin হিসেবে Firebase Authentication যাচাই সফল হয়েছে।',
+          'Signed in as Super Central Admin via Firebase Authentication.',
+          lang
+        )
+      );
+      return { ok: true };
+    } catch (error) {
+      return {
+        ok: false,
+        message: mapFirebaseAuthErrorMessage(error, lang),
+      };
+    }
+  };
+
+  const handleSuperAdminRecheckVerification = async (): Promise<{ ok: boolean; message?: string }> => {
+    try {
+      const refreshed = await reloadCurrentFirebaseUser();
+      if (!refreshed) {
+        return {
+          ok: false,
+          message: b('পুনরায় Gmail ও পাসওয়ার্ড দিয়ে লগইন করুন।', 'Please sign in again to recheck verification.', lang),
+        };
+      }
+      if (!refreshed.emailVerified) {
+        return {
+          ok: false,
+          message: b(
+            'ইমেইল এখনো ভেরিফাইড দেখাচ্ছে না। Gmail-এর লিংকে ক্লিক করার পর আবার চেষ্টা করুন।',
+            'Email is still unverified. Click the link in your Gmail inbox first.',
+            lang
+          ),
+        };
+      }
+      const resolved = await resolveAndSyncFirebaseUser(refreshed);
+      if (!resolved.session || !isAuthorizedSuperAdminSession(resolved.session)) {
+        await signOutFirebase();
+        return {
+          ok: false,
+          message: b(
+            `এই অ্যাকাউন্টটি Super Central Admin (${BOOT_ADMIN_EMAIL}) নয়।`,
+            `This account is not an authorized Super Central Admin (${BOOT_ADMIN_EMAIL}).`,
+            lang
+          ),
+        };
+      }
+      persistPortalSession(resolved.session);
+      applyVerifiedSession(resolved.session);
+      void recordFirebaseAuditEvent({
+        role: 'central_admin',
+        what: 'Super Central Admin Email Verified & Signed In',
+        targetName: resolved.session.email || resolved.session.displayName,
+      });
+      showToast(b('সুপার সেন্ট্রাল অ্যাডমিন যাচাই সফল হয়েছে।', 'Super Central Admin verified and signed in.', lang));
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, message: mapFirebaseAuthErrorMessage(error, lang) };
+    }
+  };
+
+  const handleSuperAdminResendVerification = async (): Promise<{ ok: boolean; message?: string }> => {
+    try {
+      await resendFirebaseVerificationEmail();
+      return {
+        ok: true,
+        message: b(
+          'নতুন ভেরিফিকেশন ইমেইল পাঠানো হয়েছে। অনুগ্রহ করে ইনবক্স ও স্প্যাম ফোল্ডার দেখুন।',
+          'Verification email resent. Check your inbox and spam folder.',
+          lang
+        ),
+      };
+    } catch (error) {
+      return { ok: false, message: mapFirebaseAuthErrorMessage(error, lang) };
+    }
+  };
+
+  const handleLogout = async () => {
+    clearStoredPortalSession();
+    try {
+      await signOutFirebase();
+    } catch {
+      // ensure local session always terminates
+    }
+    setAuthenticatedSession(null);
+    setAuthenticatedSchoolLockId(null);
+    setAuthStatus('unauthenticated');
+    setActiveTab('dashboard');
+    setSearchQuery('');
+    setMobileSidebarOpen(false);
+    setLoginModalOpen(false);
+    setAuthError(null);
+    setAuthNotice(null);
+    showToast(b('সফলভাবে লগআউট সম্পন্ন হয়েছে।', 'Signed out successfully.', lang));
+  };
+
   const handleRoleChange = (newRole: Role) => {
+    if (!canAccessRoleDashboard(authenticatedSession, newRole)) {
+      showToast(
+        b(
+          'অননুমোদিত রোল পরিবর্তন ব্লক করা হয়েছে — শুধুমাত্র আপনার লগইনকৃত রোলের ড্যাশবোর্ড অনুমোদিত।',
+          'Unauthorized role switch blocked — you can only view your authenticated role dashboard.',
+          lang
+        )
+      );
+      return;
+    }
     setRole(newRole);
     setActiveTab('dashboard');
     setSearchQuery('');
@@ -4827,130 +5153,151 @@ export default function App() {
     />
   );
 
+  const routeDecision = resolveProtectedRouteAccess(
+    authStatus,
+    authenticatedSession,
+    role,
+    activeTab
+  );
+  const protectedRole = routeDecision.effectiveRole;
+  const protectedTab = routeDecision.effectiveTab ?? 'dashboard';
+
   return (
     <div
       data-device-category={detectedDeviceCategory}
       data-platform={previewPlatform}
       data-environment={isProductionEnvironment ? 'production' : 'development'}
+      data-auth-status={authStatus}
       className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100"
     >
-      {!isProductionEnvironment && showDevPreviewControls && (
-        <DevicePreviewBar
-          viewMode={effectiveDeviceViewMode}
-          onChangeViewMode={setDeviceViewMode}
-          orientation={deviceOrientation}
-          onChangeOrientation={setDeviceOrientation}
-          platform={previewPlatform}
-          onChangePlatform={setPreviewPlatform}
-          lang={lang}
-          theme={theme}
-          role={role}
-          activeTab={activeTab}
-        />
-      )}
-
-      {!isProductionEnvironment && showDevPreviewControls && effectiveDeviceViewMode !== 'auto' ? (
-        <DevicePreviewFrameStage
-          viewMode={effectiveDeviceViewMode}
-          orientation={deviceOrientation}
-          platform={previewPlatform}
-          lang={lang}
-          theme={theme}
-          role={role}
-          activeTab={activeTab}
-          onExitToAuto={() => setDeviceViewMode('auto')}
-          onSyncFromEmbed={(patch) => {
-            if (patch.role) setRole(patch.role);
-            if (typeof patch.tab === 'string' && patch.tab.length > 0) setActiveTab(patch.tab);
-            if (patch.lang) setLang(patch.lang);
-            if (patch.theme) setTheme(patch.theme);
-            if (patch.platform) setPreviewPlatform(patch.platform);
-          }}
-        />
-      ) : (
+      {routeDecision.screen === 'loading' ? (
+        <AuthLoadingScreen lang={lang} />
+      ) : routeDecision.screen === 'dashboard' &&
+        routeDecision.allowProtectedRender &&
+        protectedRole ? (
         <>
-          <TopHeader
-            role={role}
-            onRoleChange={handleRoleChange}
-            lang={lang}
-            onToggleLang={() => setLang((l) => (l === 'bn' ? 'en' : 'bn'))}
-            theme={theme}
-            onToggleTheme={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
-            notifications={notifications}
-            onMarkAllNotificationsRead={() =>
-              setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
-            }
-            onOpenMobileSidebar={() => setMobileSidebarOpen(true)}
-            isOffline={isOffline}
-            pendingSyncCount={pendingSyncCount}
-            onToggleOffline={handleToggleOffline}
-            guardianChildren={guardianChildren}
-            selectedChildId={activeGuardianChild?.id ?? ''}
-            onSelectChild={(id) => setSelectedChildId(id)}
-            activeSchool={schoolAdminOwnSchool}
-            activeTeacher={activeTeacherRecord}
-            activeStudent={activeStudentRecord}
-            pendingTeacherCount={pendingTeacherCount}
-            onOpenLoginModal={() => {
-              setLoginPresetMode('teacher');
-              setLoginModalOpen(true);
-            }}
-            onOpenOnlineSchoolReg={() => setSchoolRegModal({ open: true, mode: 'ONLINE' })}
-            onOpenPortalHub={() => setLandingHubOpen(true)}
-            onNavigateTab={(tab) => {
-              setActiveTab(tab);
-              setCentralNavVersion((v) => v + 1);
-            }}
-            globalSearchResults={globalSearchResults}
-            onSelectGlobalSearchResult={handleSelectGlobalSearchResult}
-            notificationPreferences={notificationPreferences}
-            onNavigateFromNotification={handleNavigateFromNotification}
-            onMarkNotificationRead={handleMarkNotificationRead}
-            onOpenContactAdmin={() => setContactAdminModalOpen(true)}
-            onOpenAppDownloadAndShare={() => setAppDownloadShareModalOpen(true)}
-            centralAdminPhotoUrl={activeCentralAdmin?.photoUrl}
-            guardianPhotoUrl={guardianPhotoUrl}
-            onOpenPhotoEditor={() => openProfilePhotoEditorForRole(role)}
-            isSchoolLoginLocked={Boolean(authenticatedSchoolLockId)}
-            onUnlockSchoolLogin={() => {
-              setAuthenticatedSchoolLockId(null);
-              showToast(b('স্কুল লগইন লক আনলক করা হয়েছে।', 'School login isolation lock released.', lang));
-            }}
-            platform={previewPlatform}
-          />
-
-          <div className="flex flex-1 min-h-0">
-            <Sidebar
-              role={role}
-              activeTab={activeTab}
-              onSelectTab={(tab) => {
-                setActiveTab(tab);
-                setCentralNavVersion((v) => v + 1);
-              }}
+          {!isProductionEnvironment && showDevPreviewControls && (
+            <DevicePreviewBar
+              viewMode={effectiveDeviceViewMode}
+              onChangeViewMode={setDeviceViewMode}
+              orientation={deviceOrientation}
+              onChangeOrientation={setDeviceOrientation}
+              platform={previewPlatform}
+              onChangePlatform={setPreviewPlatform}
               lang={lang}
-              collapsed={sidebarCollapsed}
-              onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
-              mobileOpen={mobileSidebarOpen}
-              onCloseMobile={() => setMobileSidebarOpen(false)}
-              activeSchool={schoolAdminOwnSchool}
-              activeStudent={activeStudentRecord}
-              activeGuardianChild={activeGuardianChild}
-              activeTeacher={activeTeacherRecord}
-              onOpenContactAdmin={() => setContactAdminModalOpen(true)}
-              onOpenAppDownloadAndShare={() => setAppDownloadShareModalOpen(true)}
-              onOpenPhotoEditor={() => openProfilePhotoEditorForRole(role)}
-              previewViewMode={effectiveDeviceViewMode}
+              theme={theme}
+              role={protectedRole}
+              activeTab={protectedTab}
             />
+          )}
 
-            <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-7 pb-20 md:pb-8 max-w-[1600px] mx-auto w-full">
-          {role === 'central_admin' && (
-            <CentralAdminViews
-              activeTab={activeTab}
-              onSelectTab={setActiveTab}
-              navKey={centralNavVersion}
+          {!isProductionEnvironment && showDevPreviewControls && effectiveDeviceViewMode !== 'auto' ? (
+            <DevicePreviewFrameStage
+              viewMode={effectiveDeviceViewMode}
+              orientation={deviceOrientation}
+              platform={previewPlatform}
               lang={lang}
+              theme={theme}
+              role={protectedRole}
+              activeTab={protectedTab}
+              onExitToAuto={() => setDeviceViewMode('auto')}
+              onSyncFromEmbed={(patch) => {
+                if (patch.role && canAccessRoleDashboard(authenticatedSession, patch.role)) {
+                  setRole(patch.role);
+                }
+                if (typeof patch.tab === 'string' && patch.tab.length > 0) setActiveTab(patch.tab);
+                if (patch.lang) setLang(patch.lang);
+                if (patch.theme) setTheme(patch.theme);
+                if (patch.platform) setPreviewPlatform(patch.platform);
+              }}
+            />
+          ) : (
+            <>
+              <TopHeader
+                role={protectedRole}
+                onRoleChange={handleRoleChange}
+                roleSwitchLocked={true}
+                onLogout={() => void handleLogout()}
+                authenticatedUserEmail={authenticatedSession?.email}
+                lang={lang}
+                onToggleLang={() => setLang((l) => (l === 'bn' ? 'en' : 'bn'))}
+                theme={theme}
+                onToggleTheme={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
+                searchQuery={searchQuery}
+                onSearchChange={setSearchQuery}
+                notifications={notifications}
+                onMarkAllNotificationsRead={() =>
+                  setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
+                }
+                onOpenMobileSidebar={() => setMobileSidebarOpen(true)}
+                isOffline={isOffline}
+                pendingSyncCount={pendingSyncCount}
+                onToggleOffline={handleToggleOffline}
+                guardianChildren={guardianChildren}
+                selectedChildId={activeGuardianChild?.id ?? ''}
+                onSelectChild={(id) => setSelectedChildId(id)}
+                activeSchool={schoolAdminOwnSchool}
+                activeTeacher={activeTeacherRecord}
+                activeStudent={activeStudentRecord}
+                pendingTeacherCount={pendingTeacherCount}
+                onOpenLoginModal={() => {
+                  setLoginPresetMode('teacher');
+                  setLoginModalOpen(true);
+                }}
+                onOpenOnlineSchoolReg={() => setSchoolRegModal({ open: true, mode: 'ONLINE' })}
+                onNavigateTab={(tab) => {
+                  setActiveTab(tab);
+                  setCentralNavVersion((v) => v + 1);
+                }}
+                globalSearchResults={globalSearchResults}
+                onSelectGlobalSearchResult={handleSelectGlobalSearchResult}
+                notificationPreferences={notificationPreferences}
+                onNavigateFromNotification={handleNavigateFromNotification}
+                onMarkNotificationRead={handleMarkNotificationRead}
+                onOpenContactAdmin={() => setContactAdminModalOpen(true)}
+                onOpenAppDownloadAndShare={() => setAppDownloadShareModalOpen(true)}
+                centralAdminPhotoUrl={activeCentralAdmin?.photoUrl}
+                guardianPhotoUrl={guardianPhotoUrl}
+                onOpenPhotoEditor={() => openProfilePhotoEditorForRole(protectedRole)}
+                isSchoolLoginLocked={Boolean(authenticatedSchoolLockId)}
+                onUnlockSchoolLogin={() => {
+                  setAuthenticatedSchoolLockId(null);
+                  showToast(b('স্কুল লগইন লক আনলক করা হয়েছে।', 'School login isolation lock released.', lang));
+                }}
+                platform={previewPlatform}
+              />
+
+              <div className="flex flex-1 min-h-0">
+                <Sidebar
+                  role={protectedRole}
+                  activeTab={protectedTab}
+                  onSelectTab={(tab) => {
+                    setActiveTab(tab);
+                    setCentralNavVersion((v) => v + 1);
+                  }}
+                  lang={lang}
+                  collapsed={sidebarCollapsed}
+                  onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
+                  mobileOpen={mobileSidebarOpen}
+                  onCloseMobile={() => setMobileSidebarOpen(false)}
+                  activeSchool={schoolAdminOwnSchool}
+                  activeStudent={activeStudentRecord}
+                  activeGuardianChild={activeGuardianChild}
+                  activeTeacher={activeTeacherRecord}
+                  onOpenContactAdmin={() => setContactAdminModalOpen(true)}
+                  onOpenAppDownloadAndShare={() => setAppDownloadShareModalOpen(true)}
+                  onOpenPhotoEditor={() => openProfilePhotoEditorForRole(protectedRole)}
+                  previewViewMode={effectiveDeviceViewMode}
+                />
+
+                <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-7 pb-20 md:pb-8 max-w-[1600px] mx-auto w-full">
+                  <PWAInstallBanner lang={lang} />
+                  {protectedRole === 'central_admin' && (
+                    <CentralAdminViews
+                      activeTab={protectedTab}
+                      onSelectTab={setActiveTab}
+                      navKey={centralNavVersion}
+                      lang={lang}
               searchQuery={searchQuery}
               schools={schools}
               teachers={teachers}
@@ -5475,69 +5822,153 @@ export default function App() {
               settingsCenterElement={settingsCenterElement}
             />
           )}
+
+          {protectedTab === 'dashboard' && (
+            <DashboardAppQuickAccessCard
+              lang={lang}
+              onOpenShareModal={() => setAppDownloadShareModalOpen(true)}
+            />
+          )}
         </main>
       </div>
 
-      {/* Compact Mobile Bottom Navigation (5-Role Switcher, height 48px -> total sticky < 13% on 844px) */}
+      {/* Role-Scoped Mobile Bottom Navigation (no cross-role switching) */}
       <nav
-        aria-label="Mobile quick role switcher"
+        aria-label={b('মোবাইল কুইক মেনু', 'Mobile role navigation', lang)}
+        data-testid="mobile-role-bottom-nav"
         className={`${
           effectiveDeviceViewMode === 'mobile' ? 'grid' : 'md:hidden grid'
         } fixed bottom-0 inset-x-0 h-12 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 grid-cols-5 z-20 no-print`}
       >
         <button
           type="button"
-          onClick={() => handleRoleChange('central_admin')}
-          className={`flex flex-col items-center justify-center text-[10px] font-semibold ${
-            role === 'central_admin' ? 'text-blue-700 dark:text-blue-400' : 'text-slate-500'
+          onClick={() => setActiveTab('dashboard')}
+          className={`flex flex-col items-center justify-center text-[10px] font-semibold cursor-pointer ${
+            protectedTab === 'dashboard' ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-500'
           }`}
         >
-          <ShieldCheck className="w-4 h-4" />
-          <span>Central</span>
+          <LayoutDashboard className="w-4 h-4" />
+          <span>{b('হোম', 'Home', lang)}</span>
         </button>
         <button
           type="button"
-          onClick={() => handleRoleChange('school_admin')}
-          className={`flex flex-col items-center justify-center text-[10px] font-semibold ${
-            role === 'school_admin' ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-500'
-          }`}
+          onClick={() =>
+            setActiveTab(
+              protectedRole === 'teacher'
+                ? 'my_routine'
+                : protectedRole === 'school_admin'
+                  ? 'routine'
+                  : protectedRole === 'central_admin'
+                    ? 'schools'
+                    : 'routine'
+            )
+          }
+          className="flex flex-col items-center justify-center text-[10px] font-semibold text-slate-500 hover:text-slate-900 dark:hover:text-white cursor-pointer"
         >
-          <Building2 className="w-4 h-4" />
-          <span>School</span>
+          <CalendarDays className="w-4 h-4" />
+          <span>
+            {protectedRole === 'central_admin'
+              ? b('স্কুল', 'Schools', lang)
+              : b('রুটিন', 'Routine', lang)}
+          </span>
         </button>
         <button
           type="button"
-          onClick={() => handleRoleChange('teacher')}
-          className={`flex flex-col items-center justify-center text-[10px] font-semibold ${
-            role === 'teacher' ? 'text-indigo-700 dark:text-indigo-400' : 'text-slate-500'
+          onClick={() => setActiveTab('notifications')}
+          className={`flex flex-col items-center justify-center text-[10px] font-semibold cursor-pointer ${
+            protectedTab === 'notifications' ? 'text-blue-700 dark:text-blue-400' : 'text-slate-500'
           }`}
         >
-          <BookOpen className="w-4 h-4" />
-          <span>Teacher</span>
+          <Bell className="w-4 h-4" />
+          <span>{b('বিজ্ঞপ্তি', 'Alerts', lang)}</span>
         </button>
         <button
           type="button"
-          onClick={() => handleRoleChange('guardian')}
-          className={`flex flex-col items-center justify-center text-[10px] font-semibold ${
-            role === 'guardian' ? 'text-sky-700 dark:text-sky-400' : 'text-slate-500'
-          }`}
+          onClick={() => setAppDownloadShareModalOpen(true)}
+          className="flex flex-col items-center justify-center text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 cursor-pointer"
         >
-          <Users className="w-4 h-4" />
-          <span>Guardian</span>
+          <Share2 className="w-4 h-4" />
+          <span>{b('অ্যাপস', 'Apps', lang)}</span>
         </button>
         <button
           type="button"
-          onClick={() => handleRoleChange('student')}
-          className={`flex flex-col items-center justify-center text-[10px] font-semibold ${
-            role === 'student' ? 'text-teal-700 dark:text-teal-400' : 'text-slate-500'
+          onClick={() => setActiveTab('settings')}
+          className={`flex flex-col items-center justify-center text-[10px] font-semibold cursor-pointer ${
+            protectedTab === 'settings' ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-500'
           }`}
         >
-          <GraduationCap className="w-4 h-4" />
-          <span>Student</span>
+          <Settings className="w-4 h-4" />
+          <span>{b('সেটিংস', 'Settings', lang)}</span>
         </button>
       </nav>
+            </>
+          )}
         </>
+      ) : (
+        <PortalLandingHub
+          open={true}
+          lang={lang}
+          theme={theme}
+          schools={schools}
+          onToggleLang={() => setLang((l) => (l === 'bn' ? 'en' : 'bn'))}
+          onToggleTheme={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
+          onOpenLoginPreset={(preset) => {
+            setLoginPresetMode(preset);
+            setLoginModalOpen(true);
+          }}
+          onOpenSchoolRegistration={() => setSchoolRegModal({ open: true, mode: 'ONLINE' })}
+          onOpenStatusTracker={() => setStatusTrackerOpen(true)}
+          onOpenTeacherRegistration={() => setPublicTeacherRegOpen(true)}
+          onOpenContactAdmin={() => setContactAdminModalOpen(true)}
+          onOpenAppDownloadAndShare={() => setAppDownloadShareModalOpen(true)}
+          onGoogleSignIn={handleGoogleSignIn}
+          onOpenEmailAuth={(initialTab = 'signin') => {
+            setEmailAuthPrefill('');
+            setEmailAuthInitialTab(initialTab);
+            setEmailAuthModalOpen(true);
+          }}
+          googleSigningIn={googleSigningIn}
+          authNotice={authNotice}
+          authError={authError}
+        />
       )}
+
+      <FirebaseEmailAuthModal
+        open={emailAuthModalOpen}
+        lang={lang}
+        initialTab={emailAuthInitialTab}
+        initialEmail={emailAuthPrefill}
+        onClose={() => setEmailAuthModalOpen(false)}
+        onAuthSuccess={(session) => {
+          persistPortalSession(session);
+          applyVerifiedSession(session);
+          setAuthError(null);
+          setAuthNotice(null);
+          void recordFirebaseAuditEvent({
+            role: session.role,
+            what: 'Firebase Email/Password Auth Verified',
+            targetName: session.email || session.displayName,
+            schoolId: session.schoolId,
+          });
+          showToast(
+            b(
+              'ভেরিফায়েড Firebase অ্যাকাউন্ট দিয়ে নিরাপদ লগইন সম্পন্ন হয়েছে।',
+              'Signed in via verified Firebase account.',
+              lang
+            )
+          );
+        }}
+        onPendingApprovalNotice={(verifiedEmail) => {
+          setAuthStatus('unauthenticated');
+          setAuthNotice(
+            b(
+              `${verifiedEmail} ইমেইল যাচাই হয়েছে। অনুমোদিত ড্যাশবোর্ডে প্রবেশ করতে নিচের পোর্টাল আইডি-পাসওয়ার্ড ব্যবহার করুন অথবা অ্যাডমিনের অনুমোদনের জন্য অপেক্ষা করুন।`,
+              `${verifiedEmail} verified. Please sign in with your portal credentials below or wait for Central Admin role assignment.`,
+              lang
+            )
+          );
+        }}
+      />
 
       {/* Modals */}
       <ActionConfirmModal state={confirmState} lang={lang} onClose={() => setConfirmState(null)} />
@@ -5641,35 +6072,6 @@ export default function App() {
         }}
       />
 
-      <PortalLandingHub
-        open={landingHubOpen}
-        lang={lang}
-        theme={theme}
-        schools={schools}
-        onToggleLang={() => setLang((l) => (l === 'bn' ? 'en' : 'bn'))}
-        onToggleTheme={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
-        onCloseToWorkspace={(targetRole) => {
-          setLandingHubOpen(false);
-          if (targetRole) {
-            handleRoleChange(targetRole);
-          }
-        }}
-        onOpenLoginPreset={(preset) => {
-          if (preset === 'guardian') {
-            setLandingHubOpen(false);
-            handleRoleChange('guardian');
-            return;
-          }
-          setLoginPresetMode(preset);
-          setLoginModalOpen(true);
-        }}
-        onOpenSchoolRegistration={() => setSchoolRegModal({ open: true, mode: 'ONLINE' })}
-        onOpenStatusTracker={() => setStatusTrackerOpen(true)}
-        onOpenTeacherRegistration={() => setPublicTeacherRegOpen(true)}
-        onOpenContactAdmin={() => setContactAdminModalOpen(true)}
-        onOpenAppDownloadAndShare={() => setAppDownloadShareModalOpen(true)}
-      />
-
       <AppDownloadAndShareModal
         open={appDownloadShareModalOpen}
         lang={lang}
@@ -5706,8 +6108,12 @@ export default function App() {
         }
         onClose={() => setContactAdminModalOpen(false)}
         onNavigateToNotices={() => {
-          setLandingHubOpen(false);
-          setActiveTab('notices');
+          if (authStatus === 'authenticated' && authenticatedSession) {
+            setActiveTab('notices');
+          } else {
+            setContactAdminModalOpen(false);
+            showToast(b('নোটিশ দেখতে অনুগ্রহ করে লগইন করুন।', 'Please sign in to view notices.', lang));
+          }
         }}
         onSubmitMessage={handleSubmitContactAdminMessage}
       />
@@ -5719,7 +6125,19 @@ export default function App() {
         requests={requests}
         onClose={() => setStatusTrackerOpen(false)}
         onViewSchoolInWorkspace={(schoolId) => {
-          setLandingHubOpen(false);
+          if (!canAccessRoleDashboard(authenticatedSession, 'central_admin')) {
+            setStatusTrackerOpen(false);
+            setLoginPresetMode('super_admin');
+            setLoginModalOpen(true);
+            showToast(
+              b(
+                'স্কুল ওয়ার্কস্পেস দেখতে কেন্দ্রীয় অ্যাডমিন হিসেবে লগইন করুন।',
+                'Sign in as Central Admin to inspect school workspace.',
+                lang
+              )
+            );
+            return;
+          }
           setRole('central_admin');
           setActiveTab('schools');
           setActiveSchoolAdminSchoolId(schoolId);
@@ -5743,12 +6161,36 @@ export default function App() {
         lang={lang}
         students={students}
         schools={schools}
+        teachers={teachers}
         initialMode={loginPresetMode}
         onClose={() => setLoginModalOpen(false)}
         onOpenTeacherRegistration={() => setPublicTeacherRegOpen(true)}
-        onLoginSuccess={(targetRole, studentId, schoolId) => {
-          if (studentId) {
-            setActiveStudentPortalId(studentId);
+        onGoogleSignIn={handleGoogleSignIn}
+        googleSigningIn={googleSigningIn}
+        onSuperAdminFirebaseSignIn={handleSuperAdminFirebaseSignIn}
+        onSuperAdminRecheckVerification={handleSuperAdminRecheckVerification}
+        onSuperAdminResendVerification={handleSuperAdminResendVerification}
+        onOpenFirebaseRecovery={(prefillEmail) => {
+          setEmailAuthPrefill(prefillEmail || BOOT_ADMIN_EMAIL);
+          setEmailAuthInitialTab('recovery');
+          setEmailAuthModalOpen(true);
+        }}
+        onLoginSuccess={(targetRole, studentId, schoolId, extra) => {
+          if (extra?.linkedStudentIds && extra.linkedStudentIds.length > 0) {
+            setLinkedChildIds(extra.linkedStudentIds);
+          }
+          const resolvedStudentId = studentId ?? extra?.linkedStudentIds?.[0];
+          const resolvedTeacherId = extra?.teacherId;
+          if (resolvedStudentId) {
+            if (targetRole === 'guardian') {
+              setSelectedChildId(resolvedStudentId);
+            } else {
+              setActiveStudentPortalId(resolvedStudentId);
+            }
+          }
+          if (targetRole === 'teacher' && resolvedTeacherId) {
+            setActiveTeacherPortalId(resolvedTeacherId);
+            if (schoolId) setActiveTeacherSchoolId(schoolId);
           }
           if (targetRole === 'school_admin' && schoolId) {
             setActiveSchoolAdminSchoolId(schoolId);
@@ -5756,8 +6198,40 @@ export default function App() {
           } else if (targetRole === 'central_admin') {
             setAuthenticatedSchoolLockId(null);
           }
-          setLandingHubOpen(false);
-          handleRoleChange(targetRole);
+
+          const displayName =
+            targetRole === 'central_admin'
+              ? CENTRAL_ADMIN_CREDENTIALS.displayNameEn
+              : targetRole === 'school_admin'
+                ? schools.find((s) => s.id === schoolId)?.headTeacher || 'School Admin'
+                : targetRole === 'teacher'
+                  ? teachers.find((t) => t.id === resolvedTeacherId)?.nameEn || 'Teacher'
+                  : targetRole === 'student'
+                    ? students.find((s) => s.id === resolvedStudentId)?.nameEn || 'Student'
+                    : 'Guardian';
+
+          const nextSession: AuthenticatedSession = {
+            uid:
+              resolvedTeacherId ||
+              resolvedStudentId ||
+              schoolId ||
+              extra?.guardianMobile ||
+              `portal-${targetRole}`,
+            role: targetRole,
+            displayName,
+            provider: 'institutional_portal',
+            schoolId:
+              schoolId ||
+              (targetRole === 'student'
+                ? students.find((s) => s.id === resolvedStudentId)?.schoolId
+                : undefined),
+            teacherId: resolvedTeacherId,
+            studentId: resolvedStudentId,
+            guardianMobile: extra?.guardianMobile,
+            signedInAtIso: new Date().toISOString(),
+          };
+          persistPortalSession(nextSession);
+          applyVerifiedSession(nextSession);
           showToast(b('পোর্টালে সফলভাবে প্রবেশ করেছেন।', 'Signed in to portal.', lang));
         }}
       />

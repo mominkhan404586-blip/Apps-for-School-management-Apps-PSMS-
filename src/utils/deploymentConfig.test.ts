@@ -105,6 +105,7 @@ test('real https deployment URLs resolve cleanly and enable published/available/
 test('resolveApiUrl keeps relative /api paths for same-origin web and prefixes configured backend origin for Android APK', () => {
   assert.equal(resolveApiUrl('/api/health', ''), '/api/health');
   assert.equal(resolveApiUrl('api/settings', ''), '/api/settings');
+  assert.equal(resolveApiUrl('/api/deployment'), '/api/deployment');
   assert.equal(
     resolveApiUrl('/api/settings', `${VERIFIED_PUBLISHED_WEB_APP_URL}/`),
     `${VERIFIED_PUBLISHED_WEB_APP_URL}/api/settings`
@@ -169,6 +170,7 @@ test('detectRuntimeEnvironment & detectDeploymentEnvironment automatically disti
 
 test('buildAppShareMessage & buildSocialShareUrls include both Web Browsing and APK Download links cleanly', () => {
   assert.equal(resolveLiveWebAppUrl('', {}), VERIFIED_PUBLISHED_WEB_APP_URL);
+  assert.equal(resolveAndroidApkDownloadUrl('', {}), VERIFIED_GITHUB_APK_RELEASE_URL);
   const bnMsg = buildAppShareMessage(VERIFIED_PUBLISHED_WEB_APP_URL, VERIFIED_GITHUB_APK_RELEASE_URL, 'bn');
   assert.ok(bnMsg.includes(VERIFIED_PUBLISHED_WEB_APP_URL));
   assert.ok(bnMsg.includes(VERIFIED_GITHUB_APK_RELEASE_URL));

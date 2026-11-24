@@ -33,11 +33,19 @@ import {
   MapPin,
   Layers,
   Camera,
-  Download,
+  Globe,
+  Share2,
+  Smartphone,
   Settings,
 } from 'lucide-react';
 import type { Language, Role, SchoolRecord, StudentRecord, TeacherRecord } from '../types';
 import type { DeviceViewMode } from '../utils/devicePreviewEngine';
+import {
+  VERIFIED_GITHUB_APK_RELEASE_URL,
+  VERIFIED_PUBLISHED_WEB_APP_URL,
+  resolveAndroidApkDownloadUrl,
+  resolveLiveWebAppUrl,
+} from '../utils/deploymentConfig';
 import { AVATARS } from '../data/mockData';
 import { b, tr } from '../i18n/translations';
 
@@ -425,33 +433,89 @@ export const Sidebar: React.FC<SidebarProps> = ({
         )}
       </nav>
 
-      {(footerItems.length > 0 || onOpenContactAdmin || onOpenAppDownloadAndShare) && (
+      {/* App & Web Access Section — visible to all authenticated roles */}
+      <div
+        data-testid="sidebar-app-web-access-section"
+        className={`p-2.5 border-t space-y-1.5 ${
+          isNavySidebar ? 'border-white/10' : 'border-slate-200 dark:border-slate-800'
+        }`}
+      >
+        {(!collapsed || isMobile) && (
+          <div
+            className={`px-2 text-[11px] font-bold uppercase tracking-wider ${
+              isNavySidebar ? 'text-slate-400' : 'text-slate-500 dark:text-slate-400'
+            }`}
+          >
+            {b('App & Web Access', 'App & Web Access', lang)}
+          </div>
+        )}
+
+        <a
+          href={resolveAndroidApkDownloadUrl() || VERIFIED_GITHUB_APK_RELEASE_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          download
+          data-testid="sidebar-download-apk-link"
+          title={collapsed && !isMobile ? b('Download APK', 'Download APK', lang) : undefined}
+          className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-semibold transition-colors ${
+            isNavySidebar
+              ? 'bg-blue-600/20 text-blue-200 hover:bg-blue-600/35 hover:text-white border border-blue-400/25'
+              : 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/60 border border-blue-200/70 dark:border-blue-800/60'
+          } ${collapsed && !isMobile ? 'justify-center px-2' : ''}`}
+        >
+          <Smartphone className="w-4 h-4 shrink-0" />
+          {(!collapsed || isMobile) && (
+            <span className="truncate">{b('Download APK', 'Download APK', lang)}</span>
+          )}
+        </a>
+
+        <a
+          href={resolveLiveWebAppUrl() || VERIFIED_PUBLISHED_WEB_APP_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          data-testid="sidebar-web-browser-link"
+          title={collapsed && !isMobile ? b('Web Browser Access', 'Web Browser Access', lang) : undefined}
+          className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-semibold transition-colors ${
+            isNavySidebar
+              ? 'bg-emerald-600/20 text-emerald-200 hover:bg-emerald-600/35 hover:text-white border border-emerald-400/25'
+              : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-200/70 dark:border-emerald-800/60'
+          } ${collapsed && !isMobile ? 'justify-center px-2' : ''}`}
+        >
+          <Globe className="w-4 h-4 shrink-0" />
+          {(!collapsed || isMobile) && (
+            <span className="truncate">{b('Web Browser Access', 'Web Browser Access', lang)}</span>
+          )}
+        </a>
+
+        {onOpenAppDownloadAndShare && (
+          <button
+            type="button"
+            data-testid="sidebar-apps-download-share-btn"
+            onClick={() => {
+              onOpenAppDownloadAndShare();
+              if (isMobile) onCloseMobile();
+            }}
+            title={collapsed && !isMobile ? b('অ্যাপস ডাউনলোড ও শেয়ার করুন', 'Download Apps & Share', lang) : undefined}
+            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-semibold transition-colors cursor-pointer ${
+              isNavySidebar
+                ? 'text-indigo-200 hover:bg-white/10 hover:text-white'
+                : 'text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/30'
+            } ${collapsed && !isMobile ? 'justify-center px-2' : ''}`}
+          >
+            <Share2 className="w-4 h-4 shrink-0" />
+            {(!collapsed || isMobile) && (
+              <span className="truncate">{b('অ্যাপস ডাউনলোড ও শেয়ার', 'Download Apps & Share', lang)}</span>
+            )}
+          </button>
+        )}
+      </div>
+
+      {(footerItems.length > 0 || onOpenContactAdmin) && (
         <div
           className={`p-2.5 border-t space-y-1 ${
             isNavySidebar ? 'border-white/10' : 'border-slate-200 dark:border-slate-800'
           }`}
         >
-          {onOpenAppDownloadAndShare && (
-            <button
-              type="button"
-              data-testid="sidebar-apps-download-share-btn"
-              onClick={() => {
-                onOpenAppDownloadAndShare();
-                if (isMobile) onCloseMobile();
-              }}
-              title={collapsed && !isMobile ? b('অ্যাপস ডাউনলোড ও শেয়ার করুন', 'Download Apps & Share', lang) : undefined}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-semibold transition-colors cursor-pointer ${
-                isNavySidebar
-                  ? 'bg-blue-600/20 text-blue-200 hover:bg-blue-600/35 hover:text-white border border-blue-400/25'
-                  : 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/60 border border-blue-200/70 dark:border-blue-800/60'
-              } ${collapsed && !isMobile ? 'justify-center px-2' : ''}`}
-            >
-              <Download className="w-4 h-4 shrink-0" />
-              {(!collapsed || isMobile) && (
-                <span className="truncate">{b('অ্যাপস ডাউনলোড ও শেয়ার', 'Download Apps & Share', lang)}</span>
-              )}
-            </button>
-          )}
           {footerItems.map((i) => renderItem(i, isMobile))}
           {onOpenContactAdmin && (
             <button

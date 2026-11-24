@@ -1,0 +1,405 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated user identity and strict RBAC role assignment.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 254
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "role": {
+          "type": "string",
+          "enum": ["central_admin", "school_admin", "teacher", "guardian", "student", "pending"]
+        },
+        "schoolId": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "teacherId": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "studentId": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "pending", "suspended"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "email", "displayName", "role", "status", "createdAt", "updatedAt"]
+    },
+    "AdminRegistry": {
+      "title": "AdminRegistry",
+      "description": "Trusted Central Admin UID allowlist verified by security rules.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 254
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "accessLevel": {
+          "type": "string",
+          "enum": ["Super Central Admin", "Audit Officer", "Regional Reviewer"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "email", "displayName", "accessLevel", "createdAt", "updatedAt"]
+    },
+    "SchoolSummary": {
+      "title": "SchoolSummary",
+      "description": "Registered school institution record.",
+      "type": "object",
+      "properties": {
+        "schoolId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "nameBn": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "nameEn": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "eiin": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "under_review", "active", "suspended", "deactivated"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["schoolId", "ownerUid", "nameBn", "nameEn", "status", "createdAt", "updatedAt"]
+    },
+    "AuditLogRecord": {
+      "title": "AuditLogRecord",
+      "description": "Immutable security and governance audit trail event.",
+      "type": "object",
+      "properties": {
+        "createdByUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["central_admin", "school_admin", "teacher", "guardian", "student"]
+        },
+        "what": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "targetName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "schoolId": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["createdByUid", "role", "what", "targetName", "createdAt"]
+    },
+    "AppConfigRecord": {
+      "title": "AppConfigRecord",
+      "description": "Centralized Web App and Android APK deployment links configuration.",
+      "type": "object",
+      "properties": {
+        "updatedByUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "webAppUrl": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "androidApkUrl": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["updatedByUid", "webAppUrl", "androidApkUrl", "createdAt", "updatedAt"]
+    },
+    "UserPreferences": {
+      "title": "UserPreferences",
+      "description": "Private per-user UI, notification, and sync preferences.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "lang": {
+          "type": "string",
+          "enum": ["bn", "en"]
+        },
+        "theme": {
+          "type": "string",
+          "enum": ["light", "dark", "system"]
+        },
+        "fontSize": {
+          "type": "string",
+          "enum": ["small", "normal", "large"]
+        },
+        "pushNotifications": {
+          "type": "boolean"
+        },
+        "emailNotifications": {
+          "type": "boolean"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "lang", "theme", "fontSize", "pushNotifications", "emailNotifications", "updatedAt"]
+    },
+    "NoticeRecord": {
+      "title": "NoticeRecord",
+      "description": "School or Central Admin published announcement stored in Firestore.",
+      "type": "object",
+      "properties": {
+        "noticeId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdByUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "schoolId": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "body": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "audience": {
+          "type": "string",
+          "enum": ["all", "teachers", "students", "guardians", "school"]
+        },
+        "priority": {
+          "type": "string",
+          "enum": ["normal", "important", "urgent"]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["published", "archived"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["noticeId", "createdByUid", "title", "body", "audience", "priority", "status", "createdAt", "updatedAt"]
+    },
+    "CloudBackupRecord": {
+      "title": "CloudBackupRecord",
+      "description": "Per-user verified cloud backup snapshot for account recovery and settings restore.",
+      "type": "object",
+      "properties": {
+        "ownerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 254
+        },
+        "role": {
+          "type": "string",
+          "enum": ["central_admin", "school_admin", "teacher", "guardian", "student", "pending"]
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "language": {
+          "type": "string",
+          "enum": ["bn", "en"]
+        },
+        "themePreference": {
+          "type": "string",
+          "enum": ["light", "dark", "system"]
+        },
+        "schoolCount": {
+          "type": "integer"
+        },
+        "teacherCount": {
+          "type": "integer"
+        },
+        "studentCount": {
+          "type": "integer"
+        },
+        "settingsVersion": {
+          "type": "integer"
+        },
+        "note": {
+          "type": "string",
+          "maxLength": 240
+        },
+        "backupSettings": {
+          "type": "object"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "ownerUid",
+        "email",
+        "role",
+        "displayName",
+        "language",
+        "themePreference",
+        "schoolCount",
+        "teacherCount",
+        "studentCount",
+        "settingsVersion",
+        "backupSettings",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Verified user RBAC profile mapped by Firebase Auth UID."
+    },
+    "/users/{userId}/private/{docId}": {
+      "schema": { "$ref": "#/entities/UserPreferences" },
+      "description": "Private user settings and preferences isolated under owner UID."
+    },
+    "/admins/{adminId}": {
+      "schema": { "$ref": "#/entities/AdminRegistry" },
+      "description": "Trusted Central Admin UID registry."
+    },
+    "/schools/{schoolId}": {
+      "schema": { "$ref": "#/entities/SchoolSummary" },
+      "description": "Registered institution records scoped by ownerUid or Central Admin."
+    },
+    "/notices/{noticeId}": {
+      "schema": { "$ref": "#/entities/NoticeRecord" },
+      "description": "Official central and school announcements synced across authenticated clients."
+    },
+    "/audit_logs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLogRecord" },
+      "description": "Immutable authentication and administrative audit log entries."
+    },
+    "/app_settings/{settingId}": {
+      "schema": { "$ref": "#/entities/AppConfigRecord" },
+      "description": "Published deployment and portal settings managed by Central Admin."
+    },
+    "/cloud_backups/{backupId}": {
+      "schema": { "$ref": "#/entities/CloudBackupRecord" },
+      "description": "Owner-isolated Firestore cloud backup snapshots for account restore and recovery."
+    }
+  }
+}

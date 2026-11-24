@@ -78,6 +78,14 @@ import {
   type ResolvedDeploymentLinksState,
 } from '../utils/deploymentConfig';
 import { PWAInstallButton } from './PWAInstallBanner';
+import {
+  auth,
+  getActiveFirebaseProjectInfo,
+  loadCloudAppBackup,
+  saveCloudAppBackup,
+  sendFirebasePasswordReset,
+} from '../firebase';
+import { mapFirebaseAuthErrorMessage } from '../utils/authGuard';
 
 export interface SettingsCenterViewProps {
   role: Role;
@@ -235,6 +243,161 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
   const [savingDeployment, setSavingDeployment] = useState(false);
   const [apkReleaseReady, setApkReleaseReady] = useState<boolean>(true);
   const [apkActionsUrl, setApkActionsUrl] = useState<string>('');
+  const [cloudBackupBusy, setCloudBackupBusy] = useState(false);
+  const [cloudBackupMessage, setCloudBackupMessage] = useState<string | null>(null);
+  const [cloudBackupError, setCloudBackupError] = useState<string | null>(null);
+  const firebaseProjectInfo = getActiveFirebaseProjectInfo();
+
+  const handleSaveCloudBackup = async () => {
+    setCloudBackupError(null);
+    setCloudBackupMessage(null);
+    const currentUser = auth.currentUser;
+    if (!currentUser || !currentUser.emailVerified) {
+      setCloudBackupError(
+        b(
+          'ক্লাউড ব্যাকআপ নিতে Firebase Google বা Verified ইমেইল অ্যাকাউন্ট দিয়ে লগইন থাকতে হবে।',
+          'Please sign in with a verified Firebase Google or Email account to save Cloud Backup.',
+          lang
+        )
+      );
+      return;
+    }
+    setCloudBackupBusy(true);
+    try {
+      await saveCloudAppBackup({
+        role,
+        language: lang,
+        themePreference: settings.appearance.themePreference,
+        schoolCount: schools.length,
+        teacherCount: teachers.length,
+        studentCount: students.length,
+        settingsVersion: settings.version,
+        note: `PSMS Cloud Backup (${role})`,
+        backupSettings: {
+          appearance: {
+            themePreference: settings.appearance.themePreference,
+            fontSize: settings.appearance.fontSize,
+            layoutDensity: settings.appearance.density,
+          },
+          regional: settings.regional,
+          security: {
+            twoFactorEnabled: settings.security.twoFactorEnabled,
+            otpVerificationRequired: settings.security.otpVerificationRequired,
+            loginAlerts: settings.security.loginAlerts,
+            autoLogoutMinutes: settings.security.autoLogoutMinutes,
+          },
+          notifications: settings.notifications as unknown as Record<string, boolean>,
+        },
+      });
+      setCloudBackupMessage(
+        b(
+          `Firestore (${firebaseProjectInfo.projectId})-এ ক্লাউড ব্যাকআপ সফলভাবে সংরক্ষিত হয়েছে।`,
+          `Cloud Backup saved cleanly to Firestore (${firebaseProjectInfo.projectId}).`,
+          lang
+        )
+      );
+      showToast('Firebase Cloud Backup সম্পন্ন হয়েছে!', 'Firebase Cloud Backup saved!');
+    } catch (err) {
+      setCloudBackupError(mapFirebaseAuthErrorMessage(err, lang));
+    } finally {
+      setCloudBackupBusy(false);
+    }
+  };
+
+  const handleRestoreCloudBackup = async () => {
+    setCloudBackupError(null);
+    setCloudBackupMessage(null);
+    const currentUser = auth.currentUser;
+    if (!currentUser || !currentUser.emailVerified) {
+      setCloudBackupError(
+        b(
+          'ক্লাউড থেকে রিস্টোর করতে Firebase Google বা Verified ইমেইল অ্যাকাউন্ট দিয়ে লগইন করুন।',
+          'Please sign in with your verified Firebase account to restore from Cloud.',
+          lang
+        )
+      );
+      return;
+    }
+    setCloudBackupBusy(true);
+    try {
+      const backup = await loadCloudAppBackup();
+      if (!backup) {
+        setCloudBackupError(
+          b(
+            'এই অ্যাকাউন্টের জন্য এখনো কোনো ক্লাউড ব্যাকআপ পাওয়া যায়নি। আগে Save Cloud Backup দিন।',
+            'No cloud backup found for this account yet. Save a backup first.',
+            lang
+          )
+        );
+        return;
+      }
+      onUpdateSettings(
+        {
+          ...settings,
+          appearance: {
+            ...settings.appearance,
+            themePreference: backup.backupSettings.appearance.themePreference,
+            fontSize: backup.backupSettings.appearance.fontSize as SystemSettingsState['appearance']['fontSize'],
+            density:
+              backup.backupSettings.appearance.layoutDensity as SystemSettingsState['appearance']['density'],
+          },
+          regional: {
+            ...settings.regional,
+            ...backup.backupSettings.regional,
+          },
+          security: {
+            ...settings.security,
+            twoFactorEnabled: backup.backupSettings.security.twoFactorEnabled,
+            otpVerificationRequired: backup.backupSettings.security.otpVerificationRequired,
+            loginAlerts: backup.backupSettings.security.loginAlerts,
+            autoLogoutMinutes:
+              (backup.backupSettings.security.autoLogoutMinutes as 15 | 30 | 60 | 120) || 30,
+          },
+        },
+        {
+          id: `AUD-RESTORE-${Date.now()}`,
+          who: actorName,
+          role,
+          when: new Date().toISOString().replace('T', ' ').slice(0, 16),
+          what: 'Restored System Settings from Firebase Cloud Backup',
+          targetName: firebaseProjectInfo.projectId,
+          requestId: 'CLOUD-RESTORE',
+          oldValue: `v${settings.version}`,
+          newValue: `v${backup.settingsVersion}`,
+        }
+      );
+      onChangeLang(backup.language);
+      setCloudBackupMessage(
+        b(
+          `সফলভাবে রিস্টোর হয়েছে (${backup.updatedAtLabel})! বিদ্যালয়: ${backup.schoolCount}, শিক্ষক: ${backup.teacherCount}, শিক্ষার্থী: ${backup.studentCount}।`,
+          `Restored from Cloud Backup (${backup.updatedAtLabel})!`,
+          lang
+        )
+      );
+      showToast('ক্লাউড ব্যাকআপ থেকে সফলভাবে রিস্টোর হয়েছে!', 'Restored from Firebase Cloud Backup!');
+    } catch (err) {
+      setCloudBackupError(mapFirebaseAuthErrorMessage(err, lang));
+    } finally {
+      setCloudBackupBusy(false);
+    }
+  };
+
+  const handleSendPasswordResetFromSecurity = async () => {
+    const targetEmail = auth.currentUser?.email || actorEmail;
+    if (!targetEmail || !targetEmail.includes('@')) {
+      showToast('সঠিক ইমেইল ঠিকানা পাওয়া যায়নি।', 'No valid email address found.');
+      return;
+    }
+    try {
+      await sendFirebasePasswordReset(targetEmail);
+      showToast(
+        `${targetEmail} ঠিকানায় পাসওয়ার্ড রিসেট ও রিকভারি লিংক পাঠানো হয়েছে।`,
+        `Password reset link sent to ${targetEmail}.`
+      );
+    } catch (err) {
+      showToast(mapFirebaseAuthErrorMessage(err, lang), mapFirebaseAuthErrorMessage(err, 'en'));
+    }
+  };
 
   useEffect(() => {
     setProfileName(actorName);
@@ -773,6 +936,33 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
                   <option value={120}>120 {b('মিনিট', 'mins', lang)}</option>
                 </select>
               </div>
+            </div>
+
+            {/* Firebase Account Recovery Quick Action */}
+            <div className="rounded-xl border border-emerald-200 dark:border-emerald-800/70 p-4 flex flex-wrap items-center justify-between gap-3 bg-emerald-50/50 dark:bg-emerald-950/20">
+              <div>
+                <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  <span>{b(`Firebase অ্যাকাউন্ট নিরাপত্তা ও পুনরুদ্ধার (${firebaseProjectInfo.projectId})`, `Firebase Security & Account Recovery (${firebaseProjectInfo.projectId})`, lang)}</span>
+                </div>
+                <div className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">
+                  {auth.currentUser
+                    ? b(
+                        `যুক্ত ইমেইল: ${auth.currentUser.email ?? actorEmail} · ভেরিফায়েড: ${auth.currentUser.emailVerified ? 'হ্যাঁ ✓' : 'অপেক্ষমাণ'}`,
+                        `Connected: ${auth.currentUser.email ?? actorEmail} · Verified: ${auth.currentUser.emailVerified ? 'Yes ✓' : 'Pending'}`,
+                        lang
+                      )
+                    : b('ইমেইলে পাসওয়ার্ড রিসেট / পুনরুদ্ধার লিংক পাঠাতে নিচের বাটনে ক্লিক করুন', 'Send a password reset / account recovery email via Firebase Auth', lang)}
+                </div>
+              </div>
+              <button
+                type="button"
+                data-testid="security-send-recovery-email-btn"
+                onClick={() => void handleSendPasswordResetFromSecurity()}
+                className="h-9 px-3.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold cursor-pointer"
+              >
+                {b('পাসওয়ার্ড রিসেট / রিকভারি লিংক পাঠান', 'Send Recovery Email', lang)}
+              </button>
             </div>
 
             {/* OTP Live Verification Tester */}
@@ -1843,6 +2033,67 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
       case 'data_backup':
         return (
           <div className="space-y-4">
+            {/* Firebase Firestore Cloud Backup & Account Restore Card */}
+            <div
+              data-testid="firebase-cloud-backup-card"
+              className="rounded-xl border border-indigo-500/30 bg-indigo-50/70 dark:bg-indigo-950/25 p-4 space-y-3"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="text-sm font-extrabold text-indigo-950 dark:text-indigo-100 flex items-center gap-2">
+                    <Database className="w-4 h-4 text-indigo-600 dark:text-indigo-300" />
+                    <span>{b('Firebase ক্লাউড ব্যাকআপ ও অ্যাকাউন্ট রিস্টোর', 'Firebase Cloud Backup & Account Restore', lang)}</span>
+                  </div>
+                  <p className="text-[11px] text-indigo-800/80 dark:text-indigo-200/80 mt-0.5">
+                    {b(
+                      `প্রজেক্ট: ${firebaseProjectInfo.projectId} · ডেটাবেস: ${firebaseProjectInfo.databaseId}`,
+                      `Project: ${firebaseProjectInfo.projectId} · Database: ${firebaseProjectInfo.databaseId}`,
+                      lang
+                    )}
+                  </p>
+                </div>
+                <span className="px-2.5 py-1 rounded-lg bg-white/80 dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 text-[11px] font-bold text-indigo-700 dark:text-indigo-300">
+                  {auth.currentUser?.emailVerified
+                    ? b(`Firebase ভেরিফায়েড ✓`, `Firebase Verified ✓`, lang)
+                    : b('Firebase সংযুক্ত', 'Firebase Ready', lang)}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  data-testid="cloud-backup-save-btn"
+                  disabled={cloudBackupBusy}
+                  onClick={() => void handleSaveCloudBackup()}
+                  className="h-10 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{b('ক্লাউডে ব্যাকআপ সংরক্ষণ করুন (Cloud Backup)', 'Save Cloud Backup to Firestore', lang)}</span>
+                </button>
+                <button
+                  type="button"
+                  data-testid="cloud-backup-restore-btn"
+                  disabled={cloudBackupBusy}
+                  onClick={() => void handleRestoreCloudBackup()}
+                  className="h-10 px-4 rounded-xl bg-white dark:bg-slate-900 border border-indigo-300 dark:border-indigo-700 hover:bg-indigo-50 dark:hover:bg-slate-800 text-indigo-800 dark:text-indigo-200 text-xs font-bold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  <span>{b('ক্লাউড থেকে রিস্টোর / পুনরুদ্ধার করুন', 'Restore from Cloud Backup', lang)}</span>
+                </button>
+              </div>
+
+              {cloudBackupMessage && (
+                <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 px-3 py-2 text-xs font-semibold text-emerald-800 dark:text-emerald-200">
+                  {cloudBackupMessage}
+                </div>
+              )}
+              {cloudBackupError && (
+                <div className="rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 px-3 py-2 text-xs font-semibold text-red-700 dark:text-red-300">
+                  {cloudBackupError}
+                </div>
+              )}
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <button
                 type="button"

@@ -282,7 +282,10 @@ export function resolveAndroidApkDownloadUrl(
   storedUrl?: string,
   envOverrides: DeploymentLinksEnvOverrides = readViteEnvDeploymentOverrides()
 ): string {
-  return pickVerifiedUrl(storedUrl, envOverrides.androidApkUrl, 'apk');
+  return (
+    pickVerifiedUrl(storedUrl, envOverrides.androidApkUrl, 'apk') ||
+    VERIFIED_GITHUB_APK_RELEASE_URL
+  );
 }
 
 export function resolveLiveWebAppUrl(
@@ -393,16 +396,30 @@ export function resolveDeploymentLinksState(
 
 export function resolveApiUrl(apiPath: string, configuredBaseUrl?: string): string {
   const normalizedPath = apiPath.startsWith('/') ? apiPath : `/${apiPath}`;
+  if (configuredBaseUrl !== undefined) {
+    const check = validateDeploymentUrl(configuredBaseUrl, 'api');
+    if (check.valid && check.normalized) {
+      return `${check.normalized}${normalizedPath}`;
+    }
+    return normalizedPath;
+  }
+
   const isCapacitorNative =
     typeof window !== 'undefined' &&
     Boolean(
       (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.()
     );
+  const isNativeProtocol =
+    typeof window !== 'undefined' &&
+    (window.location.protocol === 'capacitor:' || window.location.protocol === 'file:');
+
+  if (!isCapacitorNative && !isNativeProtocol) {
+    // Web browsers (localhost, AI Studio preview, Cloud Run) always call same-origin /api/*
+    return normalizedPath;
+  }
+
   const candidate =
-    configuredBaseUrl !== undefined
-      ? configuredBaseUrl
-      : readViteEnvDeploymentOverrides().apiBaseUrl ||
-        (isCapacitorNative ? VERIFIED_SHARED_API_BASE_URL : '');
+    readViteEnvDeploymentOverrides().apiBaseUrl || VERIFIED_SHARED_API_BASE_URL;
   const check = validateDeploymentUrl(candidate, 'api');
   if (check.valid && check.normalized) {
     return `${check.normalized}${normalizedPath}`;

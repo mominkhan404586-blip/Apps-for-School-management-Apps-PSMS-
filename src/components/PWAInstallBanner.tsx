@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Download, ExternalLink, Share, Smartphone, WifiOff, X } from 'lucide-react';
+import { Download, ExternalLink, Smartphone, WifiOff, X } from 'lucide-react';
 import { useOnlineStatus, usePWAInstall } from '../hooks/usePWAInstall';
 import type { Language } from '../types';
 import { b } from '../i18n/translations';
@@ -8,18 +8,9 @@ import {
   resolveAndroidApkDownloadUrl,
   resolveApiUrl,
 } from '../utils/deploymentConfig';
+import { InstallInstructionsModal } from './InstallInstructions';
 
-interface PWAInstallButtonProps {
-  lang?: Language;
-  variant?: 'compact' | 'card';
-}
-
-export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
-  lang = 'bn',
-  variant = 'compact',
-}) => {
-  const { canInstallNatively, isInstalled, isIOS, isAndroid, promptInstall } = usePWAInstall();
-  const [showGuideModal, setShowGuideModal] = useState(false);
+function useDeploymentApkStatus() {
   const [androidApkUrl, setAndroidApkUrl] = useState<string>(
     () => resolveAndroidApkDownloadUrl() || VERIFIED_GITHUB_APK_RELEASE_URL
   );
@@ -66,19 +57,37 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
     };
   }, []);
 
-  const showApkDownload = Boolean(androidApkUrl) && apkReleaseReady && !isCapacitorNative;
-  const showPendingActionsLink = Boolean(androidApkUrl) && !apkReleaseReady && Boolean(apkActionsUrl) && !isCapacitorNative;
+  return { androidApkUrl, apkReleaseReady, apkActionsUrl, isCapacitorNative };
+}
 
-  if (isInstalled && variant === 'compact') {
+interface PWAInstallButtonProps {
+  lang?: Language;
+  variant?: 'compact' | 'card';
+}
+
+export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
+  lang = 'bn',
+  variant = 'compact',
+}) => {
+  const { canInstallNatively, isInstalled, isIOS, isAndroid, promptInstall } = usePWAInstall();
+  const [showGuideModal, setShowGuideModal] = useState(false);
+  const { androidApkUrl, apkReleaseReady, apkActionsUrl, isCapacitorNative } =
+    useDeploymentApkStatus();
+
+  const showApkDownload = Boolean(androidApkUrl) && apkReleaseReady && !isCapacitorNative;
+  const showPendingActionsLink =
+    Boolean(androidApkUrl) && !apkReleaseReady && Boolean(apkActionsUrl) && !isCapacitorNative;
+
+  if ((isInstalled || isCapacitorNative) && variant === 'compact') {
     return null;
   }
 
   const handleClick = async () => {
     if (canInstallNatively) {
-      await promptInstall();
-    } else {
-      setShowGuideModal(true);
+      const accepted = await promptInstall();
+      if (accepted) return;
     }
+    setShowGuideModal(true);
   };
 
   return (
@@ -96,7 +105,11 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
               <div className="text-xs text-slate-600 dark:text-slate-300">
                 {isInstalled
                   ? b('অ্যাপটি ইতোমধ্যে ইনস্টল করা অবস্থায় চলছে।', 'Running in standalone app mode.', lang)
-                  : b('একই অ্যাকাউন্ট, একই ডাটাবেস ও অফলাইন সাপোর্ট সহ সরাসরি ফোনে ইনস্টল করুন।', 'Install with identical accounts, real-time server sync & offline access.', lang)}
+                  : b(
+                      'একই অ্যাকাউন্ট, একই ডাটাবেস ও অফলাইন সাপোর্ট সহ সরাসরি ফোনে বা ডেস্কটপে ইনস্টল করুন।',
+                      'Install with identical accounts, real-time server sync & offline access.',
+                      lang
+                    )}
               </div>
             </div>
           </div>
@@ -129,17 +142,18 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
             {!isInstalled && (
               <button
                 type="button"
-                onClick={handleClick}
+                onClick={() => void handleClick()}
+                data-testid="pwa-card-install-btn"
                 className="inline-flex items-center gap-1.5 h-10 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold cursor-pointer shrink-0 transition-colors"
               >
                 <Download className="w-4 h-4" />
-                <span>{b('অ্যাপ ইনস্টল করুন', 'Install App', lang)}</span>
+                <span>{b('অ্যাপ ইনস্টল করুন (Install App)', 'Install App', lang)}</span>
               </button>
             )}
           </div>
         </div>
       ) : (
-        <div className="inline-flex items-center gap-1.5 shrink-0">
+        <div className="inline-flex items-center gap-1 shrink-0">
           {showApkDownload && (
             <a
               href={androidApkUrl}
@@ -157,120 +171,120 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
           )}
           <button
             type="button"
-            onClick={handleClick}
-            data-testid="pwa-install-btn"
-            title={b('Android / Desktop অ্যাপ ইনস্টল করুন', 'Install Android / Web App', lang)}
-            className="inline-flex items-center gap-1.5 h-9 px-2.5 rounded-lg text-xs font-semibold border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 whitespace-nowrap shrink-0 cursor-pointer"
+            onClick={() => void handleClick()}
+            data-testid="header-get-app-btn"
+            aria-label={b('Get App — অ্যাপ ইনস্টল করুন', 'Get App', lang)}
+            title={b('Get App — হোম স্ক্রিন বা ডেস্কটপে অ্যাপ ইনস্টল করুন', 'Get App — Install Web App & Guide', lang)}
+            className="inline-flex items-center gap-1 h-9 px-2 sm:px-2.5 rounded-lg text-xs font-bold border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 whitespace-nowrap shrink-0 cursor-pointer transition-colors"
           >
-            <Download className="w-3.5 h-3.5" />
-            <span className="hidden 2xl:inline">{b('অ্যাপ ইনস্টল', 'Install App', lang)}</span>
+            <Download className="w-3.5 h-3.5 shrink-0" />
+            <span className="hidden sm:inline">{b('Get App', 'Get App', lang)}</span>
           </button>
         </div>
       )}
 
-      {showGuideModal && (
-        <div
-          className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="pwa-install-guide-title"
-        >
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 flex items-center justify-center">
-                  <Smartphone className="w-5 h-5" />
-                </div>
-                <h3 id="pwa-install-guide-title" className="text-base font-bold text-slate-900 dark:text-white">
-                  {b('PSMS মোবাইল অ্যাপ ইনস্টলেশন গাইড', 'Install PSMS Mobile App', lang)}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowGuideModal(false)}
-                className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
-                aria-label="Close"
-              >
-                <X className="w-4 h-4" />
-              </button>
+      <InstallInstructionsModal
+        open={showGuideModal}
+        onClose={() => setShowGuideModal(false)}
+        lang={lang}
+        isIOS={isIOS}
+        isAndroid={isAndroid}
+        canInstallNatively={canInstallNatively}
+        onTriggerNativeInstall={promptInstall}
+        androidApkUrl={androidApkUrl}
+        apkReleaseReady={apkReleaseReady}
+        apkActionsUrl={apkActionsUrl}
+      />
+    </>
+  );
+};
+
+export const PWAInstallBanner: React.FC<{ lang?: Language }> = ({ lang = 'bn' }) => {
+  const { canInstallNatively, isInstalled, isIOS, isAndroid, promptInstall } = usePWAInstall();
+  const { androidApkUrl, apkReleaseReady, apkActionsUrl, isCapacitorNative } =
+    useDeploymentApkStatus();
+  const [dismissed, setDismissed] = useState(false);
+  const [showGuideModal, setShowGuideModal] = useState(false);
+
+  if (isInstalled || isCapacitorNative || dismissed) {
+    return null;
+  }
+
+  const handleInstallAction = async () => {
+    if (canInstallNatively) {
+      const accepted = await promptInstall();
+      if (accepted) return;
+    }
+    setShowGuideModal(true);
+  };
+
+  return (
+    <>
+      <div
+        role="region"
+        aria-label={b('PWA অ্যাপ ইনস্টল ব্যানার', 'Install PSMS Web App', lang)}
+        data-testid="pwa-persistent-install-banner"
+        className="mb-4 rounded-xl border border-emerald-200 dark:border-emerald-800/70 bg-gradient-to-r from-emerald-50 via-teal-50/80 to-sky-50 dark:from-emerald-950/40 dark:via-slate-900 dark:to-sky-950/30 px-3.5 py-2.5 flex flex-wrap items-center justify-between gap-2.5 shadow-2xs no-print"
+      >
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0">
+            <Smartphone className="w-4 h-4" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-xs font-bold text-slate-900 dark:text-white truncate">
+              {b('PSMS BD অ্যাপ হিসেবে ইনস্টল করুন', 'Install PSMS BD App', lang)}
             </div>
-
-            {isIOS ? (
-              <ol className="space-y-2.5 text-xs text-slate-700 dark:text-slate-300 list-decimal pl-4">
-                <li>
-                  {b('Safari ব্রাউজারের নিচে Share আইকনে ট্যাপ করুন', 'Tap the Share button in Safari', lang)}{' '}
-                  <Share className="w-3.5 h-3.5 inline text-blue-600" />
-                </li>
-                <li>{b('স্ক্রল করে "Add to Home Screen" নির্বাচন করুন', 'Scroll down and choose "Add to Home Screen"', lang)}</li>
-                <li>{b('উপরে "Add" বাটনে ট্যাপ করুন', 'Tap "Add" in the top-right corner', lang)}</li>
-              </ol>
-            ) : isAndroid ? (
-              <ol className="space-y-2.5 text-xs text-slate-700 dark:text-slate-300 list-decimal pl-4">
-                <li>{b('Chrome মেনু (⋮) আইকনে ট্যাপ করুন', 'Tap the Chrome browser menu (⋮)', lang)}</li>
-                <li>{b('"Install app" অথবা "Add to Home screen" নির্বাচন করুন', 'Tap "Install app" or "Add to Home screen"', lang)}</li>
-                <li>{b('অথবা নিচের বাটন থেকে সরাসরি Android APK ডাউনলোড করে ইনস্টল করুন', 'Or download the native Android APK directly below', lang)}</li>
-              </ol>
-            ) : (
-              <ol className="space-y-2.5 text-xs text-slate-700 dark:text-slate-300 list-decimal pl-4">
-                <li>{b('ব্রাউজার অ্যাড্রেস বারের ডানদিকে Install আইকন ক্লিক করুন অথবা মেনু থেকে "Install PSMS BD" নির্বাচন করুন।', 'Click the Install icon in the browser address bar or choose "Install PSMS BD" from the menu.', lang)}</li>
-                <li>{b('অ্যান্ড্রয়েড ফোনের জন্য নিচের বাটন থেকে সরাসরি Android APK ডাউনলোড করতে পারবেন।', 'For Android phones, you can download the Android APK directly using the button below.', lang)}</li>
-              </ol>
-            )}
-
-            {showApkDownload && (
-              <a
-                href={androidApkUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                download
-                data-testid="pwa-modal-apk-download-btn"
-                className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold inline-flex items-center justify-center gap-2 transition-colors"
-              >
-                <Download className="w-4 h-4" />
-                <span>{b('Android APK ডাউনলোড করুন', 'Download Android APK', lang)}</span>
-              </a>
-            )}
-
-            {showPendingActionsLink && (
-              <div className="rounded-xl border border-amber-200 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-950/40 p-3 space-y-2">
-                <p className="text-[11px] text-amber-800 dark:text-amber-200 leading-relaxed">
-                  {b(
-                    'প্রথম Android APK রিলিজ ফাইলটি এখনো GitHub Actions থেকে তৈরি হয়নি। আপডেট পুশ করার পর Actions সবুজ হলে এখান থেকেই সরাসরি APK ডাউনলোড চালু হয়ে যাবে।',
-                    'The first Android APK release file has not been published on GitHub yet. Once you push and Actions completes, direct APK download activates automatically.',
-                    lang
-                  )}
-                </p>
-                <a
-                  href={apkActionsUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  data-testid="pwa-modal-apk-pending-btn"
-                  className="w-full h-9 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold inline-flex items-center justify-center gap-2 transition-colors"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  <span>{b('GitHub Actions-এ APK বিল্ড দেখুন', 'Open GitHub Actions Build', lang)}</span>
-                </a>
-              </div>
-            )}
-
-            <div className="rounded-xl bg-slate-50 dark:bg-slate-800/70 p-3 text-[11px] text-slate-600 dark:text-slate-300">
-              {b(
-                'Web Browser ও Android App একই সার্ভার, একই অ্যাকাউন্ট ও একই ডাটাবেস ব্যবহার করে।',
-                'Both Web Browser and Android App share the exact same backend server, accounts, and persistent database.',
-                lang
-              )}
+            <div className="text-[11px] text-slate-600 dark:text-slate-300 truncate">
+              {canInstallNatively
+                ? b('১ ক্লিকে সরাসরি ব্রাউজার থেকে অ্যাপ ইনস্টল করুন', 'One-click install directly from your browser', lang)
+                : isIOS
+                  ? b('iPhone/iPad: Share > Add to Home Screen নির্দেশিকা দেখুন', 'iPhone/iPad: Tap Share > Add to Home Screen', lang)
+                  : b('হোম স্ক্রিন বা ডেস্কটপ শর্টকাট ও Android APK ডাউনলোড', 'Add to Home Screen & Android APK access', lang)}
             </div>
-
-            <button
-              type="button"
-              onClick={() => setShowGuideModal(false)}
-              className="w-full h-10 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold cursor-pointer"
-            >
-              {b('বুঝেছি', 'Got it', lang)}
-            </button>
           </div>
         </div>
-      )}
+
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            type="button"
+            data-testid="pwa-banner-install-app-btn"
+            onClick={() => void handleInstallAction()}
+            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold cursor-pointer transition-colors whitespace-nowrap"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>{b('Install App', 'Install App', lang)}</span>
+          </button>
+          <button
+            type="button"
+            data-testid="pwa-banner-instructions-btn"
+            onClick={() => setShowGuideModal(true)}
+            className="hidden sm:inline-flex items-center h-8 px-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 text-[11px] font-semibold cursor-pointer whitespace-nowrap"
+          >
+            {b('নির্দেশিকা', 'How to Install', lang)}
+          </button>
+          <button
+            type="button"
+            onClick={() => setDismissed(true)}
+            aria-label={b('বন্ধ করুন', 'Dismiss', lang)}
+            className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-200/60 dark:hover:bg-slate-800 cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      <InstallInstructionsModal
+        open={showGuideModal}
+        onClose={() => setShowGuideModal(false)}
+        lang={lang}
+        isIOS={isIOS}
+        isAndroid={isAndroid}
+        canInstallNatively={canInstallNatively}
+        onTriggerNativeInstall={promptInstall}
+        androidApkUrl={androidApkUrl}
+        apkReleaseReady={apkReleaseReady}
+        apkActionsUrl={apkActionsUrl}
+      />
     </>
   );
 };
@@ -286,7 +300,9 @@ export const OfflineIndicator: React.FC<{ lang?: Language }> = ({ lang = 'bn' })
       className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2 rounded-full bg-amber-900 text-amber-100 text-xs font-semibold shadow-lg border border-amber-500/40"
     >
       <WifiOff className="w-4 h-4 shrink-0" />
-      <span>{b('আপনি অফলাইনে আছেন — সংরক্ষিত ডাটা দেখা যাচ্ছে', 'You are offline — cached workspace active', lang)}</span>
+      <span>
+        {b('আপনি অফলাইনে আছেন — সংরক্ষিত ডাটা দেখা যাচ্ছে', 'You are offline — cached workspace active', lang)}
+      </span>
     </div>
   );
 };

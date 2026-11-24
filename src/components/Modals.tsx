@@ -12,21 +12,29 @@ import {
   FileText,
   GraduationCap,
   KeyRound,
+  Loader2,
+  MailCheck,
   Printer,
   QrCode,
+  RefreshCw,
   ShieldCheck,
   Sparkles,
   UserPlus,
+  Users,
   X,
   Lock,
 } from 'lucide-react';
-import type { AdminAccount, Language, Role, SchoolRecord, StudentRecord } from '../types';
+import type { AdminAccount, Language, Role, SchoolRecord, StudentRecord, TeacherRecord } from '../types';
 import { calculateBMI, generateStudentCodes } from '../utils/rbacAndGrading';
 import { validateStudentActivationLogin } from '../utils/schoolConfigAndAddress';
 import {
   authenticateSchoolAccount,
   sanitizeActorDisplayForRole,
 } from '../utils/adminAndTeacherIdentityEngine';
+import {
+  authenticateGuardianAccount,
+  authenticateTeacherAccount,
+} from '../utils/authGuard';
 import { ALL_CLASSES, AVATARS, CENTRAL_ADMIN_CREDENTIALS } from '../data/mockData';
 import { b, tr } from '../i18n/translations';
 import { TrendLineChart } from './Charts';
@@ -1098,26 +1106,54 @@ export const AddAdminModal: React.FC<{
   );
 };
 
-export type LoginModalPresetMode = 'teacher' | 'student' | 'super_admin' | 'school' | 'portal';
+export type LoginModalPresetMode =
+  | 'teacher'
+  | 'student'
+  | 'super_admin'
+  | 'school'
+  | 'guardian'
+  | 'portal';
 
 export const LoginModal: React.FC<{
   open: boolean;
   lang: Language;
   students?: StudentRecord[];
   schools?: SchoolRecord[];
+  teachers?: TeacherRecord[];
   initialMode?: LoginModalPresetMode;
   onClose: () => void;
-  onLoginSuccess: (role: Role, studentId?: string, schoolId?: string) => void;
+  onLoginSuccess: (
+    role: Role,
+    studentId?: string,
+    schoolId?: string,
+    extra?: { teacherId?: string; guardianMobile?: string; linkedStudentIds?: string[] }
+  ) => void;
   onOpenTeacherRegistration?: () => void;
+  onGoogleSignIn?: () => Promise<void> | void;
+  googleSigningIn?: boolean;
+  onSuperAdminFirebaseSignIn?: (
+    email: string,
+    password: string
+  ) => Promise<{ ok: boolean; unverifiedEmail?: boolean; message?: string }>;
+  onSuperAdminRecheckVerification?: () => Promise<{ ok: boolean; message?: string }>;
+  onSuperAdminResendVerification?: () => Promise<{ ok: boolean; message?: string }>;
+  onOpenFirebaseRecovery?: (email?: string) => void;
 }> = ({
   open,
   lang,
   students = [],
   schools = [],
+  teachers = [],
   initialMode = 'teacher',
   onClose,
   onLoginSuccess,
   onOpenTeacherRegistration,
+  onGoogleSignIn,
+  googleSigningIn = false,
+  onSuperAdminFirebaseSignIn,
+  onSuperAdminRecheckVerification,
+  onSuperAdminResendVerification,
+  onOpenFirebaseRecovery,
 }) => {
   const [viewMode, setViewMode] = useState<LoginModalPresetMode>(initialMode);
   const [studentSubTab, setStudentSubTab] = useState<'code_id' | 'username'>('code_id');
@@ -1126,10 +1162,15 @@ export const LoginModal: React.FC<{
 
   const [identifier, setIdentifier] = useState('tch_rahim');
   const [password, setPassword] = useState('teacher@123');
-  const [adminIdentifier, setAdminIdentifier] = useState(CENTRAL_ADMIN_CREDENTIALS.username);
-  const [adminPassword, setAdminPassword] = useState(CENTRAL_ADMIN_CREDENTIALS.password);
+  const [adminIdentifier, setAdminIdentifier] = useState(CENTRAL_ADMIN_CREDENTIALS.email);
+  const [adminPassword, setAdminPassword] = useState('');
+  const [superAdminLoading, setSuperAdminLoading] = useState(false);
+  const [superAdminUnverified, setSuperAdminUnverified] = useState(false);
+  const [superAdminStatusMsg, setSuperAdminStatusMsg] = useState<string | null>(null);
   const [schoolAuthIdentifier, setSchoolAuthIdentifier] = useState('SCH-2026-00015');
   const [schoolAuthPassword, setSchoolAuthPassword] = useState('school@123');
+  const [guardianIdentifier, setGuardianIdentifier] = useState('01712345678');
+  const [guardianPassword, setGuardianPassword] = useState('parent@123');
 
   const [schoolCodeInput, setSchoolCodeInput] = useState('GPS-1042');
   const [studentIdInput, setStudentIdInput] = useState('STD-2026-GPS1042-0012');
@@ -1142,23 +1183,86 @@ export const LoginModal: React.FC<{
       setViewMode(initialMode);
       setError('');
       setShowForgotHelp(false);
+      setSuperAdminUnverified(false);
+      setSuperAdminStatusMsg(null);
       if (initialMode === 'super_admin') {
-        setAdminIdentifier(CENTRAL_ADMIN_CREDENTIALS.username);
-        setAdminPassword(CENTRAL_ADMIN_CREDENTIALS.password);
+        setAdminIdentifier(CENTRAL_ADMIN_CREDENTIALS.email);
+        setAdminPassword('');
       } else if (initialMode === 'teacher') {
         setIdentifier('tch_rahim');
         setPassword('teacher@123');
       } else if (initialMode === 'school') {
         setSchoolAuthIdentifier('SCH-2026-00015');
         setSchoolAuthPassword('school@123');
+      } else if (initialMode === 'guardian') {
+        setGuardianIdentifier('01712345678');
+        setGuardianPassword('parent@123');
       }
     }
   }, [open, initialMode]);
 
   if (!open) return null;
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (viewMode === 'super_admin') {
+      const cleanEmail = adminIdentifier.trim();
+      if (!cleanEmail || !adminPassword) {
+        setError(
+          b(
+            'অনুগ্রহ করে Super Central Admin Gmail এবং Firebase পাসওয়ার্ড লিখুন।',
+            'Please enter your Super Central Admin Gmail and Firebase password.',
+            lang
+          )
+        );
+        return;
+      }
+      if (!onSuperAdminFirebaseSignIn) {
+        setError(
+          b(
+            'Firebase Authentication হ্যান্ডলার প্রস্তুত নয়। অনুগ্রহ করে পেজ রিলোড করুন।',
+            'Firebase Authentication handler is unavailable.',
+            lang
+          )
+        );
+        return;
+      }
+      setError('');
+      setSuperAdminStatusMsg(null);
+      setSuperAdminLoading(true);
+      try {
+        const res = await onSuperAdminFirebaseSignIn(cleanEmail, adminPassword);
+        if (res.ok) {
+          setAdminPassword('');
+          onClose();
+          return;
+        }
+        if (res.unverifiedEmail) {
+          setSuperAdminUnverified(true);
+          setSuperAdminStatusMsg(
+            res.message ??
+              b(
+                'আপনার ইমেইল ভেরিফিকেশন অপেক্ষমাণ। ইনবক্সে পাঠানো লিংকে ক্লিক করে যাচাই করুন অথবা Google দিয়ে লগইন করুন।',
+                'Email verification pending. Click the link in your inbox or sign in with Google.',
+                lang
+              )
+          );
+        } else {
+          setError(
+            res.message ??
+              b(
+                'সুপার অ্যাডমিন Firebase ইমেইল বা পাসওয়ার্ড সঠিক নয়।',
+                'Invalid Super Admin Firebase email or password.',
+                lang
+              )
+          );
+        }
+      } finally {
+        setSuperAdminLoading(false);
+      }
+      return;
+    }
+
     if (viewMode === 'school') {
       const auth = authenticateSchoolAccount(schools, schoolAuthIdentifier, schoolAuthPassword);
       if (!auth.ok || !auth.school) {
@@ -1167,6 +1271,27 @@ export const LoginModal: React.FC<{
       }
       setError('');
       onLoginSuccess('school_admin', undefined, auth.school.id);
+      onClose();
+      return;
+    }
+
+    if (viewMode === 'guardian') {
+      const guardianAuth = authenticateGuardianAccount(students, guardianIdentifier, guardianPassword);
+      if (!guardianAuth.ok) {
+        setError(
+          b(
+            guardianAuth.errorBn ?? 'অভিভাবক লগইন তথ্য সঠিক নয়।',
+            guardianAuth.errorEn ?? 'Invalid guardian credentials.',
+            lang
+          )
+        );
+        return;
+      }
+      setError('');
+      onLoginSuccess('guardian', guardianAuth.linkedStudentIds?.[0], undefined, {
+        guardianMobile: guardianAuth.guardianMobile,
+        linkedStudentIds: guardianAuth.linkedStudentIds,
+      });
       onClose();
       return;
     }
@@ -1183,30 +1308,20 @@ export const LoginModal: React.FC<{
         return;
       }
       setError('');
-      onLoginSuccess('student', res.student.id);
+      onLoginSuccess('student', res.student.id, res.student.schoolId);
       onClose();
       return;
     }
 
-    const rawId = viewMode === 'super_admin' ? adminIdentifier : identifier;
-    const rawPass = viewMode === 'super_admin' ? adminPassword : password;
+    const rawId = identifier;
+    const rawPass = password;
     const id = rawId.trim().toLowerCase();
 
     if (!id || !rawPass.trim()) {
       setError(b('লগইন আইডি ও পাসওয়ার্ড দিন।', 'Please enter login identifier and password.', lang));
       return;
     }
-    if (
-      (id === CENTRAL_ADMIN_CREDENTIALS.username ||
-        id === CENTRAL_ADMIN_CREDENTIALS.email.toLowerCase() ||
-        id === CENTRAL_ADMIN_CREDENTIALS.mobile) &&
-      rawPass === CENTRAL_ADMIN_CREDENTIALS.password
-    ) {
-      setError('');
-      onLoginSuccess('central_admin');
-      onClose();
-      return;
-    }
+
     const matchedSchool = authenticateSchoolAccount(schools, rawId, rawPass);
     if (matchedSchool.ok && matchedSchool.school) {
       setError('');
@@ -1214,34 +1329,38 @@ export const LoginModal: React.FC<{
       onClose();
       return;
     }
-    if (id.includes('head') || id.includes('gps-1042') || id === 'schooladmin') {
+
+    const matchedTeacher = authenticateTeacherAccount(teachers, rawId, rawPass);
+    if (matchedTeacher.ok && matchedTeacher.teacher) {
       setError('');
-      onLoginSuccess('school_admin', undefined, 'GPS-1042');
+      onLoginSuccess('teacher', undefined, matchedTeacher.teacher.schoolId, {
+        teacherId: matchedTeacher.teacher.id,
+      });
       onClose();
       return;
     }
-    if (id.includes('tch') || id.includes('teacher') || id === '01722334455') {
+
+    const matchedGuardian = authenticateGuardianAccount(students, rawId, rawPass);
+    if (matchedGuardian.ok) {
       setError('');
-      onLoginSuccess('teacher');
+      onLoginSuccess('guardian', matchedGuardian.linkedStudentIds?.[0], undefined, {
+        guardianMobile: matchedGuardian.guardianMobile,
+        linkedStudentIds: matchedGuardian.linkedStudentIds,
+      });
       onClose();
       return;
     }
-    if (id.includes('guardian') || id === '01712345678') {
-      setError('');
-      onLoginSuccess('guardian');
-      onClose();
-      return;
-    }
+
     setError(
       b(
-        'তথ্য সঠিক নয়। নিচের ডেমো প্রিসেট বা সঠিক ইউজার আইডি ব্যবহার করুন।',
-        'Invalid credentials. Try one of the quick role presets below.',
+        'লগইন তথ্য বা পাসওয়ার্ড সঠিক নয়। নিচের রোল প্রিসেট অথবা সঠিক পাসওয়ার্ড ব্যবহার করুন।',
+        'Invalid credentials or password. Try one of the quick role presets below.',
         lang
       )
     );
   };
 
-  // Super Admin Dark Purple Secure Access View (matches admin_hidden_route_54142317.png)
+  // Super Admin Dark Purple Secure Access View — strictly authenticated via Firebase Auth
   if (viewMode === 'super_admin') {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#050814]/85 backdrop-blur-sm">
@@ -1249,7 +1368,8 @@ export const LoginModal: React.FC<{
           role="dialog"
           aria-modal="true"
           aria-labelledby="super-admin-modal-title"
-          className="relative w-full max-w-md rounded-2xl bg-[#0d1324] border border-violet-500/35 shadow-2xl shadow-violet-950/50 p-6 sm:p-7 space-y-5 text-slate-100"
+          data-testid="super-admin-auth-modal"
+          className="relative w-full max-w-md rounded-2xl bg-[#0d1324] border border-violet-500/35 shadow-2xl shadow-violet-950/50 p-6 sm:p-7 space-y-5 text-slate-100 max-h-[92vh] overflow-y-auto"
         >
           <button
             type="button"
@@ -1268,67 +1388,151 @@ export const LoginModal: React.FC<{
               className="mx-auto shadow-md"
             />
             <div className="inline-block px-3 py-0.5 rounded-full bg-violet-950/70 border border-violet-500/40 text-[11px] font-semibold text-violet-300">
-              {b('সংরক্ষিত কেন্দ্রীয় পোর্টাল', 'Protected Central Portal', lang)}
+              {b('Firebase Auth · সংরক্ষিত কেন্দ্রীয় পোর্টাল', 'Firebase Auth · Protected Central Portal', lang)}
             </div>
             <h3 id="super-admin-modal-title" className="text-xl font-extrabold text-white">
               {b('সুপার অ্যাডমিন সিকিউর অ্যাক্সেস', 'Super Admin Secure Access', lang)}
             </h3>
             <p className="text-xs text-slate-400 leading-relaxed">
               {b(
-                'প্রাথমিক শিক্ষা অধিদপ্তর · জাতীয় কেন্দ্রীয় বিদ্যালয় প্রশাসন ও অনুমোদন ব্যবস্থাপনা',
-                'Directorate Central Administration · National Governance & Verification Gateway',
+                'শুধুমাত্র অনুমোদিত Super Central Admin Gmail এবং Firebase Authentication পাসওয়ার্ড অথবা Google Sign-In দিয়ে প্রবেশ করুন।',
+                'Sign in using your authorized Super Central Admin Gmail and Firebase password or verified Google account.',
                 lang
               )}
             </p>
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-4 text-xs">
+          <form onSubmit={(e) => void handleLogin(e)} className="space-y-4 text-xs">
             <div>
               <label className="block font-semibold text-slate-300 mb-1.5">
-                {b('সুপার অ্যাডমিন ব্যবহারকারী নাম বা ইমেইল *', 'Super Admin Username or Email *', lang)}
+                {b('Super Central Admin Gmail / ইমেইল *', 'Super Central Admin Gmail *', lang)}
               </label>
               <input
-                type="text"
+                type="email"
+                data-testid="super-admin-email-input"
                 value={adminIdentifier}
                 onChange={(e) => {
                   setAdminIdentifier(e.target.value);
                   setError('');
+                  setSuperAdminUnverified(false);
                 }}
-                placeholder="central_admin"
+                placeholder={CENTRAL_ADMIN_CREDENTIALS.email}
                 className="w-full h-10 px-3.5 rounded-xl border border-slate-700 bg-slate-900/90 text-white placeholder:text-slate-500 outline-none focus:border-violet-500"
               />
             </div>
             <div>
-              <label className="block font-semibold text-slate-300 mb-1.5">
-                {b('সিক্রেট মাস্টার পাসওয়ার্ড *', 'Secret Master Password *', lang)}
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="font-semibold text-slate-300">
+                  {b('Firebase অ্যাকাউন্ট পাসওয়ার্ড *', 'Firebase Account Password *', lang)}
+                </label>
+                {onOpenFirebaseRecovery && (
+                  <button
+                    type="button"
+                    data-testid="super-admin-forgot-password-btn"
+                    onClick={() => {
+                      onClose();
+                      onOpenFirebaseRecovery(adminIdentifier.trim() || CENTRAL_ADMIN_CREDENTIALS.email);
+                    }}
+                    className="text-[11px] font-semibold text-violet-300 hover:underline cursor-pointer"
+                  >
+                    {b('পাসওয়ার্ড ভুলে গেছেন?', 'Forgot / Reset Password?', lang)}
+                  </button>
+                )}
+              </div>
               <input
                 type="password"
+                data-testid="super-admin-password-input"
                 value={adminPassword}
                 onChange={(e) => {
                   setAdminPassword(e.target.value);
                   setError('');
                 }}
-                placeholder="••••••••"
+                placeholder={b('Firebase-এ সেট করা পাসওয়ার্ড লিখুন', 'Enter your Firebase Auth password', lang)}
                 className="w-full h-10 px-3.5 rounded-xl border border-slate-700 bg-slate-900/90 text-white placeholder:text-slate-500 outline-none focus:border-violet-500"
               />
             </div>
 
+            {superAdminUnverified && (
+              <div
+                data-testid="super-admin-verification-box"
+                className="rounded-xl bg-amber-950/50 border border-amber-500/40 p-3.5 space-y-2.5 text-xs"
+              >
+                <div className="flex items-center gap-2 font-bold text-amber-300">
+                  <MailCheck className="w-4 h-4 shrink-0" />
+                  <span>{b('ইমেইল ভেরিফিকেশন প্রয়োজন', 'Email Verification Required', lang)}</span>
+                </div>
+                {superAdminStatusMsg && (
+                  <p className="text-[11px] text-amber-100 leading-relaxed">{superAdminStatusMsg}</p>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  {onSuperAdminRecheckVerification && (
+                    <button
+                      type="button"
+                      disabled={superAdminLoading}
+                      onClick={async () => {
+                        setSuperAdminLoading(true);
+                        setError('');
+                        try {
+                          const res = await onSuperAdminRecheckVerification();
+                          if (res.ok) {
+                            setAdminPassword('');
+                            onClose();
+                          } else if (res.message) {
+                            setError(res.message);
+                          }
+                        } finally {
+                          setSuperAdminLoading(false);
+                        }
+                      }}
+                      className="flex-1 h-9 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>{b('ভেরিফিকেশন যাচাই করুন', 'Verify & Enter', lang)}</span>
+                    </button>
+                  )}
+                  {onSuperAdminResendVerification && (
+                    <button
+                      type="button"
+                      disabled={superAdminLoading}
+                      onClick={async () => {
+                        setSuperAdminLoading(true);
+                        setError('');
+                        try {
+                          const res = await onSuperAdminResendVerification();
+                          if (res.message) setSuperAdminStatusMsg(res.message);
+                        } finally {
+                          setSuperAdminLoading(false);
+                        }
+                      }}
+                      className="h-9 px-3 rounded-lg border border-amber-400/40 bg-slate-900 hover:bg-slate-800 text-amber-200 font-semibold flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>{b('পুনরায় লিংক পাঠান', 'Resend Link', lang)}</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="rounded-xl bg-slate-900/70 border border-slate-700/80 p-3.5 space-y-1 text-[11px] text-slate-400">
               <div className="font-semibold text-violet-300 flex items-center gap-1.5">
                 <KeyRound className="w-3.5 h-3.5" />
-                {b('নিরাপত্তা সতর্কতা ও অডিট ট্রেইল:', 'Security Notice & Audit Trail:', lang)}
+                {b('নিরাপত্তা নীতি ও Firebase যাচাইকরণ:', 'Firebase Zero-Trust Security Notice:', lang)}
               </div>
               <p className="leading-relaxed">
                 {b(
-                  'এটি কেন্দ্রীয় প্রশাসনের গোপন সংরক্ষিত প্রবেশদ্বার। প্রতিটি অনুমোদিত ও অননুমোদিত লগইন প্রচেষ্টা ক্লাউড অডিট লগে রেকর্ড করা হয়।',
-                  'This is the restricted central governance gateway. Every sign-in attempt is recorded in the audit log.',
+                  'পুরানো স্ট্যাটিক অ্যাডমিন পাসওয়ার্ড বাতিল করা হয়েছে। শুধুমাত্র Firebase Authentication-এ নিবন্ধিত নির্ধারিত Super Central Admin Gmail ও পাসওয়ার্ড দিয়েই প্রবেশ করা যাবে।',
+                  'Legacy static admin credentials have been permanently removed. Access requires verified Firebase Authentication.',
                   lang
                 )}
               </p>
             </div>
 
-            {error && <p className="text-xs font-semibold text-red-400">{error}</p>}
+            {error && (
+              <p role="alert" data-testid="super-admin-login-error" className="text-xs font-semibold text-red-400">
+                {error}
+              </p>
+            )}
 
             <div className="grid grid-cols-2 gap-2.5 pt-1">
               <button
@@ -1341,12 +1545,27 @@ export const LoginModal: React.FC<{
               </button>
               <button
                 type="submit"
-                className="h-10 px-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white font-bold flex items-center justify-center gap-1.5 shadow-lg shadow-violet-950/60 cursor-pointer"
+                disabled={superAdminLoading}
+                data-testid="super-admin-login-submit-btn"
+                className="h-10 px-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white font-bold flex items-center justify-center gap-1.5 shadow-lg shadow-violet-950/60 cursor-pointer disabled:opacity-60"
               >
-                <ShieldCheck className="w-4 h-4" />
-                {b('নিরাপদ প্রবেশ', 'Secure Enter', lang)}
+                {superAdminLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+                {b('Firebase নিরাপদ প্রবেশ', 'Firebase Secure Enter', lang)}
               </button>
             </div>
+
+            {onGoogleSignIn && (
+              <button
+                type="button"
+                disabled={googleSigningIn || superAdminLoading}
+                data-testid="super-admin-google-btn"
+                onClick={() => void onGoogleSignIn()}
+                className="w-full h-10 rounded-xl bg-white text-slate-900 font-bold text-xs flex items-center justify-center gap-2 hover:bg-slate-100 cursor-pointer disabled:opacity-60"
+              >
+                <ShieldCheck className="w-4 h-4 text-emerald-700" />
+                <span>{b('Google দিয়ে লগইন (Firebase)', 'Continue with Google (Firebase)', lang)}</span>
+              </button>
+            )}
 
             <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-800">
               <button type="button" onClick={() => setViewMode('teacher')} className="hover:text-blue-300 cursor-pointer">
@@ -1364,6 +1583,7 @@ export const LoginModal: React.FC<{
 
   const isStudentMode = viewMode === 'student';
   const isSchoolMode = viewMode === 'school';
+  const isGuardianMode = viewMode === 'guardian';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs">
@@ -1371,7 +1591,8 @@ export const LoginModal: React.FC<{
         role="dialog"
         aria-modal="true"
         aria-labelledby="login-modal-title"
-        className="relative w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-6 space-y-4"
+        data-testid="login-modal-dialog"
+        className="relative w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-6 space-y-4 max-h-[92vh] overflow-y-auto"
       >
         <button
           type="button"
@@ -1396,7 +1617,7 @@ export const LoginModal: React.FC<{
                 : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
             }`}
           >
-            {b('🏫 বিদ্যালয় লগইন', '🏫 School Login', lang)}
+            {b('🏫 বিদ্যালয় লগইন', '🏫 School', lang)}
           </button>
           <button
             type="button"
@@ -1405,12 +1626,26 @@ export const LoginModal: React.FC<{
               setError('');
             }}
             className={`px-2.5 py-1 rounded-lg font-semibold cursor-pointer ${
-              !isStudentMode && !isSchoolMode
+              !isStudentMode && !isSchoolMode && !isGuardianMode
                 ? 'bg-blue-600 text-white'
                 : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
             }`}
           >
-            {b('শিক্ষক / স্টাফ', 'Teacher / Staff', lang)}
+            {b('শিক্ষক / স্টাফ', 'Teacher', lang)}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setViewMode('guardian');
+              setError('');
+            }}
+            className={`px-2.5 py-1 rounded-lg font-semibold cursor-pointer ${
+              isGuardianMode
+                ? 'bg-sky-600 text-white'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+            }`}
+          >
+            {b('অভিভাবক', 'Guardian', lang)}
           </button>
           <button
             type="button"
@@ -1424,7 +1659,7 @@ export const LoginModal: React.FC<{
                 : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
             }`}
           >
-            {b('শিক্ষার্থী পোর্টাল', 'Student Portal', lang)}
+            {b('শিক্ষার্থী', 'Student', lang)}
           </button>
           <button
             type="button"
@@ -1438,7 +1673,96 @@ export const LoginModal: React.FC<{
           </button>
         </div>
 
-        {isSchoolMode ? (
+        {isGuardianMode ? (
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-sky-100 dark:bg-sky-950 text-sky-700 dark:text-sky-300 flex items-center justify-center shrink-0">
+                <Users className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 id="login-modal-title" className="text-base font-extrabold text-slate-900 dark:text-white">
+                  {b('অভিভাবক পোর্টাল লগইন (Guardian)', 'Guardian Portal Login', lang)}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  {b('নিবন্ধিত মোবাইল নম্বর / Guardian Link Code এবং পাসওয়ার্ড দিয়ে প্রবেশ করুন', 'Sign in with registered guardian mobile or link code', lang)}
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleLogin} className="space-y-3 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  {b('অভিভাবকের মোবাইল / Link Code *', 'Guardian Mobile / Link Code *', lang)}
+                </label>
+                <input
+                  data-testid="guardian-login-identifier"
+                  type="text"
+                  value={guardianIdentifier}
+                  onChange={(e) => {
+                    setGuardianIdentifier(e.target.value);
+                    setError('');
+                  }}
+                  placeholder="01712345678"
+                  className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono outline-none focus:border-sky-600"
+                />
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  {b('পাসওয়ার্ড *', 'Password *', lang)}
+                </label>
+                <input
+                  data-testid="guardian-login-password"
+                  type="password"
+                  value={guardianPassword}
+                  onChange={(e) => {
+                    setGuardianPassword(e.target.value);
+                    setError('');
+                  }}
+                  placeholder="••••••••"
+                  className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 outline-none focus:border-sky-600"
+                />
+              </div>
+
+              {error && <p className="text-xs text-red-600 font-semibold">{error}</p>}
+
+              <div className="rounded-xl bg-sky-50/70 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800 p-3 flex items-center justify-between gap-2">
+                <span className="text-sky-900 dark:text-sky-200 font-medium">
+                  {b('নমুনা অভিভাবক:', 'Demo Guardian:', lang)} <span className="font-mono">01712345678</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGuardianIdentifier('01712345678');
+                    setGuardianPassword('parent@123');
+                    setError('');
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-sky-300 dark:border-sky-700 text-sky-800 dark:text-sky-200 font-semibold cursor-pointer"
+                >
+                  {b('ফিল করুন', 'Fill', lang)}
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="h-10 px-4 rounded-xl border border-slate-200 dark:border-slate-700 font-semibold cursor-pointer"
+                >
+                  {tr('cancel', lang)}
+                </button>
+                <button
+                  type="submit"
+                  data-testid="guardian-login-submit-btn"
+                  className="h-10 px-4 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold cursor-pointer"
+                >
+                  {b('অভিভাবক প্রবেশ', 'Sign In', lang)}
+                </button>
+              </div>
+            </form>
+          </div>
+        ) : null}
+
+        {!isGuardianMode && isSchoolMode ? (
           /* School Portal Isolation Login Card */
           <div className="space-y-4">
             <div className="text-center space-y-2">
@@ -1544,7 +1868,7 @@ export const LoginModal: React.FC<{
               </div>
             </form>
           </div>
-        ) : isStudentMode ? (
+        ) : !isGuardianMode && isStudentMode ? (
           /* Student Portal Modal Layout (matches student_login_modal_8a914aa8.png) */
           <div className="space-y-4">
             <div className="flex items-center gap-3">
@@ -1604,6 +1928,7 @@ export const LoginModal: React.FC<{
                   {b('শিক্ষার্থী আইডি (Student ID) *', 'Student ID *', lang)}
                 </label>
                 <input
+                  data-testid="student-login-id"
                   type="text"
                   value={studentIdInput}
                   onChange={(e) => {
@@ -1619,6 +1944,7 @@ export const LoginModal: React.FC<{
                   {b('নিবন্ধিত মোবাইল / পাসওয়ার্ড *', 'Registered Mobile / Password *', lang)}
                 </label>
                 <input
+                  data-testid="student-login-mobile"
                   type="tel"
                   value={studentMobileInput}
                   onChange={(e) => {
@@ -1651,6 +1977,7 @@ export const LoginModal: React.FC<{
 
               <button
                 type="submit"
+                data-testid="student-login-submit-btn"
                 className="w-full h-10 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold cursor-pointer transition-colors"
               >
                 {b('শিক্ষার্থী ড্যাশবোর্ডে প্রবেশ করুন', 'Sign In to Student Portal', lang)}
@@ -1666,7 +1993,7 @@ export const LoginModal: React.FC<{
               </button>
             </form>
           </div>
-        ) : (
+        ) : !isGuardianMode ? (
           /* Teacher / Staff / Portal Login Card (matches teacher_login_modal_d73d5b0d.png) */
           <div className="space-y-4">
             <div className="text-center space-y-2">
@@ -1690,13 +2017,14 @@ export const LoginModal: React.FC<{
                   {b('Teacher ID বা ব্যবহারকারী নাম *', 'Teacher ID / Username *', lang)}
                 </label>
                 <input
+                  data-testid="teacher-login-identifier"
                   type="text"
                   value={identifier}
                   onChange={(e) => {
                     setIdentifier(e.target.value);
                     setError('');
                   }}
-                  placeholder="e.g. TCH-000101 বা username"
+                  placeholder="e.g. TCH-GPS1042-02 বা tch_rahim"
                   className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 outline-none focus:border-blue-600"
                 />
               </div>
@@ -1705,6 +2033,7 @@ export const LoginModal: React.FC<{
                   {b('পাসওয়ার্ড *', 'Password *', lang)}
                 </label>
                 <input
+                  data-testid="teacher-login-password"
                   type="password"
                   value={password}
                   onChange={(e) => {
@@ -1781,13 +2110,12 @@ export const LoginModal: React.FC<{
                   <button
                     type="button"
                     onClick={() => {
-                      setIdentifier(CENTRAL_ADMIN_CREDENTIALS.username);
-                      setPassword(CENTRAL_ADMIN_CREDENTIALS.password);
                       setError('');
+                      setViewMode('super_admin');
                     }}
-                    className="px-2.5 py-1 rounded-lg bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-200 font-medium cursor-pointer"
+                    className="px-2.5 py-1 rounded-lg bg-violet-100 dark:bg-violet-950 text-violet-800 dark:text-violet-200 font-medium cursor-pointer"
                   >
-                    Central Admin
+                    Super Admin (Firebase Auth)
                   </button>
                 </div>
               </div>
@@ -1802,11 +2130,24 @@ export const LoginModal: React.FC<{
                 </button>
                 <button
                   type="submit"
+                  data-testid="teacher-login-submit-btn"
                   className="h-10 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold cursor-pointer"
                 >
                   {b('লগইন করুন', 'Sign In', lang)}
                 </button>
               </div>
+
+              {onGoogleSignIn && (
+                <button
+                  type="button"
+                  disabled={googleSigningIn}
+                  onClick={() => void onGoogleSignIn()}
+                  className="w-full h-10 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 font-bold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
+                >
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  <span>{b('Google দিয়ে লগইন (Firebase Auth)', 'Continue with Google (Firebase Auth)', lang)}</span>
+                </button>
+              )}
 
               {onOpenTeacherRegistration && (
                 <div className="text-center pt-2 border-t border-slate-100 dark:border-slate-800">
@@ -1824,7 +2165,7 @@ export const LoginModal: React.FC<{
               )}
             </form>
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );

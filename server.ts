@@ -4,6 +4,8 @@ import fs from 'fs';
 import http from 'http';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
+import { getApp as getAdminApp, getApps as getAdminApps, initializeApp as initializeAdminApp } from 'firebase-admin/app';
+import { getAuth as getAdminAuth } from 'firebase-admin/auth';
 import type { AuditLogEntry } from './src/types';
 import {
   createDefaultSettingsState,
@@ -120,12 +122,67 @@ async function startServer() {
     next();
   });
 
+  const firebaseConfigPath = path.resolve(process.cwd(), 'firebase-applet-config.json');
+  let configuredFirebaseProjectId = '';
+  try {
+    const cfgRaw = fs.readFileSync(firebaseConfigPath, 'utf8');
+    const cfgParsed = JSON.parse(cfgRaw) as { projectId?: string };
+    configuredFirebaseProjectId = (cfgParsed.projectId ?? '').trim();
+  } catch {
+    configuredFirebaseProjectId = '';
+  }
+
+  const adminApp =
+    configuredFirebaseProjectId && configuredFirebaseProjectId !== 'remixed-project-id'
+      ? getAdminApps().length
+        ? getAdminApp()
+        : initializeAdminApp({ projectId: configuredFirebaseProjectId })
+      : null;
+
+  app.post('/api/auth/verify-session', async (req, res) => {
+    const authHeader = req.headers.authorization || '';
+    const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    const tokenFromBody = typeof req.body?.idToken === 'string' ? req.body.idToken.trim() : '';
+    const token = bearerToken || tokenFromBody;
+
+    if (!adminApp) {
+      res.status(503).json({
+        verified: false,
+        error: 'Firebase projectId is not configured on backend.',
+      });
+      return;
+    }
+    if (!token) {
+      res.status(401).json({
+        verified: false,
+        error: 'Missing Firebase ID token.',
+      });
+      return;
+    }
+    try {
+      const decoded = await getAdminAuth(adminApp).verifyIdToken(token);
+      res.json({
+        verified: true,
+        uid: decoded.uid,
+        email: decoded.email ?? null,
+        emailVerified: Boolean(decoded.email_verified),
+        projectId: configuredFirebaseProjectId,
+      });
+    } catch (err) {
+      res.status(401).json({
+        verified: false,
+        error: err instanceof Error ? err.message : 'Invalid Firebase ID token.',
+      });
+    }
+  });
+
   app.get('/api/health', (_req, res) => {
     const db = ensureDbFile();
     res.json({
       status: 'ok',
       platform: 'unified-web-and-android-apk',
       database: 'persistent-json-store',
+      firebaseProjectId: configuredFirebaseProjectId || null,
       lastSyncedAt: db.lastSyncedAt,
       settingsVersion: db.settings.version,
       serverTime: new Date().toISOString(),

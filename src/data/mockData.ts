@@ -78,8 +78,7 @@ export const DEFAULT_PROFILE_AVATARS = {
 } as const;
 
 export const CENTRAL_ADMIN_CREDENTIALS = {
-  username: 'admin12131',
-  password: 'admin@123',
+  username: 'mominkhan404586@gmail.com',
   email: 'mominkhan404586@gmail.com',
   mobile: '01331712797',
   displayNameBn: 'মোঃ মোমিন খান',
@@ -90,14 +89,14 @@ export const INITIAL_ADMIN_ACCOUNTS: AdminAccount[] = [
   {
     id: 'adm-1',
     name: 'মোঃ মোমিন খান',
-    username: 'admin12131',
+    username: 'mominkhan404586@gmail.com',
     email: 'mominkhan404586@gmail.com',
     mobile: '01331712797',
     accessLevel: 'Super Central Admin',
     isMainOwner: true,
-    permissions: ['schools', 'teachers', 'students', 'verification', 'approval', 'notices', 'exams', 'documents', 'reports', 'security'],
+    permissions: ['*', 'schools', 'teachers', 'students', 'verification', 'approval', 'notices', 'exams', 'documents', 'reports', 'security'],
     status: 'active',
-    lastLogin: '১৭ নভে ২০২৬, সকাল ১০:১৫',
+    lastLogin: 'Firebase Auth Verified',
     twoFactorEnabled: true,
     photoUrl: AVATARS.centralAdmin,
   },
