@@ -1,15 +1,18 @@
 import { getApp, getApps, initializeApp } from 'firebase/app';
 import {
+  EmailAuthProvider,
   GoogleAuthProvider,
   browserLocalPersistence,
   createUserWithEmailAndPassword,
   getAuth,
+  reauthenticateWithCredential,
   sendEmailVerification,
   sendPasswordResetEmail,
   setPersistence,
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
+  updatePassword,
   updateProfile,
   type User,
 } from 'firebase/auth';
@@ -23,6 +26,16 @@ import {
   serverTimestamp,
   setDoc,
 } from 'firebase/firestore';
+import {
+  get as rtdbGet,
+  getDatabase,
+  onValue,
+  push,
+  ref as rtdbRef,
+  serverTimestamp as rtdbServerTimestamp,
+  set as rtdbSet,
+  update as rtdbUpdate,
+} from 'firebase/database';
 import firebaseConfig from '../firebase-applet-config.json';
 import {
   BOOT_ADMIN_EMAIL,
@@ -31,6 +44,18 @@ import {
   type AuthenticatedSession,
   type CloudBackupSnapshotInput,
 } from './utils/authGuard';
+import {
+  RTDB_DATABASE_URL,
+  applyRealtimeUserToSession,
+  normalizeRtdbUserRecord,
+  validateRealtimeUserAccountUpdate,
+  type RealtimeSessionSyncOutcome,
+  type RealtimeSyncTestProbe,
+  type RealtimeUserAccountInput,
+  type RealtimeUserAccountRecord,
+  type RealtimeUserChangeLog,
+  type RealtimeValidationResult,
+} from './utils/realtimeDatabaseSync';
 import type { Role } from './types';
 
 export enum OperationType {
@@ -66,19 +91,32 @@ const configuredDbId =
     ? firebaseConfig.firestoreDatabaseId.trim()
     : '';
 
+const configuredRtdbUrl =
+  typeof (firebaseConfig as { databaseURL?: string }).databaseURL === 'string' &&
+  (firebaseConfig as { databaseURL?: string }).databaseURL?.trim()
+    ? (firebaseConfig as { databaseURL?: string }).databaseURL!.trim()
+    : RTDB_DATABASE_URL;
+
 export const db =
   configuredDbId && configuredDbId !== '(default)'
     ? getFirestore(app, configuredDbId)
     : getFirestore(app);
 
+export const rtdb = getDatabase(app, configuredRtdbUrl);
+
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
-export function getActiveFirebaseProjectInfo(): { projectId: string; databaseId: string } {
+export function getActiveFirebaseProjectInfo(): {
+  projectId: string;
+  databaseId: string;
+  databaseURL: string;
+} {
   return {
     projectId: firebaseConfig.projectId,
     databaseId: configuredDbId || '(default)',
+    databaseURL: configuredRtdbUrl,
   };
 }
 
@@ -176,6 +214,19 @@ export async function reloadCurrentFirebaseUser(): Promise<User | null> {
 
 export async function sendFirebasePasswordReset(email: string): Promise<void> {
   await sendPasswordResetEmail(auth, email.trim());
+}
+
+export async function changeFirebaseUserPassword(
+  email: string,
+  currentPassword: string,
+  newPassword: string
+): Promise<void> {
+  const cleanEmail = email.trim();
+  const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, currentPassword);
+  const credential = EmailAuthProvider.credential(cleanEmail, currentPassword);
+  await reauthenticateWithCredential(userCredential.user, credential);
+  await updatePassword(userCredential.user, newPassword);
+  await signOut(auth);
 }
 
 export async function getFirebaseIdToken(forceRefresh = false): Promise<string | null> {
@@ -314,6 +365,40 @@ export async function resolveAndSyncFirebaseUser(
     }
   }
 
+  if (isAdminEmail && firebaseUser.email) {
+    try {
+      await rtdbUpdate(rtdbRef(rtdb, `admins/${firebaseUser.uid}`), {
+        uid: firebaseUser.uid,
+        email: firebaseUser.email,
+        displayName: firebaseUser.displayName?.trim() || 'Super Central Admin',
+        accessLevel: 'Super Central Admin',
+        createdAt: rtdbServerTimestamp(),
+        updatedAt: rtdbServerTimestamp(),
+      });
+    } catch {
+      // Realtime Database rules may not yet be applied in Firebase Console; non-blocking on sign-in
+    }
+  }
+
+  if (resolvedRole && existingData?.status !== 'suspended' && firebaseUser.email) {
+    try {
+      await rtdbUpdate(rtdbRef(rtdb, `users/${firebaseUser.uid}`), {
+        uid: firebaseUser.uid,
+        email: firebaseUser.email,
+        displayName: existingData?.displayName || firebaseUser.displayName?.trim() || 'PSMS User',
+        role: resolvedRole,
+        status: existingData?.status ?? 'active',
+        ...(existingData?.schoolId ? { schoolId: existingData.schoolId } : {}),
+        ...(existingData?.teacherId ? { teacherId: existingData.teacherId } : {}),
+        ...(existingData?.studentId ? { studentId: existingData.studentId } : {}),
+        updatedByUid: firebaseUser.uid,
+        updatedAt: rtdbServerTimestamp(),
+      });
+    } catch {
+      // Non-blocking if RTDB rules are not yet pasted in Firebase Console
+    }
+  }
+
   if (!resolvedRole || existingData?.status === 'suspended') {
     return { session: null, pendingRoleSelection: true };
   }
@@ -414,5 +499,380 @@ export async function loadCloudAppBackup(): Promise<(CloudBackupSnapshotInput & 
     };
   } catch (error) {
     handleFirestoreError(error, OperationType.GET, path);
+  }
+}
+
+export function subscribeRtdbConnectionStatus(
+  onStatus: (connected: boolean) => void
+): () => void {
+  if (typeof window === 'undefined') return () => {};
+  const connRef = rtdbRef(rtdb, '.info/connected');
+  return onValue(
+    connRef,
+    (snapshot) => {
+      onStatus(Boolean(snapshot.val()));
+    },
+    () => {
+      onStatus(false);
+    }
+  );
+}
+
+export function subscribeRealtimeUserAccount(
+  uid: string,
+  onData: (
+    record: RealtimeUserAccountRecord | null,
+    meta?: { changedFields: string[]; receivedAtIso: string }
+  ) => void,
+  onError?: (errMsg: string) => void
+): () => void {
+  const cleanUid = uid.trim();
+  if (!cleanUid) return () => {};
+  const userRef = rtdbRef(rtdb, `users/${cleanUid}`);
+  let prevRecord: RealtimeUserAccountRecord | null = null;
+  return onValue(
+    userRef,
+    (snapshot) => {
+      const val = snapshot.val() as Record<string, unknown> | null;
+      const next = normalizeRtdbUserRecord(cleanUid, val);
+      const changedFields: string[] = [];
+      if (next && prevRecord) {
+        (['displayName', 'email', 'phone', 'role', 'status', 'schoolId', 'teacherId', 'studentId'] as const).forEach(
+          (k) => {
+            if (prevRecord?.[k] !== next[k]) {
+              changedFields.push(k);
+            }
+          }
+        );
+      }
+      prevRecord = next;
+      onData(next, { changedFields, receivedAtIso: new Date().toISOString() });
+    },
+    (error) => {
+      onError?.(error instanceof Error ? error.message : String(error));
+    }
+  );
+}
+
+export { applyRealtimeUserToSession, type RealtimeSessionSyncOutcome };
+
+export function subscribeRealtimeAllUsers(
+  onData: (records: RealtimeUserAccountRecord[]) => void,
+  onError?: (errMsg: string) => void
+): () => void {
+  const usersRef = rtdbRef(rtdb, 'users');
+  return onValue(
+    usersRef,
+    (snapshot) => {
+      const raw = snapshot.val() as Record<string, Record<string, unknown>> | null;
+      if (!raw || typeof raw !== 'object') {
+        onData([]);
+        return;
+      }
+      const list = Object.entries(raw)
+        .map(([uid, item]) => normalizeRtdbUserRecord(uid, item))
+        .filter((item): item is RealtimeUserAccountRecord => item !== null)
+        .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+      onData(list);
+    },
+    (error) => {
+      onError?.(error instanceof Error ? error.message : String(error));
+    }
+  );
+}
+
+export function subscribeRealtimeUserChangeLogs(
+  uid: string,
+  onData: (logs: RealtimeUserChangeLog[]) => void,
+  onError?: (errMsg: string) => void
+): () => void {
+  if (!uid.trim()) return () => {};
+  const logsRef = rtdbRef(rtdb, `user_change_logs/${uid.trim()}`);
+  return onValue(
+    logsRef,
+    (snapshot) => {
+      const raw = snapshot.val() as Record<string, Record<string, unknown>> | null;
+      if (!raw || typeof raw !== 'object') {
+        onData([]);
+        return;
+      }
+      const list: RealtimeUserChangeLog[] = Object.entries(raw)
+        .map(([id, item]) => ({
+          id,
+          uid: typeof item.uid === 'string' ? item.uid : uid,
+          changedByUid: typeof item.changedByUid === 'string' ? item.changedByUid : uid,
+          field: typeof item.field === 'string' ? item.field : 'profile',
+          oldValue: typeof item.oldValue === 'string' ? item.oldValue : '',
+          newValue: typeof item.newValue === 'string' ? item.newValue : '',
+          validationStatus: item.validationStatus === 'invalid' ? ('invalid' as const) : ('valid' as const),
+          updatedAt:
+            typeof item.updatedAt === 'number' || typeof item.updatedAt === 'string'
+              ? item.updatedAt
+              : Date.now(),
+        }))
+        .sort((a, b) => Number(b.updatedAt || 0) - Number(a.updatedAt || 0))
+        .slice(0, 20);
+      onData(list);
+    },
+    (error) => {
+      onError?.(error instanceof Error ? error.message : String(error));
+    }
+  );
+}
+
+export interface UpdateRealtimeUserAccountResult {
+  ok: boolean;
+  validation: RealtimeValidationResult;
+  errorCode?: 'VALIDATION_ERROR' | 'AUTH_REQUIRED' | 'PERMISSION_DENIED' | 'WRITE_FAILED';
+  errorMessage?: string;
+}
+
+export async function updateRealtimeUserAccount(
+  targetUid: string,
+  current: Partial<RealtimeUserAccountRecord>,
+  next: RealtimeUserAccountInput
+): Promise<UpdateRealtimeUserAccountResult> {
+  const validation = validateRealtimeUserAccountUpdate(current, next);
+  if (!validation.valid) {
+    return {
+      ok: false,
+      validation,
+      errorCode: 'VALIDATION_ERROR',
+      errorMessage: 'Validation failed: one or more fields contain invalid values.',
+    };
+  }
+
+  const currentUser = auth.currentUser;
+  if (!currentUser || !currentUser.emailVerified) {
+    return {
+      ok: false,
+      validation,
+      errorCode: 'AUTH_REQUIRED',
+      errorMessage: 'Verified Firebase Authentication sign-in is required to sync Realtime Database.',
+    };
+  }
+
+  const cleanTargetUid = targetUid.trim() || currentUser.uid;
+  const { normalized } = validation;
+
+  const rtdbPayload: Record<string, unknown> = {
+    uid: cleanTargetUid,
+    email: normalized.email,
+    displayName: normalized.displayName,
+    phone: normalized.phone,
+    recoveryEmail: normalized.recoveryEmail,
+    recoveryPhone: normalized.recoveryPhone,
+    role: normalized.role,
+    status: normalized.status,
+    updatedByUid: currentUser.uid,
+    updatedAt: rtdbServerTimestamp(),
+  };
+  if (current.schoolId || next.schoolId) {
+    rtdbPayload.schoolId = (next.schoolId ?? current.schoolId ?? '').slice(0, 64);
+  }
+  if (current.teacherId || next.teacherId) {
+    rtdbPayload.teacherId = (next.teacherId ?? current.teacherId ?? '').slice(0, 64);
+  }
+  if (current.studentId || next.studentId) {
+    rtdbPayload.studentId = (next.studentId ?? current.studentId ?? '').slice(0, 64);
+  }
+
+  try {
+    await rtdbUpdate(rtdbRef(rtdb, `users/${cleanTargetUid}`), rtdbPayload);
+
+    const changedDiffs = validation.fieldDiffs.filter((d) => d.changed);
+    for (const diff of changedDiffs) {
+      const logNode = push(rtdbRef(rtdb, `user_change_logs/${cleanTargetUid}`));
+      await rtdbSet(logNode, {
+        uid: cleanTargetUid,
+        changedByUid: currentUser.uid,
+        field: diff.field,
+        oldValue: diff.oldValue.slice(0, 300),
+        newValue: diff.newValue.slice(0, 300),
+        validationStatus: diff.valid ? 'valid' : 'invalid',
+        updatedAt: rtdbServerTimestamp(),
+      });
+    }
+
+    if (cleanTargetUid === currentUser.uid && normalized.displayName !== (currentUser.displayName ?? '')) {
+      await updateProfile(currentUser, { displayName: normalized.displayName }).catch(() => {});
+    }
+
+    await setDoc(
+      doc(db, 'users', cleanTargetUid),
+      {
+        uid: cleanTargetUid,
+        email: normalized.email,
+        displayName: normalized.displayName,
+        role: normalized.role,
+        status: normalized.status,
+        ...(rtdbPayload.schoolId ? { schoolId: rtdbPayload.schoolId } : {}),
+        ...(rtdbPayload.teacherId ? { teacherId: rtdbPayload.teacherId } : {}),
+        ...(rtdbPayload.studentId ? { studentId: rtdbPayload.studentId } : {}),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    ).catch(() => {});
+
+    return { ok: true, validation };
+  } catch (err) {
+    const rawMsg = err instanceof Error ? err.message : String(err);
+    const isPermDenied = rawMsg.toLowerCase().includes('permission_denied') || rawMsg.toLowerCase().includes('permission denied');
+    return {
+      ok: false,
+      validation,
+      errorCode: isPermDenied ? 'PERMISSION_DENIED' : 'WRITE_FAILED',
+      errorMessage: rawMsg,
+    };
+  }
+}
+
+export async function sendRealtimeSyncTestProbe(message: string): Promise<{
+  ok: boolean;
+  probe?: RealtimeSyncTestProbe;
+  errorCode?: 'AUTH_REQUIRED' | 'PERMISSION_DENIED' | 'WRITE_FAILED';
+  errorMessage?: string;
+}> {
+  const user = auth.currentUser;
+  if (!user || !user.emailVerified) {
+    return {
+      ok: false,
+      errorCode: 'AUTH_REQUIRED',
+      errorMessage: 'Verified Firebase Auth sign-in is required to write live RTDB sync test probes.',
+    };
+  }
+
+  const probeId = `PROBE-${Date.now().toString(36).toUpperCase()}`;
+  const cleanMessage = (message || 'Live RTDB Sync Check').trim().slice(0, 240);
+  const clientSentAtMs = Date.now();
+  const payload: RealtimeSyncTestProbe = {
+    probeId,
+    actorUid: user.uid,
+    actorEmail: user.email || '',
+    message: cleanMessage,
+    clientSentAtMs,
+  };
+
+  try {
+    await rtdbSet(rtdbRef(rtdb, `rtdb_sync_tests/${user.uid}`), {
+      ...payload,
+      serverAckAt: rtdbServerTimestamp(),
+    });
+    return { ok: true, probe: payload };
+  } catch (err) {
+    const rawMsg = err instanceof Error ? err.message : String(err);
+    const isPermDenied =
+      rawMsg.toLowerCase().includes('permission_denied') ||
+      rawMsg.toLowerCase().includes('permission denied');
+    return {
+      ok: false,
+      errorCode: isPermDenied ? 'PERMISSION_DENIED' : 'WRITE_FAILED',
+      errorMessage: rawMsg,
+    };
+  }
+}
+
+export function subscribeRealtimeSyncTestProbe(
+  uid: string,
+  onProbe: (probe: RealtimeSyncTestProbe | null) => void,
+  onError?: (errMsg: string) => void
+): () => void {
+  const cleanUid = uid.trim();
+  if (!cleanUid) return () => {};
+  return onValue(
+    rtdbRef(rtdb, `rtdb_sync_tests/${cleanUid}`),
+    (snapshot) => {
+      const raw = snapshot.val() as Record<string, unknown> | null;
+      if (!raw || typeof raw !== 'object' || typeof raw.probeId !== 'string') {
+        onProbe(null);
+        return;
+      }
+      onProbe({
+        probeId: raw.probeId,
+        actorUid: typeof raw.actorUid === 'string' ? raw.actorUid : cleanUid,
+        actorEmail: typeof raw.actorEmail === 'string' ? raw.actorEmail : '',
+        message: typeof raw.message === 'string' ? raw.message : '',
+        clientSentAtMs: typeof raw.clientSentAtMs === 'number' ? raw.clientSentAtMs : Date.now(),
+        serverAckAt:
+          typeof raw.serverAckAt === 'number' || typeof raw.serverAckAt === 'string'
+            ? raw.serverAckAt
+            : undefined,
+      });
+    },
+    (error) => {
+      onError?.(error instanceof Error ? error.message : String(error));
+    }
+  );
+}
+
+export interface RtdbAccountSnapshotRecord {
+  uid: string;
+  role: string;
+  displayName: string;
+  email: string;
+  schoolId?: string;
+  language: 'bn' | 'en';
+  themePreference: 'light' | 'dark' | 'system';
+  settingsJson?: string;
+  updatedAt: number | string;
+}
+
+export async function saveRtdbAccountSnapshot(input: {
+  role: Role;
+  displayName: string;
+  email?: string;
+  schoolId?: string;
+  language: 'bn' | 'en';
+  themePreference: 'light' | 'dark' | 'system';
+  settingsJson?: string;
+}): Promise<{ ok: boolean; errorMessage?: string }> {
+  const user = auth.currentUser;
+  if (!user || !user.emailVerified) {
+    return { ok: false, errorMessage: 'Verified Firebase sign-in required.' };
+  }
+  try {
+    await rtdbSet(rtdbRef(rtdb, `account_snapshots/${user.uid}`), {
+      uid: user.uid,
+      role: input.role,
+      displayName: (input.displayName || user.displayName || 'PSMS User').slice(0, 120),
+      email: (input.email || user.email || '').slice(0, 254),
+      ...(input.schoolId ? { schoolId: input.schoolId.slice(0, 64) } : {}),
+      language: input.language,
+      themePreference: input.themePreference,
+      ...(input.settingsJson ? { settingsJson: input.settingsJson.slice(0, 19500) } : {}),
+      updatedAt: rtdbServerTimestamp(),
+    });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, errorMessage: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+export async function loadRtdbAccountSnapshot(uid?: string): Promise<RtdbAccountSnapshotRecord | null> {
+  const targetUid = uid?.trim() || auth.currentUser?.uid;
+  if (!targetUid) return null;
+  try {
+    const snap = await rtdbGet(rtdbRef(rtdb, `account_snapshots/${targetUid}`));
+    if (!snap.exists()) return null;
+    const raw = snap.val() as Record<string, unknown>;
+    return {
+      uid: targetUid,
+      role: typeof raw.role === 'string' ? raw.role : 'pending',
+      displayName: typeof raw.displayName === 'string' ? raw.displayName : 'PSMS User',
+      email: typeof raw.email === 'string' ? raw.email : '',
+      schoolId: typeof raw.schoolId === 'string' ? raw.schoolId : undefined,
+      language: raw.language === 'en' ? 'en' : 'bn',
+      themePreference:
+        raw.themePreference === 'dark' || raw.themePreference === 'system'
+          ? raw.themePreference
+          : 'light',
+      settingsJson: typeof raw.settingsJson === 'string' ? raw.settingsJson : undefined,
+      updatedAt:
+        typeof raw.updatedAt === 'number' || typeof raw.updatedAt === 'string'
+          ? raw.updatedAt
+          : Date.now(),
+    };
+  } catch {
+    return null;
   }
 }

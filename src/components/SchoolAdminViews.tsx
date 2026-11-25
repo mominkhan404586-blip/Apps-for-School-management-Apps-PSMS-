@@ -93,6 +93,8 @@ import type { StudentEditPatch } from '../utils/studentLifecycle';
 import { AcademicManagementHub } from './AcademicManagementHub';
 import { AcademicCertificatesDocsPanel } from './AcademicProgressAndDocsPanel';
 import { SchoolAdminResultManagementPanel } from './ResultGovernancePanels';
+import { SchoolPerformanceDashboard } from './SchoolPerformanceDashboard';
+import { BulkSmsDispatchPanel } from './BulkSmsDispatchPanel';
 import {
   DEFAULT_NOTIFICATION_PREFERENCES,
   type CreateNoticePayload,
@@ -457,6 +459,21 @@ export const SchoolAdminViews: React.FC<SchoolAdminViewsProps> = ({
     return <>{settingsCenterElement}</>;
   }
 
+  if (activeTab === 'performance') {
+    return (
+      <SchoolPerformanceDashboard
+        lang={lang}
+        school={ownSchool}
+        students={students}
+        exams={exams}
+        subjectSubmissions={subjectSubmissions}
+        kioskScans={kioskScans}
+        attendanceHistory={attendanceHistory}
+        onNavigateTab={onSelectTab}
+      />
+    );
+  }
+
   // Dashboard View
   if (activeTab === 'dashboard') {
     return (
@@ -713,6 +730,15 @@ export const SchoolAdminViews: React.FC<SchoolAdminViewsProps> = ({
             >
               <ClipboardList className="w-4 h-4" />
               {b('নম্বর এন্ট্রি করুন', 'Enter Exam Marks', lang)}
+            </button>
+            <button
+              type="button"
+              data-testid="school-dashboard-open-performance-btn"
+              onClick={() => onSelectTab('performance')}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold cursor-pointer"
+            >
+              <Sparkles className="w-4 h-4" />
+              {b('পারফরম্যান্স ড্যাশবোর্ড', 'Performance Dashboard', lang)}
             </button>
           </div>
         </section>
@@ -1927,25 +1953,14 @@ export const SchoolAdminViews: React.FC<SchoolAdminViewsProps> = ({
           onMarkNoticeRead={onMarkNoticeRead ?? (() => {})}
         />
 
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-3">
-          <h2 className="text-sm font-bold text-slate-900 dark:text-white">
-            {b('SMS ও নোটিফিকেশন ডেলিভারি হিস্ট্রি', 'SMS Delivery History', lang)}
-          </h2>
-          <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
-            {smsLog.map((s) => (
-              <div key={s.id} className="py-3 flex items-start justify-between gap-3">
-                <div>
-                  <div className="font-semibold text-slate-900 dark:text-white">{s.target}</div>
-                  <div className="text-slate-600 dark:text-slate-300 mt-0.5">{s.message}</div>
-                </div>
-                <div className="text-right shrink-0">
-                  <div className="text-emerald-700 dark:text-emerald-400 font-semibold">{s.status}</div>
-                  <div className="text-slate-400">{s.time}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <BulkSmsDispatchPanel
+          lang={lang}
+          role="school_admin"
+          actorName={ownSchool.headTeacher}
+          school={ownSchool}
+          students={students}
+          teachers={teachers}
+        />
       </div>
     );
   }

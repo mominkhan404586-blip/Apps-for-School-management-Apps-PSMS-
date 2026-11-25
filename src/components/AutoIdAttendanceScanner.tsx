@@ -15,8 +15,10 @@ import {
   Play,
   Printer,
   QrCode,
+  Send,
   ShieldAlert,
   Square,
+  Upload,
   UserCheck,
   Users,
 } from 'lucide-react';
@@ -34,6 +36,8 @@ import {
   generateAttendanceCsvContent,
   generateAttendanceExcelHtml,
 } from '../utils/attendanceExportAndStickers';
+import { buildAbsentStudentsSmsPayload } from '../utils/bulkSmsEngine';
+import { resolveApiUrl } from '../utils/deploymentConfig';
 import { DEFAULT_PROFILE_AVATARS } from '../data/mockData';
 import { QrStickerPrintModal } from './QrStickerPrintModal';
 
@@ -134,11 +138,15 @@ export const AutoIdAttendanceScanner: React.FC<AutoIdAttendanceScannerProps> = (
   const [exportStartDate, setExportStartDate] = useState<string>('2026-11-17');
   const [exportEndDate, setExportEndDate] = useState<string>(todayIso);
   const [qrStickersModalOpen, setQrStickersModalOpen] = useState(false);
+  const [qrImageError, setQrImageError] = useState<string | null>(null);
+  const [smsSendingAbsent, setSmsSendingAbsent] = useState(false);
+  const [smsAbsentFeedback, setSmsAbsentFeedback] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const decodeCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const qrFileInputRef = useRef<HTMLInputElement | null>(null);
   const recentCodesRef = useRef<Record<string, number>>({});
 
   const scannerOpen = scannerState !== 'stopped';
@@ -398,6 +406,96 @@ export const AutoIdAttendanceScanner: React.FC<AutoIdAttendanceScannerProps> = (
 
     if (looksComplete) {
       triggerScanWithCode(trimmed, 'auto_camera');
+    }
+  };
+
+  const handleDecodeQrImageFile = async (files: FileList | null) => {
+    if (!files || files.length === 0 || !isActivelyDecoding) return;
+    setQrImageError(null);
+    const file = files[0];
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('Failed to read image'));
+        reader.readAsDataURL(file);
+      });
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const el = new window.Image();
+        el.onload = () => resolve(el);
+        el.onerror = () => reject(new Error('Invalid image file'));
+        el.src = dataUrl;
+      });
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth || 320;
+      canvas.height = img.naturalHeight || 320;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx) throw new Error('Canvas unavailable');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const decoded = jsQR(imageData.data, imageData.width, imageData.height, {
+        inversionAttempts: 'attemptBoth',
+      });
+      if (!decoded?.data) {
+        setQrImageError(
+          b(
+            'ছবিতে কোনো বৈধ QR কোড শনাক্ত করা যায়নি। স্পষ্ট QR PNG আপলোড করুন।',
+            'Could not detect a valid QR code in this image. Please upload a clear student QR PNG.',
+            lang
+          )
+        );
+        return;
+      }
+      triggerScanWithCode(decoded.data, 'auto_camera');
+    } catch {
+      setQrImageError(b('QR ছবি ডিকোড করতে সমস্যা হয়েছে।', 'Failed to decode uploaded QR image.', lang));
+    } finally {
+      if (qrFileInputRef.current) qrFileInputRef.current.value = '';
+    }
+  };
+
+  const handleSendAbsentBulkSms = async () => {
+    if (stats.absentStudents.length === 0 || smsSendingAbsent) return;
+    setSmsSendingAbsent(true);
+    setSmsAbsentFeedback(null);
+    try {
+      const { recipients, defaultMessage } = buildAbsentStudentsSmsPayload({
+        absentStudents: stats.absentStudents,
+        schoolName: schoolNameBn,
+        dateIso: todayIso,
+        lang,
+      });
+      const resp = await fetch(resolveApiUrl('/api/sms/send-bulk'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          schoolId,
+          category: 'absence_alert',
+          sentByRole: 'teacher',
+          sentByName: school?.headTeacher ?? 'Class Teacher',
+          message: defaultMessage,
+          targetsSummary: `${stats.absentStudents.length} Absent Student Guardians (${todayIso})`,
+          recipients,
+        }),
+      });
+      const data = await resp.json();
+      if (resp.ok && data?.ok) {
+        onNotifyAllAbsentGuardians(stats.absentStudents, schoolId, todayIso);
+        setAbsentNotifiedDone(true);
+        setSmsAbsentFeedback(
+          b(
+            `${data.log.deliveredCount}/${data.log.recipientCount} জন অভিভাবকের মোবাইলে Bulk SMS (${data.provider}) পাঠানো হয়েছে।`,
+            `Sent absence Bulk SMS to ${data.log.deliveredCount}/${data.log.recipientCount} guardian(s) via ${data.provider}.`,
+            lang
+          )
+        );
+      } else {
+        setSmsAbsentFeedback(data?.error || b('Bulk SMS পাঠানো যায়নি।', 'Bulk SMS failed.', lang));
+      }
+    } catch {
+      setSmsAbsentFeedback(b('SMS সার্ভারের সাথে সংযোগ পাওয়া যায়নি।', 'SMS endpoint unreachable.', lang));
+    } finally {
+      setSmsSendingAbsent(false);
     }
   };
 
@@ -721,7 +819,7 @@ export const AutoIdAttendanceScanner: React.FC<AutoIdAttendanceScannerProps> = (
                     e.preventDefault();
                     triggerScanWithCode(scanCodeInput, 'auto_camera');
                   }}
-                  className="flex flex-col sm:flex-row gap-2"
+                  className="flex flex-wrap items-center gap-2"
                 >
                   <input
                     ref={inputRef}
@@ -735,17 +833,42 @@ export const AutoIdAttendanceScanner: React.FC<AutoIdAttendanceScannerProps> = (
                       'Scan QR / Student ID (STD-2026-...)',
                       lang
                     )}
-                    className="flex-1 h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono outline-none disabled:opacity-50"
+                    className="flex-1 min-w-[170px] w-full sm:w-auto h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono outline-none disabled:opacity-50"
                   />
-                  <button
-                    type="submit"
-                    data-testid="qr-scanner-submit-btn"
-                    disabled={scannerState === 'paused'}
-                    className="px-4 h-10 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white font-semibold cursor-pointer shrink-0"
-                  >
-                    স্ক্যান রেকর্ড
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    <button
+                      type="submit"
+                      data-testid="qr-scanner-submit-btn"
+                      disabled={scannerState === 'paused'}
+                      className="px-4 h-10 rounded-xl bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white font-semibold cursor-pointer shrink-0 whitespace-nowrap"
+                    >
+                      {b('স্ক্যান রেকর্ড', 'Record Scan', lang)}
+                    </button>
+                    <input
+                      ref={qrFileInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      data-testid="qr-image-upload-input"
+                      className="hidden"
+                      onChange={(e) => void handleDecodeQrImageFile(e.target.files)}
+                    />
+                    <button
+                      type="button"
+                      data-testid="qr-image-upload-btn"
+                      disabled={scannerState === 'paused'}
+                      onClick={() => qrFileInputRef.current?.click()}
+                      className="inline-flex items-center gap-1.5 px-3.5 h-10 rounded-xl border border-blue-600/40 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/50 text-blue-800 dark:text-blue-300 font-semibold cursor-pointer shrink-0 whitespace-nowrap disabled:opacity-50"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      {b('QR ছবি আপলোড', 'Scan QR Image', lang)}
+                    </button>
+                  </div>
                 </form>
+                {qrImageError && (
+                  <p role="alert" className="text-[11px] font-semibold text-rose-600 dark:text-rose-400">
+                    {qrImageError}
+                  </p>
+                )}
 
                 {/* Quick Card Tap (1-click student QR card scan) */}
                 <div className="space-y-1.5">
@@ -1142,26 +1265,45 @@ export const AutoIdAttendanceScanner: React.FC<AutoIdAttendanceScannerProps> = (
               </p>
             </div>
             {stats.absentStudents.length > 0 && (
-              <button
-                type="button"
-                disabled={absentNotifiedDone}
-                onClick={() => {
-                  onNotifyAllAbsentGuardians(stats.absentStudents, schoolId, todayIso);
-                  setAbsentNotifiedDone(true);
-                }}
-                className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl font-semibold ${
-                  absentNotifiedDone
-                    ? 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 cursor-default'
-                    : 'bg-red-600 hover:bg-red-700 text-white cursor-pointer'
-                }`}
-              >
-                <BellRing className="w-4 h-4" />
-                {absentNotifiedDone
-                  ? b('সকল অনুপস্থিত অভিভাবককে জানানো হয়েছে ✓', 'All Absent Guardians Notified ✓', lang)
-                  : b('অনুপস্থিত সকল অভিভাবককে নোটিফাই করুন', 'Notify All Absent Guardians', lang)}
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={absentNotifiedDone}
+                  onClick={() => {
+                    onNotifyAllAbsentGuardians(stats.absentStudents, schoolId, todayIso);
+                    setAbsentNotifiedDone(true);
+                  }}
+                  className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl font-semibold ${
+                    absentNotifiedDone
+                      ? 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 cursor-default'
+                      : 'bg-red-600 hover:bg-red-700 text-white cursor-pointer'
+                  }`}
+                >
+                  <BellRing className="w-4 h-4" />
+                  {absentNotifiedDone
+                    ? b('সকল অভিভাবককে জানানো হয়েছে ✓', 'All Guardians Notified ✓', lang)
+                    : b('অ্যাপ নোটিফাই', 'In-App Notify', lang)}
+                </button>
+                <button
+                  type="button"
+                  data-testid="send-absent-bulk-sms-btn"
+                  disabled={smsSendingAbsent}
+                  onClick={() => void handleSendAbsentBulkSms()}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-700 hover:bg-blue-800 disabled:opacity-50 text-white font-semibold cursor-pointer"
+                >
+                  <Send className="w-4 h-4" />
+                  {smsSendingAbsent
+                    ? b('SMS পাঠানো হচ্ছে...', 'Sending SMS...', lang)
+                    : b(`Bulk SMS পাঠান (${stats.absentStudents.length})`, `Send Bulk SMS (${stats.absentStudents.length})`, lang)}
+                </button>
+              </div>
             )}
           </div>
+          {smsAbsentFeedback && (
+            <div data-testid="absent-bulk-sms-feedback" className="p-3 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-200 font-semibold">
+              {smsAbsentFeedback}
+            </div>
+          )}
 
           {stats.absentStudents.length === 0 ? (
             <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 font-semibold">

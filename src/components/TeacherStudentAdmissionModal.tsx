@@ -23,6 +23,8 @@ interface TeacherStudentAdmissionModalProps {
   open: boolean;
   lang: Language;
   school: SchoolRecord;
+  schools?: SchoolRecord[];
+  allowSchoolSelection?: boolean;
   students: StudentRecord[];
   admittedByTeacherId?: string;
   admittedByTeacherName: string;
@@ -35,6 +37,8 @@ export const TeacherStudentAdmissionModal: React.FC<TeacherStudentAdmissionModal
   open,
   lang,
   school,
+  schools,
+  allowSchoolSelection = false,
   students,
   admittedByTeacherId,
   admittedByTeacherName,
@@ -42,6 +46,13 @@ export const TeacherStudentAdmissionModal: React.FC<TeacherStudentAdmissionModal
   onClose,
   onStudentAdmitted,
 }) => {
+  const [selectedSchoolId, setSelectedSchoolId] = useState(school.id);
+  const activeSchool = useMemo(() => {
+    if (allowSchoolSelection && schools && schools.length > 0) {
+      return schools.find((s) => s.id === selectedSchoolId) ?? schools[0];
+    }
+    return school;
+  }, [allowSchoolSelection, schools, selectedSchoolId, school]);
   const [nameBn, setNameBn] = useState('');
   const [nameEn, setNameEn] = useState('');
   const [dob, setDob] = useState('2016-05-14');
@@ -83,13 +94,13 @@ export const TeacherStudentAdmissionModal: React.FC<TeacherStudentAdmissionModal
   const liveDupCheck = useMemo(
     () =>
       checkDuplicateStudent(students, {
-        schoolId: school.id,
+        schoolId: activeSchool.id,
         className,
         section,
         roll,
         birthRegNo,
       }),
-    [students, school.id, className, section, roll, birthRegNo]
+    [students, activeSchool.id, className, section, roll, birthRegNo]
   );
 
   if (!open) return null;
@@ -124,7 +135,7 @@ export const TeacherStudentAdmissionModal: React.FC<TeacherStudentAdmissionModal
     if (docPhoto) docs.push('Student_Passport_Photo.jpg');
     if (docGuardianNid) docs.push('Guardian_NID.pdf');
 
-    const res = admitStudent6Part(students, school, {
+    const res = admitStudent6Part(students, activeSchool, {
       nameBn,
       nameEn,
       dob,
@@ -132,8 +143,8 @@ export const TeacherStudentAdmissionModal: React.FC<TeacherStudentAdmissionModal
       bloodGroup,
       birthRegNo,
       academicYear,
-      schoolId: school.id,
-      schoolNameBn: school.nameBn,
+      schoolId: activeSchool.id,
+      schoolNameBn: activeSchool.nameBn,
       className,
       section,
       roll,
@@ -181,7 +192,7 @@ export const TeacherStudentAdmissionModal: React.FC<TeacherStudentAdmissionModal
                 {b('নতুন শিক্ষার্থী ভর্তি ফরম (৬-অংশ)', 'New Student Admission Form (6-Part)', lang)}
               </h2>
               <p className="text-xs text-slate-500">
-                {school.nameBn} ({school.code}) · {b('স্বয়ংক্রিয় ID + ডিজিটাল QR কার্ড', 'Auto ID & QR Card Generation', lang)}
+                {activeSchool.nameBn} ({activeSchool.code}) · {b('স্বয়ংক্রিয় ID + ডিজিটাল QR কার্ড', 'Auto ID & QR Card Generation', lang)}
               </p>
             </div>
           </div>
@@ -254,6 +265,33 @@ export const TeacherStudentAdmissionModal: React.FC<TeacherStudentAdmissionModal
               {error && (
                 <div className="p-3 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 font-semibold">
                   {error}
+                </div>
+              )}
+
+              {allowSchoolSelection && schools && schools.length > 0 && (
+                <div className="p-3.5 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 space-y-1.5">
+                  <label className="block font-bold text-emerald-900 dark:text-emerald-200">
+                    {b('ভর্তির বিদ্যালয় নির্বাচন করুন *', 'Select Target School *', lang)}
+                  </label>
+                  <select
+                    data-testid="public-student-reg-school-select"
+                    value={activeSchool.id}
+                    onChange={(e) => {
+                      const nextId = e.target.value;
+                      setSelectedSchoolId(nextId);
+                      const nextSchool = schools.find((s) => s.id === nextId);
+                      if (nextSchool && nextSchool.approvedClasses.length > 0) {
+                        setClassName(nextSchool.approvedClasses[0]);
+                      }
+                    }}
+                    className="w-full h-9 px-3 rounded-lg border border-emerald-300 dark:border-emerald-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-semibold"
+                  >
+                    {schools.map((sc) => (
+                      <option key={sc.id} value={sc.id}>
+                        {sc.code} — {b(sc.nameBn, sc.nameEn, lang)}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               )}
 

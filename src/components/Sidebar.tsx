@@ -37,6 +37,7 @@ import {
   Share2,
   Smartphone,
   Settings,
+  Database,
 } from 'lucide-react';
 import type { Language, Role, SchoolRecord, StudentRecord, TeacherRecord } from '../types';
 import type { DeviceViewMode } from '../utils/devicePreviewEngine';
@@ -69,6 +70,7 @@ export const CENTRAL_ADMIN_NAV: NavItem[] = [
   { id: 'notices', labelBn: 'নোটিশ ও যোগাযোগ', labelEn: 'Notices & Messaging', icon: Megaphone, section: 'main' },
   { id: 'reports', labelBn: 'রিপোর্ট ও মনিটরিং', labelEn: 'Reports & Monitoring', icon: BarChart3, section: 'main' },
   { id: 'security', labelBn: 'Security & Account', labelEn: 'Security & Account', icon: Shield, section: 'main' },
+  { id: 'realtime_db', labelBn: 'Firebase ডেটা ও RTDB সিঙ্ক', labelEn: 'Firebase Data & RTDB Sync', icon: Database, section: 'main' },
   { id: 'permissions', labelBn: 'Permission System', labelEn: 'Permission System', icon: KeyRound, section: 'main' },
   { id: 'architecture', labelBn: 'সিস্টেম আর্কিটেকচার', labelEn: 'System Blueprint', icon: Layers, section: 'main' },
   { id: 'archive', labelBn: 'Delete / Archive', labelEn: 'Delete / Archive', icon: Archive, section: 'main' },
@@ -81,6 +83,7 @@ export const CENTRAL_ADMIN_NAV: NavItem[] = [
 
 export const SCHOOL_ADMIN_NAV: NavItem[] = [
   { id: 'dashboard', labelBn: 'Dashboard', labelEn: 'Dashboard', icon: LayoutDashboard, section: 'main' },
+  { id: 'performance', labelBn: 'পারফরম্যান্স ড্যাশবোর্ড', labelEn: 'Performance Dashboard', icon: TrendingUp, section: 'main' },
   { id: 'academics', labelBn: 'একাডেমিক ম্যানেজমেন্ট', labelEn: 'Academic Management', icon: BookOpen, section: 'main' },
   { id: 'students', labelBn: 'শিক্ষার্থী তথ্য', labelEn: 'Students', icon: GraduationCap, section: 'main' },
   { id: 'teachers', labelBn: 'শিক্ষক ব্যবস্থাপনা ও যোগদান', labelEn: 'Teachers & Join Requests', icon: Users, section: 'main' },

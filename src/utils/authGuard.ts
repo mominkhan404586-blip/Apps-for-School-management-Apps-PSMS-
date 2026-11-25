@@ -52,6 +52,7 @@ const ROLE_ALLOWED_TABS: Record<Role, readonly string[]> = {
     'notices',
     'reports',
     'security',
+    'realtime_db',
     'permissions',
     'architecture',
     'archive',
@@ -63,6 +64,7 @@ const ROLE_ALLOWED_TABS: Record<Role, readonly string[]> = {
   ],
   school_admin: [
     'dashboard',
+    'performance',
     'academics',
     'students',
     'teachers',
@@ -241,6 +243,51 @@ export function isAuthorizedSuperAdminSession(
   if (!session || session.role !== 'central_admin') return false;
   return session.provider === 'firebase_google' || session.provider === 'firebase_email';
 }
+
+export interface FirebaseAuthSnapshot {
+  uid: string;
+  email?: string | null;
+  emailVerified: boolean;
+}
+
+/**
+ * Reconciles a stored local session against live Firebase Auth state so stale or unverified
+ * Firebase sessions in storage can never bypass Firebase verification on reload/reopen.
+ */
+export function reconcileAuthSessionWithFirebase(
+  firebaseUser: FirebaseAuthSnapshot | null | undefined,
+  storedSession: AuthenticatedSession | null | undefined
+): {
+  status: 'authenticated' | 'unauthenticated';
+  session: AuthenticatedSession | null;
+  clearStored: boolean;
+} {
+  if (!storedSession || !isValidAppRole(storedSession.role)) {
+    return { status: 'unauthenticated', session: null, clearStored: Boolean(storedSession) };
+  }
+
+  if (storedSession.provider === 'firebase_google' || storedSession.provider === 'firebase_email') {
+    if (!firebaseUser || !firebaseUser.emailVerified || firebaseUser.uid !== storedSession.uid) {
+      return { status: 'unauthenticated', session: null, clearStored: true };
+    }
+    return { status: 'authenticated', session: storedSession, clearStored: false };
+  }
+
+  return { status: 'authenticated', session: storedSession, clearStored: false };
+}
+
+export function shouldBlockProtectedContent(
+  authStatus: AuthStatus,
+  decision: ProtectedRouteDecision
+): boolean {
+  return (
+    authStatus !== 'authenticated' ||
+    decision.screen !== 'dashboard' ||
+    !decision.allowProtectedRender ||
+    !decision.effectiveRole
+  );
+}
+
 
 export function validateStoredSessionPayload(raw: unknown): AuthenticatedSession | null {
   if (!raw || typeof raw !== 'object') return null;

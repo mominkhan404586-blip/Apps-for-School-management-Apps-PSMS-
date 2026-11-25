@@ -42,6 +42,7 @@ import {
   FolderOpen,
   MessageSquare,
   Send,
+  Database,
 } from 'lucide-react';
 import type {
   AcademicCalendarEvent,
@@ -166,6 +167,7 @@ import { ExaminationManagementPanel } from './ExaminationManagementPanel';
 import { OfficialDocumentSystem } from './OfficialDocumentSystem';
 import { ExamRoutineSystem } from './ExamRoutineSystem';
 import { isMainCentralAdmin } from '../utils/adminAndTeacherIdentityEngine';
+import { CentralRealtimeDataPanel } from './CentralRealtimeDataPanel';
 
 interface CentralAdminViewsProps {
   activeTab: string;
@@ -2882,13 +2884,43 @@ export const CentralAdminViews: React.FC<CentralAdminViewsProps> = ({
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 space-y-1.5">
             <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white">
               <KeyRound className="w-4 h-4 text-amber-600" />
-              Device Session & Revocation
+              Device Session &amp; Revocation
             </div>
             <p className="text-slate-500">Active sessions: 2 verified devices (Dhaka, Bangladesh).</p>
           </div>
         </div>
+
+        <div className="bg-emerald-50/70 dark:bg-emerald-950/20 border border-emerald-500/30 rounded-xl p-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-start gap-2.5 text-xs">
+            <Database className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
+            <div>
+              <div className="font-bold text-slate-900 dark:text-white">
+                {b('Firebase Realtime Database লাইভ ডেটা ও সিঙ্ক টেস্ট', 'Firebase Realtime Database Data & Live Sync Test', lang)}
+              </div>
+              <p className="text-slate-600 dark:text-slate-400">
+                {b(
+                  'RTDB-তে লাইভ টেস্ট পিং পাঠান, ইউজার প্রোফাইল/রোল আপডেট করুন এবং রোল-ভিত্তিক সিকিউরিটি রুলস দেখুন।',
+                  'Send live RTDB test pings, edit user profiles/roles in real time, and review role-scoped RTDB rules.',
+                  lang
+                )}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => onSelectTab('realtime_db')}
+            className="h-9 px-3.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
+          >
+            <Database className="w-3.5 h-3.5" />
+            <span>{b('লাইভ RTDB প্যানেল খুলুন →', 'Open Live RTDB Panel →', lang)}</span>
+          </button>
+        </div>
       </div>
     );
+  }
+
+  if (activeTab === 'realtime_db') {
+    return <CentralRealtimeDataPanel lang={lang} schools={schools} />;
   }
 
   // Permission System (Interactive Governance Matrix + 8-Role RBAC Reference)

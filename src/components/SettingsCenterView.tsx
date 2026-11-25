@@ -84,8 +84,11 @@ import {
   loadCloudAppBackup,
   saveCloudAppBackup,
   sendFirebasePasswordReset,
+  updateRealtimeUserAccount,
 } from '../firebase';
 import { mapFirebaseAuthErrorMessage } from '../utils/authGuard';
+import { validateRealtimeUserAccountUpdate } from '../utils/realtimeDatabaseSync';
+import { RealtimeAccountSyncPanel } from './RealtimeAccountSyncPanel';
 
 export interface SettingsCenterViewProps {
   role: Role;
@@ -111,6 +114,7 @@ export interface SettingsCenterViewProps {
   onToggleTeacherStatus?: (teacherId: string, nextStatus: 'active' | 'suspended') => void;
   onToggleStudentStatus?: (studentId: string, nextStatus: 'active' | 'suspended') => void;
   onUpdateSchoolInfo?: (schoolId: string, patch: Partial<SchoolRecord>) => void;
+  onUpdateActorProfile?: (patch: { displayName: string; email: string; phone: string }) => void;
   onOpenCoverGallery?: () => void;
   onOpenBannerCrop?: () => void;
 }
@@ -171,6 +175,7 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
   onToggleTeacherStatus,
   onToggleStudentStatus,
   onUpdateSchoolInfo,
+  onUpdateActorProfile,
   onOpenCoverGallery,
   onOpenBannerCrop,
 }) => {
@@ -185,8 +190,9 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
   const [profileName, setProfileName] = useState(actorName);
   const [profileEmail, setProfileEmail] = useState(actorEmail);
   const [profilePhone, setProfilePhone] = useState(actorPhone);
-  const [recoveryEmail, setRecoveryEmail] = useState(settings.accountRecoveryEmail);
-  const [recoveryPhone, setRecoveryPhone] = useState(settings.accountRecoveryPhone);
+  const [recoveryEmail, setRecoveryEmail] = useState(settings.accountRecoveryEmail || actorEmail);
+  const [recoveryPhone, setRecoveryPhone] = useState(settings.accountRecoveryPhone || actorPhone);
+  const [profileFormError, setProfileFormError] = useState<string | null>(null);
   const [passwordForm, setPasswordForm] = useState({ current: '', next: '', confirm: '' });
   const [passwordNotice, setPasswordNotice] = useState<string | null>(null);
   const [otpTestCode, setOtpTestCode] = useState<string | null>(null);
@@ -508,29 +514,95 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
     }
   };
 
-  const handleSaveProfileAndRecovery = (e: React.FormEvent) => {
+  const handleSaveProfileAndRecovery = async (e: React.FormEvent) => {
     e.preventDefault();
+    setProfileFormError(null);
+    const validation = validateRealtimeUserAccountUpdate(
+      {
+        uid: auth.currentUser?.uid || actorId,
+        displayName: actorName,
+        email: profileEmail || actorEmail,
+        phone: profilePhone || actorPhone,
+        role,
+        status: 'active',
+      },
+      {
+        displayName: profileName,
+        email: recoveryEmail || profileEmail,
+        phone: recoveryPhone || profilePhone,
+        role,
+        status: 'active',
+      }
+    );
+
+    if (!validation.valid) {
+      const firstErr = Object.values(validation.errors)[0];
+      const msg = b(
+        firstErr?.bn ?? 'সঠিক তথ্য দিন।',
+        firstErr?.en ?? 'Please provide valid profile information.',
+        lang
+      );
+      setProfileFormError(msg);
+      showToast(firstErr?.bn ?? 'ফর্মের ভুল তথ্য ঠিক করুন।', firstErr?.en ?? 'Please fix invalid fields.');
+      return;
+    }
+
     const audit: AuditLogEntry = {
       id: `AUD-PROF-${Date.now()}`,
       who: actorName,
       role,
       when: new Date().toISOString().replace('T', ' ').slice(0, 16),
       what: 'Profile & Recovery Info Updated',
-      targetName: profileName,
+      targetName: validation.normalized.displayName,
       requestId: `PROF-${actorId}`,
       oldValue: settings.accountRecoveryPhone,
-      newValue: `${profilePhone} | ${recoveryEmail}`,
+      newValue: `${validation.normalized.phone} | ${validation.normalized.email}`,
     };
+
     onUpdateSettings(
       {
         ...settings,
-        accountRecoveryEmail: recoveryEmail,
-        accountRecoveryPhone: recoveryPhone,
+        accountRecoveryEmail: validation.normalized.email,
+        accountRecoveryPhone: validation.normalized.phone,
         updatedAt: new Date().toISOString(),
-        updatedBy: actorName,
+        updatedBy: validation.normalized.displayName,
       },
       audit
     );
+    onUpdateActorProfile?.({
+      displayName: validation.normalized.displayName,
+      email: validation.normalized.email,
+      phone: validation.normalized.phone,
+    });
+
+    if (auth.currentUser?.emailVerified) {
+      const rtdbRes = await updateRealtimeUserAccount(
+        auth.currentUser.uid,
+        {
+          uid: auth.currentUser.uid,
+          displayName: actorName,
+          email: auth.currentUser.email || actorEmail,
+          phone: actorPhone,
+          role,
+          status: 'active',
+        },
+        {
+          displayName: validation.normalized.displayName,
+          email: validation.normalized.email,
+          phone: validation.normalized.phone,
+          role,
+          status: 'active',
+        }
+      );
+      if (rtdbRes.ok) {
+        showToast(
+          'প্রোফাইল এবং Firebase Realtime Database সাথে সাথে আপডেট হয়েছে!',
+          'Profile & Firebase Realtime Database updated immediately!'
+        );
+        return;
+      }
+    }
+
     showToast('প্রোফাইল ও অ্যাকাউন্ট রিকভারি তথ্য সংরক্ষিত হয়েছে।', 'Profile & recovery settings saved.');
   };
 
@@ -775,9 +847,18 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
                   className="w-full h-10 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-white"
                 />
               </div>
+              {profileFormError && (
+                <div
+                  data-testid="profile-validation-error"
+                  className="md:col-span-2 rounded-lg border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950/40 px-3 py-2 text-xs font-semibold text-red-700 dark:text-red-300"
+                >
+                  {profileFormError}
+                </div>
+              )}
               <div className="md:col-span-2 flex justify-end">
                 <button
                   type="submit"
+                  data-testid="save-profile-btn"
                   className="inline-flex items-center gap-2 h-10 px-5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold cursor-pointer"
                 >
                   <Save className="w-4 h-4" />
@@ -785,6 +866,27 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
                 </button>
               </div>
             </form>
+
+            {/* Firebase Realtime Database Live Account Sync & Validation Diff */}
+            <RealtimeAccountSyncPanel
+              lang={lang}
+              role={role}
+              actorId={actorId}
+              actorName={actorName}
+              actorEmail={profileEmail || actorEmail}
+              actorPhone={profilePhone || actorPhone}
+              draftName={profileName}
+              draftEmail={recoveryEmail || profileEmail}
+              draftPhone={recoveryPhone || profilePhone}
+              onSyncLocalProfile={(patch) => {
+                setProfileName(patch.displayName);
+                setProfileEmail(patch.email);
+                setRecoveryEmail(patch.email);
+                setProfilePhone(patch.phone);
+                setRecoveryPhone(patch.phone);
+                onUpdateActorProfile?.(patch);
+              }}
+            />
 
             {/* Password & Reset */}
             <form onSubmit={handlePasswordChange} className="grid grid-cols-1 md:grid-cols-3 gap-3 rounded-xl border border-slate-200 dark:border-slate-800 p-4">
@@ -2027,6 +2129,20 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
                 })}
               </div>
             </div>
+            {/* Live RTDB Users Sync & Rules Reference */}
+            <RealtimeAccountSyncPanel
+              lang={lang}
+              role={role}
+              actorId={actorId}
+              actorName={actorName}
+              actorEmail={profileEmail || actorEmail}
+              actorPhone={profilePhone || actorPhone}
+              draftName={profileName}
+              draftEmail={recoveryEmail || profileEmail}
+              draftPhone={recoveryPhone || profilePhone}
+              onSyncLocalProfile={onUpdateActorProfile}
+              showRulesBoxByDefault={role === 'central_admin'}
+            />
           </div>
         );
 
@@ -2044,10 +2160,10 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
                     <Database className="w-4 h-4 text-indigo-600 dark:text-indigo-300" />
                     <span>{b('Firebase ক্লাউড ব্যাকআপ ও অ্যাকাউন্ট রিস্টোর', 'Firebase Cloud Backup & Account Restore', lang)}</span>
                   </div>
-                  <p className="text-[11px] text-indigo-800/80 dark:text-indigo-200/80 mt-0.5">
+                  <p className="text-[11px] text-indigo-800/80 dark:text-indigo-200/80 mt-0.5 break-all">
                     {b(
-                      `প্রজেক্ট: ${firebaseProjectInfo.projectId} · ডেটাবেস: ${firebaseProjectInfo.databaseId}`,
-                      `Project: ${firebaseProjectInfo.projectId} · Database: ${firebaseProjectInfo.databaseId}`,
+                      `প্রজেক্ট: ${firebaseProjectInfo.projectId} · Firestore: ${firebaseProjectInfo.databaseId} · RTDB: ${firebaseProjectInfo.databaseURL}`,
+                      `Project: ${firebaseProjectInfo.projectId} · Firestore: ${firebaseProjectInfo.databaseId} · RTDB: ${firebaseProjectInfo.databaseURL}`,
                       lang
                     )}
                   </p>

@@ -26,6 +26,17 @@ import {
   type DeploymentLinksRecord,
 } from './src/utils/deploymentConfig';
 import type { Role } from './src/types';
+import {
+  maskPhoneNumber,
+  normalizeBangladeshMobile,
+  sanitizeSmsBody,
+  validateCustomSmsGatewayUrl,
+  type BulkSmsCategory,
+  type BulkSmsDeliveryReceipt,
+  type BulkSmsLogEntry,
+  type BulkSmsRecipient,
+  type SmsGatewayProvider,
+} from './src/utils/bulkSmsEngine';
 
 interface SharedDatabaseSchema {
   schemaVersion: number;
@@ -33,6 +44,7 @@ interface SharedDatabaseSchema {
   settings: SystemSettingsState;
   auditLogs: AuditLogEntry[];
   deploymentLinks?: DeploymentLinksRecord;
+  smsLogs?: BulkSmsLogEntry[];
 }
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
@@ -49,6 +61,7 @@ function ensureDbFile(): SharedDatabaseSchema {
       settings: createDefaultSettingsState('bn', 'light'),
       auditLogs: [],
       deploymentLinks: createDefaultDeploymentLinksRecord(),
+      smsLogs: [],
     };
     fs.writeFileSync(DB_FILE, JSON.stringify(initial, null, 2), 'utf8');
     return initial;
@@ -84,6 +97,7 @@ function ensureDbFile(): SharedDatabaseSchema {
       settings: parsed.settings ?? createDefaultSettingsState('bn', 'light'),
       auditLogs: Array.isArray(parsed.auditLogs) ? parsed.auditLogs : [],
       deploymentLinks: normalizedLinks,
+      smsLogs: Array.isArray(parsed.smsLogs) ? parsed.smsLogs : [],
     };
   } catch {
     const fallback: SharedDatabaseSchema = {
@@ -92,6 +106,7 @@ function ensureDbFile(): SharedDatabaseSchema {
       settings: createDefaultSettingsState('bn', 'light'),
       auditLogs: [],
       deploymentLinks: createDefaultDeploymentLinksRecord(),
+      smsLogs: [],
     };
     fs.writeFileSync(DB_FILE, JSON.stringify(fallback, null, 2), 'utf8');
     return fallback;
@@ -395,6 +410,247 @@ async function startServer() {
       deployment: resolved,
       raw: db.deploymentLinks,
       lastSyncedAt: db.lastSyncedAt,
+    });
+  });
+
+  function resolveActiveSmsProvider(): SmsGatewayProvider {
+    const requested = (process.env.SMS_PROVIDER || 'auto').trim().toLowerCase();
+    const hasTwilio = Boolean(
+      process.env.TWILIO_ACCOUNT_SID?.trim() &&
+        process.env.TWILIO_AUTH_TOKEN?.trim() &&
+        process.env.TWILIO_FROM_NUMBER?.trim()
+    );
+    const hasBdGateway = Boolean(
+      process.env.BD_SMS_API_URL?.trim() &&
+        validateCustomSmsGatewayUrl(process.env.BD_SMS_API_URL) &&
+        process.env.BD_SMS_API_KEY?.trim()
+    );
+    if (requested === 'twilio' && hasTwilio) return 'twilio';
+    if (requested === 'bd_sms_gateway' && hasBdGateway) return 'bd_sms_gateway';
+    if (requested === 'preview_sandbox') return 'preview_sandbox';
+    if (hasTwilio) return 'twilio';
+    if (hasBdGateway) return 'bd_sms_gateway';
+    return 'preview_sandbox';
+  }
+
+  app.get('/api/sms/config-status', (_req, res) => {
+    const activeProvider = resolveActiveSmsProvider();
+    res.json({
+      provider: activeProvider,
+      twilioConfigured: Boolean(
+        process.env.TWILIO_ACCOUNT_SID?.trim() &&
+          process.env.TWILIO_AUTH_TOKEN?.trim() &&
+          process.env.TWILIO_FROM_NUMBER?.trim()
+      ),
+      bdGatewayConfigured: Boolean(
+        process.env.BD_SMS_API_URL?.trim() &&
+          validateCustomSmsGatewayUrl(process.env.BD_SMS_API_URL) &&
+          process.env.BD_SMS_API_KEY?.trim()
+      ),
+      fromLabel:
+        process.env.BD_SMS_SENDER_ID?.trim() ||
+        process.env.TWILIO_FROM_NUMBER?.trim() ||
+        'PSMS-BD',
+    });
+  });
+
+  app.get('/api/sms/history', (req, res) => {
+    const db = ensureDbFile();
+    const schoolId = typeof req.query.schoolId === 'string' ? req.query.schoolId.trim() : '';
+    const logs = (db.smsLogs ?? []).filter((l) => !schoolId || l.schoolId === schoolId);
+    res.json({ logs: logs.slice(0, 50) });
+  });
+
+  app.post('/api/sms/send-bulk', async (req, res) => {
+    const body = req.body as {
+      schoolId?: string;
+      category?: BulkSmsCategory;
+      sentByRole?: Role;
+      sentByName?: string;
+      message?: string;
+      targetsSummary?: string;
+      recipients?: BulkSmsRecipient[];
+    };
+
+    if (
+      body.sentByRole !== 'central_admin' &&
+      body.sentByRole !== 'school_admin' &&
+      body.sentByRole !== 'teacher'
+    ) {
+      res.status(403).json({ error: 'Only authorized School Admin, Teacher, or Central Admin can dispatch bulk SMS.' });
+      return;
+    }
+
+    const schoolId = (body.schoolId || '').trim().slice(0, 64);
+    if (!schoolId) {
+      res.status(400).json({ error: 'schoolId is required.' });
+      return;
+    }
+
+    const msgCheck = sanitizeSmsBody(body.message || '');
+    if (!msgCheck.ok) {
+      res.status(400).json({ error: msgCheck.error || 'Invalid SMS message body.' });
+      return;
+    }
+
+    const rawRecipients = Array.isArray(body.recipients) ? body.recipients.slice(0, 500) : [];
+    const normalizedRecipients: Array<{ name: string; phone: string }> = [];
+    const seen = new Set<string>();
+    for (const r of rawRecipients) {
+      const normalizedPhone = normalizeBangladeshMobile(r?.phone);
+      if (!normalizedPhone || seen.has(normalizedPhone)) continue;
+      seen.add(normalizedPhone);
+      normalizedRecipients.push({
+        name: String(r?.name || 'Guardian').trim().slice(0, 80) || 'Guardian',
+        phone: normalizedPhone,
+      });
+    }
+
+    if (normalizedRecipients.length === 0) {
+      res.status(400).json({ error: 'At least one valid Bangladesh/E.164 recipient mobile number is required.' });
+      return;
+    }
+
+    const provider = resolveActiveSmsProvider();
+    const receipts: BulkSmsDeliveryReceipt[] = [];
+
+    if (provider === 'twilio') {
+      const sid = process.env.TWILIO_ACCOUNT_SID!.trim();
+      const token = process.env.TWILIO_AUTH_TOKEN!.trim();
+      const from = process.env.TWILIO_FROM_NUMBER!.trim();
+      const authHeader = 'Basic ' + Buffer.from(`${sid}:${token}`).toString('base64');
+
+      for (const rcpt of normalizedRecipients) {
+        try {
+          const form = new URLSearchParams({ To: rcpt.phone, From: from, Body: msgCheck.text });
+          const resp = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(sid)}/Messages.json`, {
+            method: 'POST',
+            headers: {
+              Authorization: authHeader,
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: form.toString(),
+            signal: AbortSignal.timeout(8000),
+          });
+          if (resp.ok) {
+            const data = (await resp.json()) as { sid?: string; status?: string };
+            receipts.push({
+              name: rcpt.name,
+              phoneMasked: maskPhoneNumber(rcpt.phone),
+              status: data.status === 'queued' ? 'queued' : 'sent',
+              sidOrRef: data.sid,
+            });
+          } else {
+            const errText = await resp.text();
+            receipts.push({
+              name: rcpt.name,
+              phoneMasked: maskPhoneNumber(rcpt.phone),
+              status: 'failed',
+              error: errText.slice(0, 120),
+            });
+          }
+        } catch (err) {
+          receipts.push({
+            name: rcpt.name,
+            phoneMasked: maskPhoneNumber(rcpt.phone),
+            status: 'failed',
+            error: err instanceof Error ? err.message : 'Twilio request failed',
+          });
+        }
+      }
+    } else if (provider === 'bd_sms_gateway') {
+      const apiUrl = process.env.BD_SMS_API_URL!.trim();
+      const apiKey = process.env.BD_SMS_API_KEY!.trim();
+      const senderId = (process.env.BD_SMS_SENDER_ID || 'PSMS-BD').trim();
+      for (const rcpt of normalizedRecipients) {
+        try {
+          const resp = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              api_key: apiKey,
+              senderid: senderId,
+              number: rcpt.phone.replace(/^\+/, ''),
+              message: msgCheck.text,
+            }),
+            signal: AbortSignal.timeout(8000),
+          });
+          receipts.push({
+            name: rcpt.name,
+            phoneMasked: maskPhoneNumber(rcpt.phone),
+            status: resp.ok ? 'sent' : 'failed',
+            sidOrRef: resp.ok ? `BD-${Date.now().toString().slice(-6)}` : undefined,
+          });
+        } catch (err) {
+          receipts.push({
+            name: rcpt.name,
+            phoneMasked: maskPhoneNumber(rcpt.phone),
+            status: 'failed',
+            error: err instanceof Error ? err.message : 'Gateway error',
+          });
+        }
+      }
+    } else {
+      // Sandbox / preview mode when no external SMS gateway secret is configured yet
+      for (let i = 0; i < normalizedRecipients.length; i++) {
+        const rcpt = normalizedRecipients[i];
+        receipts.push({
+          name: rcpt.name,
+          phoneMasked: maskPhoneNumber(rcpt.phone),
+          status: 'preview',
+          sidOrRef: `SBX-${Date.now().toString().slice(-5)}-${i + 1}`,
+        });
+      }
+    }
+
+    const failedCount = receipts.filter((r) => r.status === 'failed').length;
+    const deliveredCount = receipts.length - failedCount;
+    const nowIso = new Date().toISOString();
+    const category: BulkSmsCategory =
+      body.category === 'absence_alert' || body.category === 'emergency_notice'
+        ? body.category
+        : 'general_notice';
+
+    const logEntry: BulkSmsLogEntry = {
+      id: `SMS-${Date.now()}-${Math.floor(Math.random() * 90 + 10)}`,
+      category,
+      schoolId,
+      sentByRole: body.sentByRole,
+      sentByName: String(body.sentByName || 'School Admin').trim().slice(0, 100),
+      message: msgCheck.text,
+      recipientCount: receipts.length,
+      deliveredCount,
+      failedCount,
+      provider,
+      targetsSummary:
+        String(body.targetsSummary || '').trim().slice(0, 120) ||
+        `${receipts.length} recipients`,
+      recipientsMasked: receipts.slice(0, 50),
+      createdAtIso: nowIso,
+    };
+
+    const db = ensureDbFile();
+    db.smsLogs = [logEntry, ...(db.smsLogs ?? [])].slice(0, 150);
+    const auditEntry: AuditLogEntry = {
+      id: `AUD-SMS-${Date.now()}`,
+      who: logEntry.sentByName,
+      role: body.sentByRole,
+      when: nowIso.replace('T', ' ').slice(0, 16),
+      what: `Bulk SMS Dispatch (${category} via ${provider})`,
+      targetName: `${logEntry.targetsSummary} (${deliveredCount}/${receipts.length})`,
+      schoolId,
+      requestId: logEntry.id,
+      oldValue: 'Queued',
+      newValue: `${deliveredCount} Dispatched`,
+    };
+    db.auditLogs = [auditEntry, ...db.auditLogs].slice(0, 250);
+    saveDbFile(db);
+
+    res.json({
+      ok: true,
+      log: logEntry,
+      provider,
+      segmentCount: msgCheck.segmentCount,
     });
   });
 

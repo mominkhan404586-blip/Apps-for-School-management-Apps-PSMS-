@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { Bell, CalendarDays, LayoutDashboard, Settings, Share2, GraduationCap } from 'lucide-react';
 import type {
@@ -209,7 +209,7 @@ import { GuardianViews } from './components/GuardianViews';
 import { StudentPortalView } from './components/TeacherAndStudentViews';
 import { TeacherAcademicWorkspace } from './components/TeacherAcademicWorkspace';
 import { SchoolRegistrationModal } from './components/SchoolRegistrationModal';
-import { PortalLandingHub } from './components/PortalLandingHub';
+import { PortalLandingHub, type DemoRolePreset } from './components/PortalLandingHub';
 import { ApplicationStatusTrackerModal } from './components/PortalIllustrations';
 import { NewTeacherRegistrationModal } from './components/TeacherGovernanceModals';
 import { ContactAdminModal } from './components/ContactAdminModal';
@@ -226,15 +226,26 @@ import {
   type FirebaseEmailAuthTab,
 } from './components/FirebaseEmailAuthModal';
 import {
+  applyRealtimeUserToSession,
   auth,
+  changeFirebaseUserPassword,
+  loadRtdbAccountSnapshot,
   recordFirebaseAuditEvent,
   reloadCurrentFirebaseUser,
   resendFirebaseVerificationEmail,
   resolveAndSyncFirebaseUser,
+  saveCloudAppBackup,
+  saveRtdbAccountSnapshot,
+  sendFirebasePasswordReset,
   signInWithFirebaseEmail,
   signInWithFirebaseGoogle,
   signOutFirebase,
+  subscribeRealtimeUserAccount,
 } from './firebase';
+import {
+  buildPasswordOverrideKey,
+  resolveUnifiedPortalLogin,
+} from './utils/unifiedLoginEngine';
 import {
   BOOT_ADMIN_EMAIL,
   canAccessRoleDashboard,
@@ -243,8 +254,10 @@ import {
   mapFirebaseAuthErrorMessage,
   persistPortalSession,
   readStoredPortalSession,
+  reconcileAuthSessionWithFirebase,
   resolveProtectedRouteAccess,
   sanitizeBootstrapNavigation,
+  shouldBlockProtectedContent,
   type AuthStatus,
   type AuthenticatedSession,
 } from './utils/authGuard';
@@ -559,6 +572,18 @@ export default function App() {
   const landingHubOpen = authStatus !== 'authenticated';
   const [statusTrackerOpen, setStatusTrackerOpen] = useState(false);
   const [publicTeacherRegOpen, setPublicTeacherRegOpen] = useState(false);
+  const [publicStudentRegOpen, setPublicStudentRegOpen] = useState(false);
+  const [portalPasswordOverrides, setPortalPasswordOverrides] = useState<Record<string, string>>(() => {
+    try {
+      const raw =
+        typeof window !== 'undefined'
+          ? window.localStorage.getItem('psms_portal_password_overrides_v1')
+          : null;
+      return raw ? (JSON.parse(raw) as Record<string, string>) : {};
+    } catch {
+      return {};
+    }
+  });
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [authenticatedSchoolLockId, setAuthenticatedSchoolLockId] = useState<string | null>(null);
   const [guardianPhotoUrl, setGuardianPhotoUrl] = useState<string | undefined>(undefined);
@@ -822,32 +847,60 @@ export default function App() {
     let active = true;
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (!active) return;
+      const stored = readStoredPortalSession();
       if (firebaseUser) {
         try {
-          const { session, pendingRoleSelection } = await resolveAndSyncFirebaseUser(firebaseUser);
+          const { session, pendingRoleSelection, unverifiedEmail } = await resolveAndSyncFirebaseUser(firebaseUser);
           if (!active) return;
           if (session) {
             persistPortalSession(session);
             applyVerifiedSession(session);
             return;
           }
-          if (pendingRoleSelection) {
+          if (unverifiedEmail || pendingRoleSelection) {
+            const reconciled = reconcileAuthSessionWithFirebase(
+              {
+                uid: firebaseUser.uid,
+                email: firebaseUser.email,
+                emailVerified: firebaseUser.emailVerified,
+              },
+              stored
+            );
+            if (reconciled.clearStored) {
+              clearStoredPortalSession();
+            }
+            if (reconciled.status === 'authenticated' && reconciled.session) {
+              applyVerifiedSession(reconciled.session);
+              return;
+            }
             setAuthenticatedSession(null);
             setAuthStatus('unauthenticated');
-            setAuthNotice(
-              b(
-                'Google অ্যাকাউন্ট যাচাই সম্পন্ন হয়েছে। অনুমোদিত ড্যাশবোর্ডে প্রবেশ করতে আপনার নির্ধারিত রোল পোর্টাল আইডি-পাসওয়ার্ড ব্যবহার করুন অথবা অ্যাডমিনের অনুমোদনের জন্য অপেক্ষা করুন।',
-                'Google account verified, but no portal role is assigned yet. Please sign in with your School/Teacher/Student/Guardian portal credentials or contact Central Admin.',
-                lang
-              )
-            );
+            if (pendingRoleSelection) {
+              setAuthNotice(
+                b(
+                  'Google অ্যাকাউন্ট যাচাই সম্পন্ন হয়েছে। অনুমোদিত ড্যাশবোর্ডে প্রবেশ করতে আপনার নির্ধারিত রোল পোর্টাল আইডি-পাসওয়ার্ড ব্যবহার করুন অথবা অ্যাডমিনের অনুমোদনের জন্য অপেক্ষা করুন।',
+                  'Google account verified, but no portal role is assigned yet. Please sign in with your School/Teacher/Student/Guardian portal credentials or contact Central Admin.',
+                  lang
+                )
+              );
+            }
             return;
           }
         } catch (err) {
           if (!active) return;
-          const stored = readStoredPortalSession();
-          if (stored) {
-            applyVerifiedSession(stored);
+          const reconciled = reconcileAuthSessionWithFirebase(
+            {
+              uid: firebaseUser.uid,
+              email: firebaseUser.email,
+              emailVerified: firebaseUser.emailVerified,
+            },
+            stored
+          );
+          if (reconciled.clearStored) {
+            clearStoredPortalSession();
+          }
+          if (reconciled.status === 'authenticated' && reconciled.session) {
+            applyVerifiedSession(reconciled.session);
             return;
           }
           setAuthenticatedSession(null);
@@ -861,9 +914,12 @@ export default function App() {
         }
       }
 
-      const stored = readStoredPortalSession();
-      if (stored) {
-        applyVerifiedSession(stored);
+      const reconciled = reconcileAuthSessionWithFirebase(null, stored);
+      if (reconciled.clearStored) {
+        clearStoredPortalSession();
+      }
+      if (reconciled.status === 'authenticated' && reconciled.session) {
+        applyVerifiedSession(reconciled.session);
       } else {
         setAuthenticatedSession(null);
         setAuthStatus('unauthenticated');
@@ -875,6 +931,122 @@ export default function App() {
       unsubscribe();
     };
   }, [applyVerifiedSession]);
+
+  useEffect(() => {
+    if (
+      authStatus !== 'authenticated' ||
+      !authenticatedSession ||
+      authenticatedSession.provider === 'institutional_portal'
+    ) {
+      return;
+    }
+    const uid = authenticatedSession.uid;
+    if (!uid || !auth.currentUser?.emailVerified) return;
+
+    let cancelled = false;
+    void loadRtdbAccountSnapshot(uid).then((snapshot) => {
+      if (cancelled || !snapshot) return;
+      if (snapshot.language && snapshot.language !== lang) {
+        setLang(snapshot.language);
+      }
+      if (snapshot.themePreference && snapshot.themePreference !== 'system') {
+        setTheme(snapshot.themePreference);
+      }
+      if (snapshot.settingsJson) {
+        try {
+          const parsed = JSON.parse(snapshot.settingsJson) as Partial<SystemSettingsState>;
+          if (parsed && parsed.features) {
+            setSystemSettings((prev) => ({
+              ...prev,
+              ...parsed,
+              features: { ...prev.features, ...parsed.features },
+              appearance: { ...prev.appearance, ...(parsed.appearance ?? {}) },
+              security: { ...prev.security, ...(parsed.security ?? {}) },
+              regional: { ...prev.regional, ...(parsed.regional ?? {}) },
+              notifications: { ...prev.notifications, ...(parsed.notifications ?? {}) },
+            }));
+          }
+        } catch {
+          // ignore malformed remote settings JSON
+        }
+      }
+    });
+
+    const unsubRtdb = subscribeRealtimeUserAccount(uid, (rtdbUser) => {
+      if (!rtdbUser) return;
+
+      setAuthenticatedSession((prev) => {
+        const outcome = applyRealtimeUserToSession(prev, rtdbUser);
+        if (outcome.suspended) {
+          void signOutFirebase();
+          clearStoredPortalSession();
+          setAuthStatus('unauthenticated');
+          setAuthError(
+            b(
+              'আপনার অ্যাকাউন্টটি অ্যাডমিন দ্বারা স্থগিত (Suspended) করা হয়েছে।',
+              'Your account has been suspended by an administrator.',
+              lang
+            )
+          );
+          return null;
+        }
+        if (!outcome.changed || !outcome.nextSession) {
+          return prev;
+        }
+
+        const updated = outcome.nextSession;
+        persistPortalSession(updated);
+
+        if (updated.role !== role) {
+          setRole(updated.role);
+        }
+        if (updated.role === 'school_admin' && updated.schoolId) {
+          setActiveSchoolAdminSchoolId(updated.schoolId);
+          setAuthenticatedSchoolLockId(updated.schoolId);
+        }
+        if (updated.role === 'teacher' && updated.teacherId) {
+          setActiveTeacherPortalId(updated.teacherId);
+          if (updated.schoolId) setActiveTeacherSchoolId(updated.schoolId);
+        }
+        if (updated.role === 'student' && updated.studentId) {
+          setActiveStudentPortalId(updated.studentId);
+        }
+        if (updated.role === 'guardian' && updated.studentId) {
+          setSelectedChildId(updated.studentId);
+        }
+        if (updated.role === 'central_admin') {
+          setAdminAccounts((prevAdmins) =>
+            prevAdmins.map((adm) =>
+              adm.email === updated.email || adm.id === activeCentralAdmin?.id
+                ? {
+                    ...adm,
+                    name: updated.displayName,
+                    email: updated.email ?? adm.email,
+                    mobile: rtdbUser.phone || adm.mobile,
+                  }
+                : adm
+            )
+          );
+        }
+        if (rtdbUser.phone || rtdbUser.recoveryEmail || rtdbUser.recoveryPhone) {
+          setSystemSettings((prevSettings) => ({
+            ...prevSettings,
+            accountRecoveryEmail:
+              rtdbUser.recoveryEmail || rtdbUser.email || prevSettings.accountRecoveryEmail,
+            accountRecoveryPhone:
+              rtdbUser.recoveryPhone || rtdbUser.phone || prevSettings.accountRecoveryPhone,
+          }));
+        }
+
+        return updated;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+      unsubRtdb();
+    };
+  }, [authStatus, authenticatedSession?.uid, authenticatedSession?.provider, lang, role, activeCentralAdmin?.id]);
 
   const handleGoogleSignIn = async () => {
     setAuthError(null);
@@ -1051,7 +1223,335 @@ export default function App() {
     }
   };
 
+  const completePortalLoginSession = useCallback(
+    (payload: {
+      role: Role;
+      displayName: string;
+      schoolId?: string;
+      teacherId?: string;
+      studentId?: string;
+      guardianMobile?: string;
+      linkedStudentIds?: string[];
+    }) => {
+      if (payload.linkedStudentIds && payload.linkedStudentIds.length > 0) {
+        setLinkedChildIds(payload.linkedStudentIds);
+      }
+      if (payload.studentId) {
+        if (payload.role === 'guardian') {
+          setSelectedChildId(payload.studentId);
+        } else {
+          setActiveStudentPortalId(payload.studentId);
+        }
+      }
+      if (payload.role === 'teacher' && payload.teacherId) {
+        setActiveTeacherPortalId(payload.teacherId);
+        if (payload.schoolId) setActiveTeacherSchoolId(payload.schoolId);
+      }
+      if (payload.role === 'school_admin' && payload.schoolId) {
+        setActiveSchoolAdminSchoolId(payload.schoolId);
+        setAuthenticatedSchoolLockId(payload.schoolId);
+      } else if (payload.role === 'central_admin') {
+        setAuthenticatedSchoolLockId(null);
+      }
+
+      const nextSession: AuthenticatedSession = {
+        uid:
+          payload.teacherId ||
+          payload.studentId ||
+          payload.schoolId ||
+          payload.guardianMobile ||
+          `portal-${payload.role}`,
+        role: payload.role,
+        displayName: payload.displayName,
+        provider: 'institutional_portal',
+        schoolId: payload.schoolId,
+        teacherId: payload.teacherId,
+        studentId: payload.studentId,
+        guardianMobile: payload.guardianMobile,
+        signedInAtIso: new Date().toISOString(),
+      };
+      persistPortalSession(nextSession);
+      applyVerifiedSession(nextSession);
+      showToast(b('পোর্টালে সফলভাবে প্রবেশ করেছেন।', 'Signed in to portal.', lang));
+    },
+    [applyVerifiedSession, lang]
+  );
+
+  const handleUnifiedLoginSubmit = async (
+    identifier: string,
+    passwordInput: string
+  ): Promise<{ ok: boolean; message?: string }> => {
+    setAuthError(null);
+    setAuthNotice(null);
+
+    const outcome = resolveUnifiedPortalLogin({
+      identifier,
+      password: passwordInput,
+      schools,
+      teachers,
+      students,
+      passwordOverrides: portalPasswordOverrides,
+    });
+
+    if (outcome.kind === 'portal_authenticated') {
+      completePortalLoginSession({
+        role: outcome.role,
+        displayName: outcome.displayName,
+        schoolId: outcome.schoolId,
+        teacherId: outcome.teacherId,
+        studentId: outcome.studentId,
+        guardianMobile: outcome.guardianMobile,
+        linkedStudentIds: outcome.linkedStudentIds,
+      });
+      return { ok: true };
+    }
+
+    if (outcome.kind === 'firebase_email') {
+      try {
+        const user = await signInWithFirebaseEmail(outcome.email, passwordInput);
+        if (!user.emailVerified) {
+          try {
+            await resendFirebaseVerificationEmail();
+          } catch {
+            // ignore duplicate recent send
+          }
+          setEmailAuthPrefill(user.email ?? outcome.email);
+          setEmailAuthInitialTab('signin');
+          setEmailAuthModalOpen(true);
+          return {
+            ok: false,
+            message: b(
+              'আপনার ইমেইল এখনো যাচাইকৃত নয়। ইনবক্স থেকে ভেরিফিকেশন লিংকে ক্লিক করুন অথবা অ্যাকাউন্ট পপ-আপ থেকে যাচাই করুন।',
+              'Your email is not verified yet. Check your inbox or verify from the prompt.',
+              lang
+            ),
+          };
+        }
+
+        const resolved = await resolveAndSyncFirebaseUser(user);
+        if (!resolved.session) {
+          return {
+            ok: false,
+            message: b(
+              'এই Firebase অ্যাকাউন্টের জন্য এখনো পোর্টাল রোল সক্রিয় হয়নি।',
+              'No portal role assigned yet for this Firebase account.',
+              lang
+            ),
+          };
+        }
+        persistPortalSession(resolved.session);
+        applyVerifiedSession(resolved.session);
+        void recordFirebaseAuditEvent({
+          role: resolved.session.role,
+          what: 'Unified Firebase Email Sign-In Verified',
+          targetName: resolved.session.email || resolved.session.displayName,
+          schoolId: resolved.session.schoolId,
+        });
+        showToast(b('সফলভাবে লগইন সম্পন্ন হয়েছে।', 'Signed in successfully.', lang));
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, message: mapFirebaseAuthErrorMessage(err, lang) };
+      }
+    }
+
+    return {
+      ok: false,
+      message: b(outcome.errorBn, outcome.errorEn, lang),
+    };
+  };
+
+  const handleChangePasswordSubmit = async (
+    identifier: string,
+    currentPassword: string,
+    newPassword: string
+  ): Promise<{ ok: boolean; message: string }> => {
+    const cleanId = identifier.trim();
+    const outcome = resolveUnifiedPortalLogin({
+      identifier: cleanId,
+      password: currentPassword,
+      schools,
+      teachers,
+      students,
+      passwordOverrides: portalPasswordOverrides,
+    });
+
+    if (outcome.kind === 'portal_authenticated') {
+      const targetId =
+        outcome.role === 'school_admin'
+          ? outcome.schoolId || cleanId
+          : outcome.role === 'teacher'
+            ? outcome.teacherId || cleanId
+            : outcome.role === 'student'
+              ? outcome.studentId || cleanId
+              : outcome.guardianMobile || cleanId;
+      const key = buildPasswordOverrideKey(
+        outcome.role as 'school_admin' | 'teacher' | 'student' | 'guardian',
+        targetId
+      );
+      const nextOverrides = { ...portalPasswordOverrides, [key]: newPassword };
+      setPortalPasswordOverrides(nextOverrides);
+      try {
+        window.localStorage.setItem('psms_portal_password_overrides_v1', JSON.stringify(nextOverrides));
+      } catch {
+        // ignore storage error
+      }
+      if (outcome.role === 'school_admin' && outcome.schoolId) {
+        setSchools((prev) =>
+          prev.map((sc) => (sc.id === outcome.schoolId ? { ...sc, loginPassword: newPassword } : sc))
+        );
+      }
+      return {
+        ok: true,
+        message: b(
+          'পাসওয়ার্ড সফলভাবে পরিবর্তন হয়েছে! এখন নতুন পাসওয়ার্ড দিয়ে লগইন করুন।',
+          'Password changed successfully! You can now sign in with your new password.',
+          lang
+        ),
+      };
+    }
+
+    if (outcome.kind === 'firebase_email' || cleanId.includes('@')) {
+      try {
+        await changeFirebaseUserPassword(cleanId, currentPassword, newPassword);
+        return {
+          ok: true,
+          message: b(
+            'Firebase অ্যাকাউন্টের পাসওয়ার্ড সফলভাবে পরিবর্তন হয়েছে! এখন নতুন পাসওয়ার্ড দিয়ে লগইন করুন।',
+            'Firebase password updated! Sign in with your new password.',
+            lang
+          ),
+        };
+      } catch (err) {
+        return { ok: false, message: mapFirebaseAuthErrorMessage(err, lang) };
+      }
+    }
+
+    return {
+      ok: false,
+      message: b(
+        outcome.errorBn || 'বর্তমান পাসওয়ার্ড বা ইউজার আইডি সঠিক নয়।',
+        outcome.errorEn || 'Current password or account ID is incorrect.',
+        lang
+      ),
+    };
+  };
+
+  const handleForgotPasswordSubmit = async (
+    identifier: string
+  ): Promise<{ ok: boolean; message: string }> => {
+    const cleanId = identifier.trim();
+    if (cleanId.includes('@')) {
+      try {
+        await sendFirebasePasswordReset(cleanId);
+        return {
+          ok: true,
+          message: b(
+            `${cleanId} ঠিকানায় পাসওয়ার্ড রিসেট লিংক পাঠানো হয়েছে। ইনবক্স ও স্প্যাম ফোল্ডার দেখুন।`,
+            `Password reset link sent to ${cleanId}. Please check your inbox and spam folder.`,
+            lang
+          ),
+        };
+      } catch (err) {
+        return { ok: false, message: mapFirebaseAuthErrorMessage(err, lang) };
+      }
+    }
+
+    return {
+      ok: true,
+      message: b(
+        `আইডি (${cleanId}) পুনরুদ্ধারের জন্য আপনার বিদ্যালয়ের প্রধান শিক্ষক অথবা নিচের "অ্যাকাউন্ট সংক্রান্ত সকল বিষয় -> অ্যাডমিনের সাথে যোগাযোগ" ব্যবহার করুন।`,
+        `To recover institutional ID (${cleanId}), contact your School Admin or use "All Account Matters -> Contact Admin" below.`,
+        lang
+      ),
+    };
+  };
+
+  const handleDemoQuickLogin = (preset: DemoRolePreset) => {
+    if (preset === 'school_admin') {
+      const demoSchool = schools[0];
+      completePortalLoginSession({
+        role: 'school_admin',
+        displayName: demoSchool?.headTeacher || 'School Admin',
+        schoolId: demoSchool?.id || 'GPS-1042',
+      });
+      return;
+    }
+    if (preset === 'teacher') {
+      const demoTeacher = teachers.find((t) => t.id === 'tch-2') ?? teachers[0];
+      completePortalLoginSession({
+        role: 'teacher',
+        displayName: demoTeacher?.nameEn || 'Teacher',
+        schoolId: demoTeacher?.schoolId || 'GPS-1042',
+        teacherId: demoTeacher?.id || 'tch-2',
+      });
+      return;
+    }
+    if (preset === 'student') {
+      const demoStudent = students.find((s) => s.id === 'stu-rahim') ?? students[0];
+      completePortalLoginSession({
+        role: 'student',
+        displayName: demoStudent?.nameEn || 'Student',
+        schoolId: demoStudent?.schoolId || 'GPS-1042',
+        studentId: demoStudent?.id || 'stu-rahim',
+      });
+      return;
+    }
+    const demoStudent = students[0];
+    completePortalLoginSession({
+      role: 'guardian',
+      displayName: 'Guardian (Demo)',
+      schoolId: demoStudent?.schoolId || 'GPS-1042',
+      studentId: demoStudent?.id || 'stu-rahim',
+      guardianMobile: demoStudent?.guardianMobile || '01712345678',
+      linkedStudentIds: students
+        .filter((st) => st.guardianMobile === (demoStudent?.guardianMobile || '01712345678'))
+        .map((st) => st.id),
+    });
+  };
+
   const handleLogout = async () => {
+    if (auth.currentUser?.emailVerified && authenticatedSession) {
+      try {
+        await Promise.allSettled([
+          saveRtdbAccountSnapshot({
+            role: authenticatedSession.role,
+            displayName: authenticatedSession.displayName,
+            email: authenticatedSession.email,
+            schoolId: authenticatedSession.schoolId,
+            language: lang,
+            themePreference: systemSettings.appearance.themePreference,
+            settingsJson: JSON.stringify(systemSettings),
+          }),
+          saveCloudAppBackup({
+            role: authenticatedSession.role,
+            language: lang,
+            themePreference: systemSettings.appearance.themePreference,
+            schoolCount: schools.length,
+            teacherCount: teachers.length,
+            studentCount: students.length,
+            settingsVersion: systemSettings.version,
+            note: `Auto-saved on sign-out (${authenticatedSession.role})`,
+            backupSettings: {
+              appearance: {
+                themePreference: systemSettings.appearance.themePreference,
+                fontSize: systemSettings.appearance.fontSize,
+                layoutDensity: systemSettings.appearance.density,
+              },
+              regional: systemSettings.regional,
+              security: {
+                twoFactorEnabled: systemSettings.security.twoFactorEnabled,
+                otpVerificationRequired: systemSettings.security.otpVerificationRequired,
+                loginAlerts: systemSettings.security.loginAlerts,
+                autoLogoutMinutes: systemSettings.security.autoLogoutMinutes,
+              },
+              notifications: systemSettings.notifications as unknown as Record<string, boolean>,
+            },
+          }),
+        ]);
+      } catch {
+        // Non-blocking snapshot save before sign-out
+      }
+    }
     clearStoredPortalSession();
     try {
       await signOutFirebase();
@@ -5106,6 +5606,27 @@ export default function App() {
                 ? activeStudentRecord?.permanentId ?? 'STD'
                 : 'GRD-2026-01'
       }
+      actorEmail={
+        authenticatedSession?.email ||
+        (role === 'central_admin'
+          ? activeCentralAdmin?.email ?? CENTRAL_ADMIN_CREDENTIALS.email
+          : role === 'school_admin'
+            ? schoolAdminOwnSchool.email
+            : role === 'teacher'
+              ? activeTeacherRecord.email
+              : systemSettings.accountRecoveryEmail || 'user@psms.gov.bd')
+      }
+      actorPhone={
+        role === 'central_admin'
+          ? activeCentralAdmin?.mobile ?? systemSettings.accountRecoveryPhone
+          : role === 'school_admin'
+            ? schoolAdminOwnSchool.mobile
+            : role === 'teacher'
+              ? activeTeacherRecord.mobile
+              : role === 'student'
+                ? activeStudentRecord?.guardianMobile ?? systemSettings.accountRecoveryPhone
+                : systemSettings.accountRecoveryPhone
+      }
       actorAvatarUrl={
         role === 'central_admin'
           ? activeCentralAdmin?.photoUrl
@@ -5148,6 +5669,51 @@ export default function App() {
         }
         setSchools((prev) => prev.map((s) => (s.id === schoolId ? { ...s, ...patch } : s)));
       }}
+      onUpdateActorProfile={(patch) => {
+        setAuthenticatedSession((prev) => {
+          if (!prev) return prev;
+          const nextSession: AuthenticatedSession = {
+            ...prev,
+            displayName: patch.displayName,
+            email: patch.email,
+          };
+          persistPortalSession(nextSession);
+          return nextSession;
+        });
+        if (role === 'central_admin' && activeCentralAdmin) {
+          setAdminAccounts((prev) =>
+            prev.map((adm) =>
+              adm.id === activeCentralAdmin.id
+                ? { ...adm, name: patch.displayName, email: patch.email, mobile: patch.phone }
+                : adm
+            )
+          );
+        } else if (role === 'school_admin') {
+          setSchools((prev) =>
+            prev.map((s) =>
+              s.id === schoolAdminOwnSchool.id
+                ? { ...s, headTeacher: patch.displayName, email: patch.email, mobile: patch.phone }
+                : s
+            )
+          );
+        } else if (role === 'teacher') {
+          setTeachers((prev) =>
+            prev.map((t) =>
+              t.id === activeTeacherRecord.id
+                ? { ...t, nameBn: patch.displayName, email: patch.email, mobile: patch.phone }
+                : t
+            )
+          );
+        } else if (role === 'student' && activeStudentRecord) {
+          setStudents((prev) =>
+            prev.map((st) =>
+              st.id === activeStudentRecord.id
+                ? { ...st, nameBn: patch.displayName, guardianMobile: patch.phone }
+                : st
+            )
+          );
+        }
+      }}
       onOpenCoverGallery={() => setCoverGalleryOpen(true)}
       onOpenBannerCrop={() => openBannerCropEditor(schoolAdminOwnSchool)}
     />
@@ -5161,6 +5727,7 @@ export default function App() {
   );
   const protectedRole = routeDecision.effectiveRole;
   const protectedTab = routeDecision.effectiveTab ?? 'dashboard';
+  const isProtectedBlocked = shouldBlockProtectedContent(authStatus, routeDecision);
 
   return (
     <div
@@ -5172,7 +5739,8 @@ export default function App() {
     >
       {routeDecision.screen === 'loading' ? (
         <AuthLoadingScreen lang={lang} />
-      ) : routeDecision.screen === 'dashboard' &&
+      ) : !isProtectedBlocked &&
+        routeDecision.screen === 'dashboard' &&
         routeDecision.allowProtectedRender &&
         protectedRole ? (
         <>
@@ -5440,9 +6008,9 @@ export default function App() {
             />
           )}
 
-          {role === 'school_admin' && (
+          {protectedRole === 'school_admin' && (
             <SchoolAdminViews
-              activeTab={activeTab}
+              activeTab={protectedTab}
               onSelectTab={setActiveTab}
               lang={lang}
               searchQuery={searchQuery}
@@ -5604,9 +6172,9 @@ export default function App() {
             />
           )}
 
-          {role === 'teacher' && (
+          {protectedRole === 'teacher' && (
             <TeacherAcademicWorkspace
-              activeTab={activeTab}
+              activeTab={protectedTab}
               onSelectTab={setActiveTab}
               lang={lang}
               teacher={activeTeacherRecord}
@@ -5710,9 +6278,9 @@ export default function App() {
             />
           )}
 
-          {role === 'guardian' && activeGuardianChild && (
+          {protectedRole === 'guardian' && activeGuardianChild && (
             <GuardianViews
-              activeTab={activeTab}
+              activeTab={protectedTab}
               onSelectTab={setActiveTab}
               lang={lang}
               child={activeGuardianChild}
@@ -5783,9 +6351,9 @@ export default function App() {
             />
           )}
 
-          {role === 'student' && activeStudentRecord && (
+          {protectedRole === 'student' && activeStudentRecord && (
             <StudentPortalView
-              activeTab={activeTab}
+              activeTab={protectedTab}
               onSelectTab={setActiveTab}
               lang={lang}
               student={activeStudentRecord}
@@ -5910,15 +6478,19 @@ export default function App() {
           lang={lang}
           theme={theme}
           schools={schools}
+          teachers={teachers}
+          students={students}
+          requests={requests}
           onToggleLang={() => setLang((l) => (l === 'bn' ? 'en' : 'bn'))}
           onToggleTheme={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
-          onOpenLoginPreset={(preset) => {
-            setLoginPresetMode(preset);
-            setLoginModalOpen(true);
-          }}
+          onUnifiedLoginSubmit={handleUnifiedLoginSubmit}
+          onChangePasswordSubmit={handleChangePasswordSubmit}
+          onForgotPasswordSubmit={handleForgotPasswordSubmit}
+          onDemoQuickLogin={handleDemoQuickLogin}
           onOpenSchoolRegistration={() => setSchoolRegModal({ open: true, mode: 'ONLINE' })}
-          onOpenStatusTracker={() => setStatusTrackerOpen(true)}
           onOpenTeacherRegistration={() => setPublicTeacherRegOpen(true)}
+          onOpenStudentRegistration={() => setPublicStudentRegOpen(true)}
+          onOpenStatusTracker={() => setStatusTrackerOpen(true)}
           onOpenContactAdmin={() => setContactAdminModalOpen(true)}
           onOpenAppDownloadAndShare={() => setAppDownloadShareModalOpen(true)}
           onGoogleSignIn={handleGoogleSignIn}
@@ -5973,63 +6545,82 @@ export default function App() {
       {/* Modals */}
       <ActionConfirmModal state={confirmState} lang={lang} onClose={() => setConfirmState(null)} />
 
-      <StudentProfileModal
-        student={activeInspectedStudent}
-        actorRole={role}
-        school={schools.find((s) => s.id === activeInspectedStudent?.schoolId)}
-        lang={lang}
-        onClose={() => setInspectedStudent(null)}
-        onPromoteStudent={(stId) => {
-          setStudents((prev) =>
-            prev.map((s) =>
-              s.id === stId
-                ? { ...s, admissionHistory: [...s.admissionHistory, '২০২৭: পরবর্তী শ্রেণিতে উন্নীত (Promoted)'] }
-                : s
-            )
-          );
-          setInspectedStudent(null);
-          showToast(b('শিক্ষার্থী পরবর্তী শ্রেণিতে উন্নীত হয়েছে।', 'Student promoted.', lang));
-        }}
-        onIssueTransferLetter={handleIssueTransferLetter}
-        onIssueDigitalIdCard={handleReissueStudentId}
-        onEditStudentPhoto={openStudentPhotoEditor}
-      />
+      {!isProtectedBlocked && (
+        <>
+          <StudentProfileModal
+            student={activeInspectedStudent}
+            actorRole={protectedRole ?? role}
+            school={schools.find((s) => s.id === activeInspectedStudent?.schoolId)}
+            lang={lang}
+            onClose={() => setInspectedStudent(null)}
+            onPromoteStudent={(stId) => {
+              setStudents((prev) =>
+                prev.map((s) =>
+                  s.id === stId
+                    ? { ...s, admissionHistory: [...s.admissionHistory, '২০২৭: পরবর্তী শ্রেণিতে উন্নীত (Promoted)'] }
+                    : s
+                )
+              );
+              setInspectedStudent(null);
+              showToast(b('শিক্ষার্থী পরবর্তী শ্রেণিতে উন্নীত হয়েছে।', 'Student promoted.', lang));
+            }}
+            onIssueTransferLetter={handleIssueTransferLetter}
+            onIssueDigitalIdCard={handleReissueStudentId}
+            onEditStudentPhoto={openStudentPhotoEditor}
+          />
 
-      <AddStudentModal
-        open={addStudentOpen}
-        lang={lang}
-        schoolId={schoolAdminOwnSchool.id}
-        schoolNameBn={schoolAdminOwnSchool.nameBn}
-        allowedClasses={
-          getSchoolTypeConfig(schoolAdminOwnSchool.schoolType, schoolAdminOwnSchool.approvedClasses)
-            .defaultClasses
-        }
-        nextSerial={students.length + 50}
-        onClose={() => setAddStudentOpen(false)}
-        onAddStudent={handleAddStudent}
-      />
+          <AddStudentModal
+            open={addStudentOpen}
+            lang={lang}
+            schoolId={schoolAdminOwnSchool.id}
+            schoolNameBn={schoolAdminOwnSchool.nameBn}
+            allowedClasses={
+              getSchoolTypeConfig(schoolAdminOwnSchool.schoolType, schoolAdminOwnSchool.approvedClasses)
+                .defaultClasses
+            }
+            nextSerial={students.length + 50}
+            onClose={() => setAddStudentOpen(false)}
+            onAddStudent={handleAddStudent}
+          />
 
-      <TeacherStudentAdmissionModal
-        open={teacherStudentAdmissionOpen}
-        lang={lang}
-        school={
-          admissionActorRole === 'teacher'
-            ? teacherActiveSchool ?? schoolAdminOwnSchool
-            : schoolAdminOwnSchool
-        }
-        students={students}
-        admittedByTeacherId={admissionActorRole === 'teacher' ? activeTeacherRecord.id : undefined}
-        admittedByTeacherName={
-          admissionActorRole === 'teacher'
-            ? activeTeacherRecord.nameBn
-            : admissionActorRole === 'central_admin'
-              ? sanitizeActorDisplayForRole(CENTRAL_ADMIN_CREDENTIALS.displayNameBn, 'school_admin')
-              : schoolAdminOwnSchool.headTeacher
-        }
-        autoActivate={admissionActorRole !== 'teacher'}
-        onClose={() => setTeacherStudentAdmissionOpen(false)}
-        onStudentAdmitted={handleAddStudent}
-      />
+          <TeacherStudentAdmissionModal
+            open={teacherStudentAdmissionOpen}
+            lang={lang}
+            school={
+              admissionActorRole === 'teacher'
+                ? teacherActiveSchool ?? schoolAdminOwnSchool
+                : schoolAdminOwnSchool
+            }
+            students={students}
+            admittedByTeacherId={admissionActorRole === 'teacher' ? activeTeacherRecord.id : undefined}
+            admittedByTeacherName={
+              admissionActorRole === 'teacher'
+                ? activeTeacherRecord.nameBn
+                : admissionActorRole === 'central_admin'
+                  ? sanitizeActorDisplayForRole(CENTRAL_ADMIN_CREDENTIALS.displayNameBn, 'school_admin')
+                  : schoolAdminOwnSchool.headTeacher
+            }
+            autoActivate={admissionActorRole !== 'teacher'}
+            onClose={() => setTeacherStudentAdmissionOpen(false)}
+            onStudentAdmitted={handleAddStudent}
+          />
+        </>
+      )}
+
+      {publicStudentRegOpen && (
+        <TeacherStudentAdmissionModal
+          open={publicStudentRegOpen}
+          lang={lang}
+          school={schools[0]}
+          schools={schools}
+          allowSchoolSelection={true}
+          students={students}
+          admittedByTeacherName={b('অনলাইন শিক্ষার্থী আবেদন', 'Online Student Application', lang)}
+          autoActivate={false}
+          onClose={() => setPublicStudentRegOpen(false)}
+          onStudentAdmitted={handleAddStudent}
+        />
+      )}
 
       <SchoolRegistrationModal
         open={schoolRegModal.open}
@@ -6041,36 +6632,38 @@ export default function App() {
         onRegisterSchool={handleRegisterSchool}
       />
 
-      <AddAdminModal
-        open={addAdminOpen}
-        lang={lang}
-        onClose={() => setAddAdminOpen(false)}
-        onAddAdmin={(adm) => {
-          const res = createSubordinateAdmin(adminAccounts, activeCentralAdmin, {
-            name: adm.name,
-            username: adm.username,
-            email: adm.email,
-            mobile: adm.mobile,
-            accessLevel: adm.accessLevel,
-            permissions: adm.permissions ?? ['schools', 'verification'],
-          });
-          if (!res.ok || !res.created) {
-            showToast(b(res.errorBn ?? 'অ্যাডমিন যোগ করা যায়নি।', res.errorEn ?? 'Could not add admin.', lang));
-            return;
-          }
-          setAdminAccounts(res.accounts);
-          appendAuditLog({
-            who: `${CENTRAL_ADMIN_CREDENTIALS.displayNameBn} (Central Admin)`,
-            role: 'central_admin',
-            what: 'নতুন Sub-Admin যুক্ত',
-            targetName: `${res.created.name} (${res.created.username})`,
-            requestId: res.created.id,
-            oldValue: 'Uninvited',
-            newValue: res.created.accessLevel,
-          });
-          showToast(b('নতুন Sub-Admin আমন্ত্রণ পাঠানো হয়েছে।', 'New Subordinate Admin added.', lang));
-        }}
-      />
+      {!isProtectedBlocked && (
+        <AddAdminModal
+          open={addAdminOpen}
+          lang={lang}
+          onClose={() => setAddAdminOpen(false)}
+          onAddAdmin={(adm) => {
+            const res = createSubordinateAdmin(adminAccounts, activeCentralAdmin, {
+              name: adm.name,
+              username: adm.username,
+              email: adm.email,
+              mobile: adm.mobile,
+              accessLevel: adm.accessLevel,
+              permissions: adm.permissions ?? ['schools', 'verification'],
+            });
+            if (!res.ok || !res.created) {
+              showToast(b(res.errorBn ?? 'অ্যাডমিন যোগ করা যায়নি।', res.errorEn ?? 'Could not add admin.', lang));
+              return;
+            }
+            setAdminAccounts(res.accounts);
+            appendAuditLog({
+              who: `${CENTRAL_ADMIN_CREDENTIALS.displayNameBn} (Central Admin)`,
+              role: 'central_admin',
+              what: 'নতুন Sub-Admin যুক্ত',
+              targetName: `${res.created.name} (${res.created.username})`,
+              requestId: res.created.id,
+              oldValue: 'Uninvited',
+              newValue: res.created.accessLevel,
+            });
+            showToast(b('নতুন Sub-Admin আমন্ত্রণ পাঠানো হয়েছে।', 'New Subordinate Admin added.', lang));
+          }}
+        />
+      )}
 
       <AppDownloadAndShareModal
         open={appDownloadShareModalOpen}
@@ -6236,31 +6829,35 @@ export default function App() {
         }}
       />
 
-      <CoverGalleryModal
-        isOpen={coverGalleryOpen}
-        currentCoverUrl={schoolAdminOwnSchool.coverImageUrl}
-        schoolNameBn={schoolAdminOwnSchool.nameBn}
-        onSelectCover={(url) => handleUpdateSchoolCover(schoolAdminOwnSchool.id, url)}
-        onOpenCustomCrop={() => {
-          setCoverGalleryOpen(false);
-          openBannerCropEditor(schoolAdminOwnSchool);
-        }}
-        onResetDefault={() =>
-          handleUpdateSchoolCover(schoolAdminOwnSchool.id, RECOMMENDED_SCHOOL_COVERS[0].url)
-        }
-        onClose={() => setCoverGalleryOpen(false)}
-      />
+      {!isProtectedBlocked && (
+        <>
+          <CoverGalleryModal
+            isOpen={coverGalleryOpen}
+            currentCoverUrl={schoolAdminOwnSchool.coverImageUrl}
+            schoolNameBn={schoolAdminOwnSchool.nameBn}
+            onSelectCover={(url) => handleUpdateSchoolCover(schoolAdminOwnSchool.id, url)}
+            onOpenCustomCrop={() => {
+              setCoverGalleryOpen(false);
+              openBannerCropEditor(schoolAdminOwnSchool);
+            }}
+            onResetDefault={() =>
+              handleUpdateSchoolCover(schoolAdminOwnSchool.id, RECOMMENDED_SCHOOL_COVERS[0].url)
+            }
+            onClose={() => setCoverGalleryOpen(false)}
+          />
 
-      {cropModalState && (
-        <ImageCropModal
-          isOpen={cropModalState.open}
-          mode={cropModalState.mode}
-          titleBn={cropModalState.titleBn}
-          currentImageUrl={cropModalState.currentUrl}
-          onSave={handleSaveCroppedImage}
-          onRemove={handleRemovePhoto}
-          onClose={() => setCropModalState(null)}
-        />
+          {cropModalState && (
+            <ImageCropModal
+              isOpen={cropModalState.open}
+              mode={cropModalState.mode}
+              titleBn={cropModalState.titleBn}
+              currentImageUrl={cropModalState.currentUrl}
+              onSave={handleSaveCroppedImage}
+              onRemove={handleRemovePhoto}
+              onClose={() => setCropModalState(null)}
+            />
+          )}
+        </>
       )}
 
       {toastMsg && (

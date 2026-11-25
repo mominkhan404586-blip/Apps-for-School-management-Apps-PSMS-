@@ -56,6 +56,7 @@ import { AttendanceDonutChart, ProgressMeter } from './Charts';
 import { AchievementTrophyIllustration, StudentBooksIllustration } from './PortalIllustrations';
 import { StudentProfileChangeRequestModal } from './StudentGovernanceModals';
 import { StudentLiveClassBanner } from './LiveClassRoleWidgets';
+import { StudentQrIdCardPanel } from './StudentQrIdCardPanel';
 import {
   AcademicCertificatesDocsPanel,
   StudentAcademicProgressPanel,
@@ -960,6 +961,9 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
 
           {school && (activeTab === 'academics' || activeTab === 'documents' || activeTab === 'results') && (
             <div className="space-y-5">
+              {activeTab === 'documents' && (
+                <StudentQrIdCardPanel lang={lang} student={student} school={school} />
+              )}
               <AcademicCertificatesDocsPanel
                 lang={lang}
                 school={school}
@@ -1010,14 +1014,28 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
             {exam?.status === 'published' ? (student.gpa ?? '4.88 (A)') : b('প্রকাশিত নয়', 'Pending', lang)}
           </div>
         </div>
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4">
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 flex flex-col justify-between gap-2">
           <div className="text-xs text-slate-500">Digital QR ID</div>
-          <div className="flex items-center gap-2 mt-1">
-            <QrCode className="w-6 h-6 text-slate-900 dark:text-white" />
-            <span className="text-xs font-mono font-semibold">{student.guardianLinkCode}</span>
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <QrCode className="w-6 h-6 text-slate-900 dark:text-white shrink-0" />
+              <span className="text-xs font-mono font-semibold truncate">{student.permanentId}</span>
+            </div>
+            <button
+              type="button"
+              data-testid="student-open-qr-generator-btn"
+              onClick={() => onSelectTab?.('documents')}
+              className="px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-[11px] font-semibold shrink-0 cursor-pointer"
+            >
+              {b('QR কোড দেখুন', 'Open QR ID', lang)}
+            </button>
           </div>
         </div>
       </div>
+
+      {activeTab === 'profile' && school && (
+        <StudentQrIdCardPanel lang={lang} student={student} school={school} />
+      )}
 
       {/* Own Profile View + Allowed Self Update + Important Change Request Tracker */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

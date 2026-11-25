@@ -3,6 +3,7 @@
   "appId": "1:1057273716694:web:090b8e54a1dcbc3944ce77",
   "apiKey": "AIzaSyDmQeA37DBeY-_b8vzsatw-pxACiZpCbgQ",
   "authDomain": "school-management-apk.firebaseapp.com",
+  "databaseURL": "https://school-management-apk-default-rtdb.asia-southeast1.firebasedatabase.app",
   "firestoreDatabaseId": "ai-studio-schoolmanagement-5d63cd27-f6ca-432e-badb-c7d2f2e7d66d",
   "storageBucket": "school-management-apk.firebasestorage.app",
   "messagingSenderId": "1057273716694",

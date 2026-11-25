@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "lastSyncedAt": "2026-11-22T09:33:14.496Z",
+  "lastSyncedAt": "2026-11-25T09:47:32.853Z",
   "settings": {
-    "version": 3,
-    "updatedAt": "2026-11-21T12:56:44.372Z",
-    "updatedBy": "মোঃ মোমিন খান",
-    "accountRecoveryEmail": "support@psms.gov.bd",
+    "version": 4,
+    "updatedAt": "2026-11-25T09:47:32.853Z",
+    "updatedBy": "বেগম ফাতেমা খাতুন",
+    "accountRecoveryEmail": "school1042@psms.gov.bd",
     "accountRecoveryPhone": "01700-000001",
     "security": {
       "twoFactorEnabled": true,
@@ -269,6 +269,53 @@
   },
   "auditLogs": [
     {
+      "id": "AUD-PROF-1795600052833",
+      "who": "বেগম ফাতেমা খাতুন",
+      "role": "school_admin",
+      "when": "2026-11-25 09:47",
+      "what": "Profile & Recovery Info Updated",
+      "targetName": "বেগম ফাতেমা খাতুন",
+      "requestId": "PROF-GPS-1042",
+      "oldValue": "01700-000001",
+      "newValue": "01700-000001 | school1042@psms.gov.bd"
+    },
+    {
+      "id": "AUD-SMS-1795598695227",
+      "who": "বেগম ফাতেমা খাতুন",
+      "role": "teacher",
+      "when": "2026-11-25 09:24",
+      "what": "Bulk SMS Dispatch (absence_alert via preview_sandbox)",
+      "targetName": "1 Absent Student Guardians (2026-11-19) (1/1)",
+      "schoolId": "GPS-1042",
+      "requestId": "SMS-1795598695226-77",
+      "oldValue": "Queued",
+      "newValue": "1 Dispatched"
+    },
+    {
+      "id": "AUD-SMS-1795598463814",
+      "who": "বেগম ফাতেমা খাতুন",
+      "role": "school_admin",
+      "when": "2026-11-25 09:21",
+      "what": "Bulk SMS Dispatch (emergency_notice via preview_sandbox)",
+      "targetName": "সকল অভিভাবক (7 জন) (7/7)",
+      "schoolId": "GPS-1042",
+      "requestId": "SMS-1795598463814-98",
+      "oldValue": "Queued",
+      "newValue": "7 Dispatched"
+    },
+    {
+      "id": "AUD-SMS-1795598310926",
+      "who": "বেগম ফাতেমা খাতুন",
+      "role": "school_admin",
+      "when": "2026-11-25 09:18",
+      "what": "Bulk SMS Dispatch (emergency_notice via preview_sandbox)",
+      "targetName": "সকল অভিভাবক (7 জন) (7/7)",
+      "schoolId": "GPS-1042",
+      "requestId": "SMS-1795598310926-57",
+      "oldValue": "Queued",
+      "newValue": "7 Dispatched"
+    },
+    {
       "id": "AUD-DEP-1795339994496",
       "who": "মোঃ মোমিন খান",
       "role": "central_admin",
@@ -322,5 +369,145 @@
     "apiBaseUrl": "https://school-management-system-sms-798667902569.asia-southeast1.run.app",
     "updatedAt": "2026-11-23T08:50:00.000Z",
     "updatedBy": "মোঃ মোমিন খান"
-  }
+  },
+  "smsLogs": [
+    {
+      "id": "SMS-1795598695226-77",
+      "category": "absence_alert",
+      "schoolId": "GPS-1042",
+      "sentByRole": "teacher",
+      "sentByName": "বেগম ফাতেমা খাতুন",
+      "message": "[মডেল সরকারি প্রাথমিক বিদ্যালয়] জরুরি উপস্থিতি বার্তা: আপনার সন্তান আজ (2026-11-19) বিদ্যালয়ে অনুপস্থিত রয়েছে। অনুগ্রহ করে শ্রেণি শিক্ষকের সাথে যোগাযোগ করুন।",
+      "recipientCount": 1,
+      "deliveredCount": 1,
+      "failedCount": 0,
+      "provider": "preview_sandbox",
+      "targetsSummary": "1 Absent Student Guardians (2026-11-19)",
+      "recipientsMasked": [
+        {
+          "name": "সাদিয়া ইসলাম (Class 5)",
+          "phoneMasked": "+88019****3344",
+          "status": "preview",
+          "sidOrRef": "SBX-95226-1"
+        }
+      ],
+      "createdAtIso": "2026-11-25T09:24:55.226Z"
+    },
+    {
+      "id": "SMS-1795598463814-98",
+      "category": "emergency_notice",
+      "schoolId": "GPS-1042",
+      "sentByRole": "school_admin",
+      "sentByName": "বেগম ফাতেমা খাতুন",
+      "message": "জরুরি বিজ্ঞপ্তি: আগামীকাল সকাল ৯টায় বিদ্যালয়ে বিশেষ অভিভাবক সভা অনুষ্ঠিত হবে।",
+      "recipientCount": 7,
+      "deliveredCount": 7,
+      "failedCount": 0,
+      "provider": "preview_sandbox",
+      "targetsSummary": "সকল অভিভাবক (7 জন)",
+      "recipientsMasked": [
+        {
+          "name": "মোঃ রাহিম উদ্দিন (Guardian)",
+          "phoneMasked": "+88017****5678",
+          "status": "preview",
+          "sidOrRef": "SBX-63813-1"
+        },
+        {
+          "name": "তাসনিম তাবাসসুম (Guardian)",
+          "phoneMasked": "+88018****1122",
+          "status": "preview",
+          "sidOrRef": "SBX-63813-2"
+        },
+        {
+          "name": "সাদিয়া ইসলাম (Guardian)",
+          "phoneMasked": "+88019****3344",
+          "status": "preview",
+          "sidOrRef": "SBX-63813-3"
+        },
+        {
+          "name": "মেহেদী হাসান (Guardian)",
+          "phoneMasked": "+88017****7788",
+          "status": "preview",
+          "sidOrRef": "SBX-63813-4"
+        },
+        {
+          "name": "তানহা আফরিন (Guardian)",
+          "phoneMasked": "+88017****4433",
+          "status": "preview",
+          "sidOrRef": "SBX-63813-5"
+        },
+        {
+          "name": "রাফিউল ইসলাম (Guardian)",
+          "phoneMasked": "+88018****2211",
+          "status": "preview",
+          "sidOrRef": "SBX-63813-6"
+        },
+        {
+          "name": "নাফিস ইকবাল (Guardian)",
+          "phoneMasked": "+88017****7711",
+          "status": "preview",
+          "sidOrRef": "SBX-63813-7"
+        }
+      ],
+      "createdAtIso": "2026-11-25T09:21:03.813Z"
+    },
+    {
+      "id": "SMS-1795598310926-57",
+      "category": "emergency_notice",
+      "schoolId": "GPS-1042",
+      "sentByRole": "school_admin",
+      "sentByName": "বেগম ফাতেমা খাতুন",
+      "message": "জরুরি বিজ্ঞপ্তি: আগামীকাল সকাল ৯টায় বিদ্যালয়ে অভিভাবক সমাবেশ অনুষ্ঠিত হবে।",
+      "recipientCount": 7,
+      "deliveredCount": 7,
+      "failedCount": 0,
+      "provider": "preview_sandbox",
+      "targetsSummary": "সকল অভিভাবক (7 জন)",
+      "recipientsMasked": [
+        {
+          "name": "মোঃ রাহিম উদ্দিন (Guardian)",
+          "phoneMasked": "+88017****5678",
+          "status": "preview",
+          "sidOrRef": "SBX-10926-1"
+        },
+        {
+          "name": "তাসনিম তাবাসসুম (Guardian)",
+          "phoneMasked": "+88018****1122",
+          "status": "preview",
+          "sidOrRef": "SBX-10926-2"
+        },
+        {
+          "name": "সাদিয়া ইসলাম (Guardian)",
+          "phoneMasked": "+88019****3344",
+          "status": "preview",
+          "sidOrRef": "SBX-10926-3"
+        },
+        {
+          "name": "মেহেদী হাসান (Guardian)",
+          "phoneMasked": "+88017****7788",
+          "status": "preview",
+          "sidOrRef": "SBX-10926-4"
+        },
+        {
+          "name": "তানহা আফরিন (Guardian)",
+          "phoneMasked": "+88017****4433",
+          "status": "preview",
+          "sidOrRef": "SBX-10926-5"
+        },
+        {
+          "name": "রাফিউল ইসলাম (Guardian)",
+          "phoneMasked": "+88018****2211",
+          "status": "preview",
+          "sidOrRef": "SBX-10926-6"
+        },
+        {
+          "name": "নাফিস ইকবাল (Guardian)",
+          "phoneMasked": "+88017****7711",
+          "status": "preview",
+          "sidOrRef": "SBX-10926-7"
+        }
+      ],
+      "createdAtIso": "2026-11-25T09:18:30.926Z"
+    }
+  ]
 }

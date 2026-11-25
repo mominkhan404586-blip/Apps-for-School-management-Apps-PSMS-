@@ -249,3 +249,53 @@ test('Super Central Admin requires Firebase Auth (mominkhan404586@gmail.com or F
     false
   );
 });
+
+test('reconcileAuthSessionWithFirebase rejects stale Firebase sessions when Firebase user is missing or unverified', async () => {
+  const { reconcileAuthSessionWithFirebase, shouldBlockProtectedContent } = await import('./authGuard');
+
+  const storedFirebaseSession: AuthenticatedSession = {
+    uid: 'fb-uid-1',
+    role: 'central_admin',
+    displayName: 'Super Central Admin',
+    email: BOOT_ADMIN_EMAIL,
+    provider: 'firebase_email',
+    signedInAtIso: '2026-11-25T00:00:00.000Z',
+  };
+
+  // Signed out or missing Firebase user -> must clear storage and reject
+  const signedOut = reconcileAuthSessionWithFirebase(null, storedFirebaseSession);
+  assert.equal(signedOut.status, 'unauthenticated');
+  assert.equal(signedOut.session, null);
+  assert.equal(signedOut.clearStored, true);
+
+  // Unverified Firebase user -> must reject
+  const unverified = reconcileAuthSessionWithFirebase(
+    { uid: 'fb-uid-1', email: BOOT_ADMIN_EMAIL, emailVerified: false },
+    storedFirebaseSession
+  );
+  assert.equal(unverified.status, 'unauthenticated');
+  assert.equal(unverified.clearStored, true);
+
+  // Matching verified Firebase user -> succeeds
+  const verified = reconcileAuthSessionWithFirebase(
+    { uid: 'fb-uid-1', email: BOOT_ADMIN_EMAIL, emailVerified: true },
+    storedFirebaseSession
+  );
+  assert.equal(verified.status, 'authenticated');
+  assert.equal(verified.session?.uid, 'fb-uid-1');
+  assert.equal(verified.clearStored, false);
+
+  // Loading & unauthenticated states must strictly block protected content
+  assert.equal(
+    shouldBlockProtectedContent('loading', resolveProtectedRouteAccess('loading', null, 'school_admin', 'performance')),
+    true
+  );
+  assert.equal(
+    shouldBlockProtectedContent('unauthenticated', resolveProtectedRouteAccess('unauthenticated', null, 'school_admin', 'performance')),
+    true
+  );
+
+  // school_admin can access 'performance' tab
+  assert.equal(sanitizeTabForRole('school_admin', 'performance'), 'performance');
+});
+
