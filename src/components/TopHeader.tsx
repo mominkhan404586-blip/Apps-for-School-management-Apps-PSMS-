@@ -88,6 +88,8 @@ interface TopHeaderProps {
   onLogout?: () => void;
   roleSwitchLocked?: boolean;
   authenticatedUserEmail?: string;
+  centralAdminName?: string;
+  guardianName?: string;
 }
 
 export const TopHeader: React.FC<TopHeaderProps> = ({
@@ -132,6 +134,8 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   onLogout,
   roleSwitchLocked = true,
   authenticatedUserEmail,
+  centralAdminName,
+  guardianName,
 }) => {
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -185,7 +189,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   const profileInfo =
     role === 'central_admin'
       ? {
-          name: b(CENTRAL_ADMIN_CREDENTIALS.displayNameBn, CENTRAL_ADMIN_CREDENTIALS.displayNameEn, lang),
+          name: centralAdminName?.trim() || b(CENTRAL_ADMIN_CREDENTIALS.displayNameBn, CENTRAL_ADMIN_CREDENTIALS.displayNameEn, lang),
           roleLabel: 'Central Admin',
           avatar: centralAdminPhotoUrl || AVATARS.centralAdmin,
         }
@@ -208,7 +212,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                 avatar: activeStudent?.photoUrl || AVATARS.studentRahim,
               }
             : {
-                name: b('মোঃ জামাল উদ্দিন', 'Md. Jamal Uddin', lang),
+                name: guardianName?.trim() || b('মোঃ জামাল উদ্দিন', 'Md. Jamal Uddin', lang),
                 roleLabel: b('অভিভাবক (Guardian)', 'Guardian', lang),
                 avatar: guardianPhotoUrl || AVATARS.headTeacher,
               };

@@ -114,7 +114,13 @@ export default defineConfig(() => {
       },
     ],
     optimizeDeps: {
-      include: ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/database'],
+      include: [
+        'firebase/app',
+        'firebase/auth',
+        'firebase/firestore',
+        'firebase/database',
+        'firebase/app-check',
+      ],
     },
     resolve: {
       alias: {

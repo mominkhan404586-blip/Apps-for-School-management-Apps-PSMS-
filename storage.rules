@@ -1,0 +1,73 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Global default deny
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    function isVerifiedAuth() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isSuperAdmin() {
+      return isVerifiedAuth() && request.auth.token.email == 'mominkhan404586@gmail.com';
+    }
+
+    function isSafeScopeId(scopeId) {
+      return scopeId is string && scopeId.size() >= 1 && scopeId.size() <= 64 && scopeId.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidImageUpload() {
+      return request.resource != null
+        && request.resource.size <= 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+    }
+
+    function isValidDocumentUpload() {
+      return request.resource != null
+        && request.resource.size <= 10 * 1024 * 1024
+        && (request.resource.contentType == 'application/pdf'
+            || request.resource.contentType.matches('image/(jpeg|png|webp)'));
+    }
+
+    // Profile photos: scoped to owner UID or Super Central Admin
+    match /profile_photos/{ownerId}/{fileName} {
+      allow read: if isVerifiedAuth() && isSafeScopeId(ownerId);
+      allow write: if isVerifiedAuth()
+        && isSafeScopeId(ownerId)
+        && (request.auth.uid == ownerId || isSuperAdmin())
+        && (request.resource == null || isValidImageUpload());
+    }
+
+    // School covers & branding banners
+    match /school_covers/{schoolId}/{fileName} {
+      allow read: if isVerifiedAuth() && isSafeScopeId(schoolId);
+      allow write: if isVerifiedAuth()
+        && isSafeScopeId(schoolId)
+        && (isSuperAdmin() || request.auth.token.role == 'school_admin')
+        && (request.resource == null || isValidImageUpload());
+    }
+
+    // Official certificates & uploaded documents
+    match /documents/{scopeId}/{fileName} {
+      allow read: if isVerifiedAuth()
+        && isSafeScopeId(scopeId)
+        && (request.auth.uid == scopeId || isSuperAdmin() || request.auth.token.role in ['school_admin', 'teacher']);
+      allow write: if isVerifiedAuth()
+        && isSafeScopeId(scopeId)
+        && (request.auth.uid == scopeId || isSuperAdmin() || request.auth.token.role in ['school_admin', 'teacher'])
+        && (request.resource == null || isValidDocumentUpload());
+    }
+
+    // Notice media attachments
+    match /notices/{scopeId}/{fileName} {
+      allow read: if isVerifiedAuth() && isSafeScopeId(scopeId);
+      allow write: if isVerifiedAuth()
+        && isSafeScopeId(scopeId)
+        && (isSuperAdmin() || request.auth.token.role in ['school_admin', 'teacher'])
+        && (request.resource == null || isValidImageUpload());
+    }
+  }
+}

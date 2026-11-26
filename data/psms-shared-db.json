@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "lastSyncedAt": "2026-11-25T09:47:32.853Z",
+  "lastSyncedAt": "2026-11-26T11:53:06.767Z",
   "settings": {
-    "version": 4,
-    "updatedAt": "2026-11-25T09:47:32.853Z",
-    "updatedBy": "বেগম ফাতেমা খাতুন",
-    "accountRecoveryEmail": "school1042@psms.gov.bd",
-    "accountRecoveryPhone": "01700-000001",
+    "version": 5,
+    "updatedAt": "2026-11-26T11:53:06.767Z",
+    "updatedBy": "মোসাঃ ফাতেমা বেগম আপডেটেড",
+    "accountRecoveryEmail": "fatema.updated@gmail.com",
+    "accountRecoveryPhone": "01799887766",
     "security": {
       "twoFactorEnabled": true,
       "otpVerificationRequired": true,
@@ -268,6 +268,17 @@
     "supportTickets": []
   },
   "auditLogs": [
+    {
+      "id": "AUD-PROF-1795693986748",
+      "who": "বেগম ফাতেমা খাতুন",
+      "role": "school_admin",
+      "when": "2026-11-26 11:53",
+      "what": "Profile & Recovery Info Updated",
+      "targetName": "মোসাঃ ফাতেমা বেগম আপডেটেড",
+      "requestId": "PROF-GPS-1042",
+      "oldValue": "01700-000001",
+      "newValue": "01799887766 | fatema.updated@gmail.com"
+    },
     {
       "id": "AUD-PROF-1795600052833",
       "who": "বেগম ফাতেমা খাতুন",

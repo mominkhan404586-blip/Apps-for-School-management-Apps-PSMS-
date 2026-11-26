@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  Cloud,
   Copy,
   CreditCard,
   Crop,
@@ -17,8 +18,10 @@ import {
   Download,
   ExternalLink,
   FileText,
+  FileUp,
   GitBranch,
   Globe,
+  HardDrive,
   HelpCircle,
   History,
   Info,
@@ -81,11 +84,13 @@ import { PWAInstallButton } from './PWAInstallBanner';
 import {
   auth,
   getActiveFirebaseProjectInfo,
+  getFirebaseAppCheckStatus,
   loadCloudAppBackup,
   saveCloudAppBackup,
   sendFirebasePasswordReset,
   updateRealtimeUserAccount,
 } from '../firebase';
+import { uploadFileToStorage } from '../firebaseStorage';
 import { mapFirebaseAuthErrorMessage } from '../utils/authGuard';
 import { validateRealtimeUserAccountUpdate } from '../utils/realtimeDatabaseSync';
 import { RealtimeAccountSyncPanel } from './RealtimeAccountSyncPanel';
@@ -209,6 +214,14 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
   const canManageSchoolCover = role === 'school_admin' || role === 'central_admin';
 
   useEffect(() => {
+    setProfileName(actorName);
+    setProfileEmail(actorEmail);
+    setProfilePhone(actorPhone);
+    setRecoveryEmail(actorEmail || settings.accountRecoveryEmail);
+    setRecoveryPhone(actorPhone || settings.accountRecoveryPhone);
+  }, [actorId, actorName, actorEmail, actorPhone, settings.accountRecoveryEmail, settings.accountRecoveryPhone]);
+
+  useEffect(() => {
     setSchoolNameBnEdit(activeSchool?.nameBn ?? '');
     setSchoolAddressEdit(activeSchool?.fullAddress ?? '');
     setSchoolMobileEdit(activeSchool?.mobile ?? '');
@@ -252,7 +265,10 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
   const [cloudBackupBusy, setCloudBackupBusy] = useState(false);
   const [cloudBackupMessage, setCloudBackupMessage] = useState<string | null>(null);
   const [cloudBackupError, setCloudBackupError] = useState<string | null>(null);
+  const [storageDocBusy, setStorageDocBusy] = useState(false);
+  const [storageDocUrl, setStorageDocUrl] = useState<string | null>(null);
   const firebaseProjectInfo = getActiveFirebaseProjectInfo();
+  const appCheckStatus = getFirebaseAppCheckStatus();
 
   const handleSaveCloudBackup = async () => {
     setCloudBackupError(null);
@@ -2175,7 +2191,43 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
+                <div className="rounded-lg bg-white/80 dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 px-3 py-2 flex items-center justify-between gap-2">
+                  <span className="font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                    <HardDrive className="w-3.5 h-3.5 text-emerald-600" />
+                    Media Vault (Free)
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold">
+                    Spark $0
+                  </span>
+                </div>
+                <div className="rounded-lg bg-white/80 dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 px-3 py-2 flex items-center justify-between gap-2">
+                  <span className="font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-teal-600" />
+                    App Check
+                  </span>
+                  <span
+                    className={`px-1.5 py-0.5 rounded font-bold ${
+                      appCheckStatus.configured
+                        ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    {appCheckStatus.configured ? appCheckStatus.mode : 'Free Optional'}
+                  </span>
+                </div>
+                <div className="rounded-lg bg-white/80 dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 px-3 py-2 flex items-center justify-between gap-2">
+                  <span className="font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                    <Cloud className="w-3.5 h-3.5 text-emerald-600" />
+                    Spark Direct Sync
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold">
+                    No Billing ($0)
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                 <button
                   type="button"
                   data-testid="cloud-backup-save-btn"
@@ -2184,7 +2236,7 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
                   className="h-10 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
                 >
                   <Save className="w-4 h-4" />
-                  <span>{b('ক্লাউডে ব্যাকআপ সংরক্ষণ করুন (Cloud Backup)', 'Save Cloud Backup to Firestore', lang)}</span>
+                  <span>{b('ক্লাউডে ব্যাকআপ সংরক্ষণ করুন', 'Save Cloud Backup to Firestore', lang)}</span>
                 </button>
                 <button
                   type="button"
@@ -2194,9 +2246,76 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
                   className="h-10 px-4 rounded-xl bg-white dark:bg-slate-900 border border-indigo-300 dark:border-indigo-700 hover:bg-indigo-50 dark:hover:bg-slate-800 text-indigo-800 dark:text-indigo-200 text-xs font-bold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
                 >
                   <RotateCcw className="w-4 h-4" />
-                  <span>{b('ক্লাউড থেকে রিস্টোর / পুনরুদ্ধার করুন', 'Restore from Cloud Backup', lang)}</span>
+                  <span>{b('ক্লাউড থেকে রিস্টোর করুন', 'Restore from Cloud Backup', lang)}</span>
                 </button>
+                <label
+                  data-testid="settings-storage-doc-upload-label"
+                  className="h-10 px-4 rounded-xl bg-white dark:bg-slate-900 border border-indigo-300 dark:border-indigo-700 hover:bg-indigo-50 dark:hover:bg-slate-800 text-indigo-800 dark:text-indigo-200 text-xs font-bold flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <FileUp className="w-4 h-4" />
+                  <span>
+                    {storageDocBusy
+                      ? b('সংরক্ষণ হচ্ছে...', 'Saving...', lang)
+                      : b('ডকুমেন্ট আপলোড (ফ্রি ভল্ট)', 'Upload Doc (Free Vault)', lang)}
+                  </span>
+                  <input
+                    type="file"
+                    accept="application/pdf,image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      e.target.value = '';
+                      if (!f) return;
+                      setCloudBackupError(null);
+                      setCloudBackupMessage(null);
+                      setStorageDocBusy(true);
+                      void uploadFileToStorage({
+                        file: f,
+                        category: 'documents',
+                        scopeId: activeSchool?.id || auth.currentUser?.uid || actorId,
+                      })
+                        .then((res) => {
+                          if (res.ok && res.url) {
+                            setStorageDocUrl(res.url);
+                            setCloudBackupMessage(
+                              b(
+                                `ফ্রি Firestore ভল্টে ডকুমেন্ট সংরক্ষিত হয়েছে (${res.path})।`,
+                                `Saved to Free Firestore Vault (${res.path}).`,
+                                lang
+                              )
+                            );
+                          } else {
+                            setCloudBackupError(
+                              b(
+                                res.errorBn ?? 'ডকুমেন্ট সংরক্ষণ ব্যর্থ হয়েছে।',
+                                res.errorEn ?? 'Document save failed.',
+                                lang
+                              )
+                            );
+                          }
+                        })
+                        .finally(() => setStorageDocBusy(false));
+                    }}
+                  />
+                </label>
               </div>
+
+              {storageDocUrl && (
+                <div className="rounded-lg bg-white/80 dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 px-3 py-2 text-xs flex items-center justify-between gap-2">
+                  <span className="font-semibold text-indigo-900 dark:text-indigo-200 truncate">
+                    {b('সর্বশেষ আপলোডকৃত ডকুমেন্ট (ফ্রি ভল্ট)', 'Latest Saved Vault Document', lang)}
+                  </span>
+                  <a
+                    href={storageDocUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 font-bold text-indigo-600 dark:text-indigo-300 hover:underline shrink-0"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>{b('খুলুন', 'Open', lang)}</span>
+                  </a>
+                </div>
+              )}
 
               {cloudBackupMessage && (
                 <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 px-3 py-2 text-xs font-semibold text-emerald-800 dark:text-emerald-200">

@@ -2920,7 +2920,15 @@ export const CentralAdminViews: React.FC<CentralAdminViewsProps> = ({
   }
 
   if (activeTab === 'realtime_db') {
-    return <CentralRealtimeDataPanel lang={lang} schools={schools} />;
+    return (
+      <CentralRealtimeDataPanel
+        lang={lang}
+        schools={schools}
+        teachers={teachers}
+        students={students}
+        onDeleteSchool={onDeleteSchool}
+      />
+    );
   }
 
   // Permission System (Interactive Governance Matrix + 8-Role RBAC Reference)

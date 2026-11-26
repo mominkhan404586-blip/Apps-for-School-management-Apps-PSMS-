@@ -5,7 +5,7 @@ export const RTDB_DATABASE_URL =
   'https://school-management-apk-default-rtdb.asia-southeast1.firebasedatabase.app';
 
 export type RealtimeUserRole = Role | 'pending';
-export type RealtimeUserStatus = 'active' | 'pending' | 'suspended';
+export type RealtimeUserStatus = 'active' | 'pending' | 'suspended' | 'rejected' | 'deactivated';
 
 export interface RealtimeUserAccountRecord {
   uid: string;
@@ -16,6 +16,7 @@ export interface RealtimeUserAccountRecord {
   recoveryPhone?: string;
   role: RealtimeUserRole;
   status: RealtimeUserStatus;
+  isActive?: boolean;
   schoolId?: string;
   teacherId?: string;
   studentId?: string;
@@ -32,6 +33,7 @@ export interface RealtimeUserAccountInput {
   recoveryPhone?: string;
   role?: RealtimeUserRole;
   status?: RealtimeUserStatus;
+  isActive?: boolean;
   schoolId?: string;
   teacherId?: string;
   studentId?: string;
@@ -105,7 +107,13 @@ export function isValidRealtimeRole(role: string): role is RealtimeUserRole {
 }
 
 export function isValidRealtimeStatus(status: string): status is RealtimeUserStatus {
-  return status === 'active' || status === 'pending' || status === 'suspended';
+  return (
+    status === 'active' ||
+    status === 'pending' ||
+    status === 'suspended' ||
+    status === 'rejected' ||
+    status === 'deactivated'
+  );
 }
 
 export function validateRealtimeUserAccountUpdate(
@@ -339,6 +347,7 @@ export function normalizeRtdbUserRecord(
     recoveryPhone: typeof raw.recoveryPhone === 'string' ? raw.recoveryPhone : undefined,
     role: isValidRealtimeRole(roleStr) ? roleStr : 'pending',
     status: isValidRealtimeStatus(statusStr) ? statusStr : 'pending',
+    isActive: typeof raw.isActive === 'boolean' ? raw.isActive : statusStr === 'active',
     schoolId: typeof raw.schoolId === 'string' ? raw.schoolId : undefined,
     teacherId: typeof raw.teacherId === 'string' ? raw.teacherId : undefined,
     studentId: typeof raw.studentId === 'string' ? raw.studentId : undefined,
@@ -376,7 +385,12 @@ export function applyRealtimeUserToSession(
   if (rtdbUser.uid !== currentSession.uid) {
     return { changed: false, suspended: false, nextSession: currentSession };
   }
-  if (rtdbUser.status === 'suspended') {
+  if (
+    rtdbUser.status === 'suspended' ||
+    rtdbUser.status === 'rejected' ||
+    rtdbUser.status === 'deactivated' ||
+    rtdbUser.isActive === false
+  ) {
     return { changed: true, suspended: true, nextSession: null };
   }
 
@@ -424,7 +438,7 @@ const IS_VERIFIED_AUTH = 'auth != null && auth.token.email_verified == true';
 const IS_SUPER_ADMIN = `(${IS_VERIFIED_AUTH} && (auth.token.email == '${BOOT_ADMIN_EMAIL}' || root.child('admins').child(auth.uid).child('accessLevel').val() == 'Super Central Admin'))`;
 const IS_ACTIVE_REVIEW_ADMIN = `(${IS_VERIFIED_AUTH} && root.child('admins').child(auth.uid).exists())`;
 const USER_NODE = `root.child('users').child(auth.uid)`;
-const IS_ACTIVE_USER = `(${IS_VERIFIED_AUTH} && ${USER_NODE}.child('status').val() == 'active')`;
+const IS_ACTIVE_USER = `(${IS_VERIFIED_AUTH} && ${USER_NODE}.child('status').val() == 'active' && ${USER_NODE}.child('isActive').val() != false)`;
 const IS_SCHOOL_ADMIN_OF = `(${IS_ACTIVE_USER} && ${USER_NODE}.child('role').val() == 'school_admin' && ${USER_NODE}.child('schoolId').val() == $schoolId)`;
 const IS_TEACHER_OF = `(${IS_ACTIVE_USER} && ${USER_NODE}.child('role').val() == 'teacher' && ${USER_NODE}.child('schoolId').val() == $schoolId)`;
 const IS_STUDENT_OF = `(${IS_ACTIVE_USER} && ${USER_NODE}.child('role').val() == 'student' && ${USER_NODE}.child('schoolId').val() == $schoolId)`;
@@ -487,8 +501,9 @@ export const REALTIME_DATABASE_RULES_OBJECT = {
         },
         status: {
           '.validate':
-            "newData.isString() && (newData.val() == 'active' || newData.val() == 'pending' || newData.val() == 'suspended')",
+            "newData.isString() && (newData.val() == 'active' || newData.val() == 'pending' || newData.val() == 'suspended' || newData.val() == 'rejected' || newData.val() == 'deactivated')",
         },
+        isActive: { '.validate': 'newData.isBoolean()' },
         schoolId: { '.validate': 'newData.isString() && newData.val().length <= 64' },
         teacherId: { '.validate': 'newData.isString() && newData.val().length <= 64' },
         studentId: { '.validate': 'newData.isString() && newData.val().length <= 64' },

@@ -241,7 +241,34 @@ import {
   signInWithFirebaseGoogle,
   signOutFirebase,
   subscribeRealtimeUserAccount,
+  syncOwnFirebaseProfile,
 } from './firebase';
+import {
+  executeClientCascadeDelete,
+  recordActivityLogInFirestore,
+  submitApplicationToFirestore,
+  subscribeFirestoreMediaAssets,
+  subscribeFirestoreNotices,
+  subscribeFirestoreSchools,
+  subscribeFirestoreStudents,
+  subscribeFirestoreTeachers,
+  syncAttendanceToFirestore,
+  syncClassToFirestore,
+  syncExamToFirestore,
+  syncNoticeToFirestore,
+  syncSchoolToFirestore,
+  syncStudentToFirestore,
+  syncSubjectToFirestore,
+  syncTeacherToFirestore,
+} from './firebaseCollections';
+import { uploadDataUrlToStorage } from './firebaseStorage';
+import {
+  createDefaultGuardianProfile,
+  loadPersistedDomainState,
+  mergeDomainRecordsById,
+  savePersistedDomainState,
+  type GuardianProfileState,
+} from './utils/localDomainPersistence';
 import {
   buildPasswordOverrideKey,
   resolveUnifiedPortalLogin,
@@ -459,10 +486,12 @@ export default function App() {
   const [isOffline, setIsOffline] = useState(false);
   const [pendingSyncCount, setPendingSyncCount] = useState(0);
 
-  // Domain Data State
+  // Domain Data State (Auto-hydrated & persisted locally + synced to Firebase)
+  const initialPersistedDomain = useMemo(() => loadPersistedDomainState(), []);
   const [schools, setSchools] = useState<SchoolRecord[]>(() => {
     const overrides = readStoredCoverOverrides();
-    return INITIAL_SCHOOLS.map((s) =>
+    const mergedSchools = mergeDomainRecordsById(INITIAL_SCHOOLS, initialPersistedDomain?.schools);
+    return mergedSchools.map((s) =>
       Object.prototype.hasOwnProperty.call(overrides, s.id)
         ? { ...s, coverImageUrl: overrides[s.id] }
         : s
@@ -477,10 +506,16 @@ export default function App() {
     INITIAL_STUDENT_CHANGE_REQUESTS
   );
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>(INITIAL_AUDIT_LOGS);
-  const [adminAccounts, setAdminAccounts] = useState<AdminAccount[]>(INITIAL_ADMIN_ACCOUNTS);
+  const [adminAccounts, setAdminAccounts] = useState<AdminAccount[]>(() =>
+    mergeDomainRecordsById(INITIAL_ADMIN_ACCOUNTS, initialPersistedDomain?.adminAccounts)
+  );
   const [currentAdminId] = useState<string>('adm-1');
-  const [students, setStudents] = useState<StudentRecord[]>(INITIAL_STUDENTS);
-  const [teachers, setTeachers] = useState<TeacherRecord[]>(INITIAL_TEACHERS);
+  const [students, setStudents] = useState<StudentRecord[]>(() =>
+    mergeDomainRecordsById(INITIAL_STUDENTS, initialPersistedDomain?.students)
+  );
+  const [teachers, setTeachers] = useState<TeacherRecord[]>(() =>
+    mergeDomainRecordsById(INITIAL_TEACHERS, initialPersistedDomain?.teachers)
+  );
   const [teacherSchoolAssignments, setTeacherSchoolAssignments] = useState<TeacherSchoolAssignment[]>(
     INITIAL_TEACHER_SCHOOL_ASSIGNMENTS
   );
@@ -502,7 +537,12 @@ export default function App() {
   );
   const [exams, setExams] = useState<ExamRecord[]>(INITIAL_EXAMS);
   const [fees, setFees] = useState<FeeRecord[]>(INITIAL_FEES);
-  const [notices, setNotices] = useState<NoticeItem[]>(INITIAL_NOTICES);
+  const [notices, setNotices] = useState<NoticeItem[]>(() =>
+    mergeDomainRecordsById(INITIAL_NOTICES, initialPersistedDomain?.notices)
+  );
+  const [guardianProfile, setGuardianProfile] = useState<GuardianProfileState>(
+    () => initialPersistedDomain?.guardianProfile ?? createDefaultGuardianProfile()
+  );
   const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
   const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferences>(
     DEFAULT_NOTIFICATION_PREFERENCES
@@ -586,7 +626,10 @@ export default function App() {
   });
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [authenticatedSchoolLockId, setAuthenticatedSchoolLockId] = useState<string | null>(null);
-  const [guardianPhotoUrl, setGuardianPhotoUrl] = useState<string | undefined>(undefined);
+  const guardianPhotoUrl = guardianProfile.photoUrl;
+  const setGuardianPhotoUrl = useCallback((nextPhotoUrl: string | undefined) => {
+    setGuardianProfile((prev) => ({ ...prev, photoUrl: nextPhotoUrl }));
+  }, []);
   const [coverGalleryOpen, setCoverGalleryOpen] = useState(false);
   const [cropModalState, setCropModalState] = useState<{
     open: boolean;
@@ -629,13 +672,34 @@ export default function App() {
   });
 
   useEffect(() => {
+    savePersistedDomainState({
+      version: 1,
+      schools,
+      teachers,
+      students,
+      adminAccounts,
+      notices,
+      guardianProfile,
+    });
+  }, [schools, teachers, students, adminAccounts, notices, guardianProfile]);
+
+  useEffect(() => {
     let mounted = true;
     fetch(resolveApiUrl('/api/settings'))
       .then((res) => (res.ok ? res.json() : null))
       .then((data: { settings?: SystemSettingsState } | null) => {
-        if (mounted && data?.settings?.features) {
-          setSystemSettings(data.settings);
-        }
+        if (!mounted || !data?.settings?.features) return;
+        setSystemSettings((prev) => {
+          const prevTs = Date.parse(prev.updatedAt || '');
+          const remoteTs = Date.parse(data.settings?.updatedAt || '');
+          if (!Number.isNaN(prevTs) && !Number.isNaN(remoteTs) && prevTs > remoteTs) {
+            return prev;
+          }
+          if (!Number.isNaN(prevTs) && prev.updatedBy && prev.updatedBy !== 'System Default' && Number.isNaN(remoteTs)) {
+            return prev;
+          }
+          return data.settings as SystemSettingsState;
+        });
       })
       .catch(() => {
         // Offline / client-only fallback already active
@@ -812,6 +876,22 @@ export default function App() {
     if (isOffline) {
       setPendingSyncCount((c) => c + 1);
     }
+    if (auth.currentUser?.emailVerified) {
+      void recordActivityLogInFirestore({
+        actorRole: entry.role,
+        actionType: entry.what.slice(0, 60),
+        targetType: entry.studentId
+          ? 'student'
+          : entry.teacherId
+            ? 'teacher'
+            : entry.schoolId
+              ? 'school'
+              : 'system',
+        targetId: entry.studentId || entry.teacherId || entry.schoolId || entry.requestId || 'system',
+        summary: `${entry.what}: ${entry.targetName} (${entry.oldValue} -> ${entry.newValue})`,
+        schoolId: entry.schoolId,
+      });
+    }
   };
 
   const applyVerifiedSession = React.useCallback((session: AuthenticatedSession) => {
@@ -850,8 +930,28 @@ export default function App() {
       const stored = readStoredPortalSession();
       if (firebaseUser) {
         try {
-          const { session, pendingRoleSelection, unverifiedEmail } = await resolveAndSyncFirebaseUser(firebaseUser);
+          const {
+            session,
+            pendingRoleSelection,
+            unverifiedEmail,
+            blockedReasonBn,
+            blockedReasonEn,
+          } = await resolveAndSyncFirebaseUser(firebaseUser);
           if (!active) return;
+          if (blockedReasonBn || blockedReasonEn) {
+            void signOutFirebase();
+            clearStoredPortalSession();
+            setAuthenticatedSession(null);
+            setAuthStatus('unauthenticated');
+            setAuthError(
+              b(
+                blockedReasonBn || 'আপনার অ্যাকাউন্টটি স্থগিত বা নিষ্ক্রিয় রয়েছে।',
+                blockedReasonEn || 'Your account is suspended, rejected, or deactivated.',
+                lang
+              )
+            );
+            return;
+          }
           if (session) {
             persistPortalSession(session);
             applyVerifiedSession(session);
@@ -1048,13 +1148,221 @@ export default function App() {
     };
   }, [authStatus, authenticatedSession?.uid, authenticatedSession?.provider, lang, role, activeCentralAdmin?.id]);
 
+  useEffect(() => {
+    if (
+      authStatus !== 'authenticated' ||
+      !authenticatedSession ||
+      authenticatedSession.provider === 'institutional_portal' ||
+      !auth.currentUser?.emailVerified
+    ) {
+      return;
+    }
+
+    const unsubSchools = subscribeFirestoreSchools((remoteSchools) => {
+      if (!remoteSchools || remoteSchools.length === 0) return;
+      setSchools((prev) => {
+        const next = [...prev];
+        remoteSchools.forEach((rs) => {
+          const idx = next.findIndex((s) => s.id === rs.schoolId);
+          if (idx >= 0) {
+            next[idx] = {
+              ...next[idx],
+              nameBn: rs.nameBn || next[idx].nameBn,
+              nameEn: rs.nameEn || next[idx].nameEn,
+              eiin: rs.eiin || next[idx].eiin,
+              status: (rs.status as SchoolRecord['status']) || next[idx].status,
+            };
+          } else if (INITIAL_SCHOOLS[0]) {
+            next.unshift({
+              ...INITIAL_SCHOOLS[0],
+              id: rs.schoolId,
+              code: rs.schoolId,
+              nameBn: rs.nameBn,
+              nameEn: rs.nameEn,
+              eiin: rs.eiin,
+              status: (rs.status as SchoolRecord['status']) || 'pending',
+            });
+          }
+        });
+        return next;
+      });
+    });
+
+    const unsubNotices = subscribeFirestoreNotices((remoteNotices) => {
+      if (!remoteNotices || remoteNotices.length === 0) return;
+      setNotices((prev) => {
+        const next = [...prev];
+        remoteNotices.forEach((rn) => {
+          const idx = next.findIndex((n) => n.id === rn.noticeId);
+          if (idx >= 0) {
+            next[idx] = {
+              ...next[idx],
+              titleBn: rn.title || next[idx].titleBn,
+              bodyBn: rn.body || next[idx].bodyBn,
+              isEmergency: rn.priority === 'urgent',
+            };
+          } else {
+            next.unshift({
+              id: rn.noticeId,
+              titleBn: rn.title,
+              titleEn: rn.title,
+              bodyBn: rn.body,
+              bodyEn: rn.body,
+              category: 'central',
+              audience:
+                rn.audience === 'teachers' || rn.audience === 'students' || rn.audience === 'guardians'
+                  ? rn.audience
+                  : 'all',
+              date: new Date().toISOString().slice(0, 10),
+              schoolId: rn.schoolId,
+              author: 'Firebase Cloud Sync',
+              isEmergency: rn.priority === 'urgent',
+              status: rn.status === 'archived' ? 'Expired' : 'Published',
+            });
+          }
+        });
+        return next;
+      });
+    });
+
+    const unsubTeachers = subscribeFirestoreTeachers((remoteTeachers) => {
+      if (!remoteTeachers || remoteTeachers.length === 0) return;
+      setTeachers((prev) => {
+        const next = [...prev];
+        remoteTeachers.forEach((rt) => {
+          const idx = next.findIndex((t) => t.id === rt.teacherId);
+          if (idx >= 0) {
+            next[idx] = {
+              ...next[idx],
+              nameBn: rt.nameBn || next[idx].nameBn,
+              nameEn: rt.nameEn || next[idx].nameEn,
+              designation: rt.designation || next[idx].designation,
+              email: rt.email || next[idx].email,
+              mobile: rt.mobile || next[idx].mobile,
+              status: (rt.status as TeacherRecord['status']) || next[idx].status,
+            };
+          } else if (INITIAL_TEACHERS[0]) {
+            next.unshift({
+              ...INITIAL_TEACHERS[0],
+              id: rt.teacherId,
+              teacherCode: rt.teacherId,
+              schoolId: rt.schoolId,
+              nameBn: rt.nameBn,
+              nameEn: rt.nameEn,
+              designation: rt.designation,
+              email: rt.email || '',
+              mobile: rt.mobile || '',
+              status: (rt.status as TeacherRecord['status']) || 'pending',
+            });
+          }
+        });
+        return next;
+      });
+    });
+
+    const unsubStudents = subscribeFirestoreStudents((remoteStudents) => {
+      if (!remoteStudents || remoteStudents.length === 0) return;
+      setStudents((prev) => {
+        const next = [...prev];
+        remoteStudents.forEach((rs) => {
+          const idx = next.findIndex((st) => st.id === rs.studentId);
+          if (idx >= 0) {
+            next[idx] = {
+              ...next[idx],
+              nameBn: rs.nameBn || next[idx].nameBn,
+              nameEn: rs.nameEn || next[idx].nameEn,
+              className: rs.className || next[idx].className,
+              section: rs.section || next[idx].section,
+              roll: rs.roll ?? next[idx].roll,
+              guardianMobile: rs.guardianMobile || next[idx].guardianMobile,
+              status: (rs.status as StudentRecord['status']) || next[idx].status,
+            };
+          } else if (INITIAL_STUDENTS[0]) {
+            next.unshift({
+              ...INITIAL_STUDENTS[0],
+              id: rs.studentId,
+              permanentId: rs.studentId,
+              schoolId: rs.schoolId,
+              nameBn: rs.nameBn,
+              nameEn: rs.nameEn,
+              className: rs.className,
+              section: rs.section,
+              roll: rs.roll,
+              guardianMobile: rs.guardianMobile,
+              status: (rs.status as StudentRecord['status']) || 'active',
+            });
+          }
+        });
+        return next;
+      });
+    });
+
+    const unsubMediaAssets = subscribeFirestoreMediaAssets((assets) => {
+      if (!assets || assets.length === 0) return;
+      assets.forEach((asset) => {
+        if (!asset.dataUrl) return;
+        if (asset.category === 'school_covers') {
+          persistSchoolCoverOverride(asset.scopeId, asset.dataUrl);
+          setSchools((prev) =>
+            prev.map((s) => (s.id === asset.scopeId ? { ...s, coverImageUrl: asset.dataUrl } : s))
+          );
+        } else if (asset.category === 'profile_photos') {
+          setSchools((prev) =>
+            prev.map((s) =>
+              s.id === asset.scopeId ? { ...s, headTeacherPhotoUrl: asset.dataUrl } : s
+            )
+          );
+          setTeachers((prev) =>
+            prev.map((t) => (t.id === asset.scopeId ? { ...t, photoUrl: asset.dataUrl } : t))
+          );
+          setStudents((prev) =>
+            prev.map((st) => (st.id === asset.scopeId ? { ...st, photoUrl: asset.dataUrl } : st))
+          );
+          setAdminAccounts((prev) =>
+            prev.map((adm) => (adm.id === asset.scopeId ? { ...adm, photoUrl: asset.dataUrl } : adm))
+          );
+          if (asset.scopeId === 'guardian-1') {
+            setGuardianPhotoUrl(asset.dataUrl);
+          }
+        }
+      });
+    });
+
+    return () => {
+      unsubSchools();
+      unsubNotices();
+      unsubTeachers();
+      unsubStudents();
+      unsubMediaAssets();
+    };
+  }, [authStatus, authenticatedSession?.uid, authenticatedSession?.provider, setGuardianPhotoUrl]);
+
   const handleGoogleSignIn = async () => {
     setAuthError(null);
     setAuthNotice(null);
     setGoogleSigningIn(true);
     try {
       const user = await signInWithFirebaseGoogle();
-      const { session, pendingRoleSelection } = await resolveAndSyncFirebaseUser(user);
+      const {
+        session,
+        pendingRoleSelection,
+        blockedReasonBn,
+        blockedReasonEn,
+      } = await resolveAndSyncFirebaseUser(user);
+      if (blockedReasonBn || blockedReasonEn) {
+        await signOutFirebase();
+        clearStoredPortalSession();
+        setAuthenticatedSession(null);
+        setAuthStatus('unauthenticated');
+        setAuthError(
+          b(
+            blockedReasonBn || 'আপনার অ্যাকাউন্টটি স্থগিত বা নিষ্ক্রিয় রয়েছে।',
+            blockedReasonEn || 'Your account is suspended, rejected, or deactivated.',
+            lang
+          )
+        );
+        return;
+      }
       if (session) {
         persistPortalSession(session);
         applyVerifiedSession(session);
@@ -1127,6 +1435,18 @@ export default function App() {
       }
 
       const resolved = await resolveAndSyncFirebaseUser(user);
+      if (resolved.blockedReasonBn || resolved.blockedReasonEn) {
+        await signOutFirebase();
+        clearStoredPortalSession();
+        return {
+          ok: false,
+          message: b(
+            resolved.blockedReasonBn || 'অ্যাকাউন্টটি স্থগিত বা নিষ্ক্রিয় রয়েছে।',
+            resolved.blockedReasonEn || 'Account is suspended, rejected, or deactivated.',
+            lang
+          ),
+        };
+      }
       if (!resolved.session || !isAuthorizedSuperAdminSession(resolved.session)) {
         await signOutFirebase();
         return {
@@ -1182,6 +1502,18 @@ export default function App() {
         };
       }
       const resolved = await resolveAndSyncFirebaseUser(refreshed);
+      if (resolved.blockedReasonBn || resolved.blockedReasonEn) {
+        await signOutFirebase();
+        clearStoredPortalSession();
+        return {
+          ok: false,
+          message: b(
+            resolved.blockedReasonBn || 'অ্যাকাউন্টটি স্থগিত বা নিষ্ক্রিয় রয়েছে।',
+            resolved.blockedReasonEn || 'Account is suspended, rejected, or deactivated.',
+            lang
+          ),
+        };
+      }
       if (!resolved.session || !isAuthorizedSuperAdminSession(resolved.session)) {
         await signOutFirebase();
         return {
@@ -1329,6 +1661,18 @@ export default function App() {
         }
 
         const resolved = await resolveAndSyncFirebaseUser(user);
+        if (resolved.blockedReasonBn || resolved.blockedReasonEn) {
+          await signOutFirebase();
+          clearStoredPortalSession();
+          return {
+            ok: false,
+            message: b(
+              resolved.blockedReasonBn || 'আপনার অ্যাকাউন্টটি স্থগিত বা নিষ্ক্রিয় রয়েছে।',
+              resolved.blockedReasonEn || 'Your account is suspended, rejected, or deactivated.',
+              lang
+            ),
+          };
+        }
         if (!resolved.session) {
           return {
             ok: false,
@@ -1499,12 +1843,15 @@ export default function App() {
     const demoStudent = students[0];
     completePortalLoginSession({
       role: 'guardian',
-      displayName: 'Guardian (Demo)',
+      displayName: guardianProfile.displayName,
       schoolId: demoStudent?.schoolId || 'GPS-1042',
       studentId: demoStudent?.id || 'stu-rahim',
-      guardianMobile: demoStudent?.guardianMobile || '01712345678',
+      guardianMobile: guardianProfile.phone || demoStudent?.guardianMobile || '01712345678',
       linkedStudentIds: students
-        .filter((st) => st.guardianMobile === (demoStudent?.guardianMobile || '01712345678'))
+        .filter(
+          (st) =>
+            st.guardianMobile === (guardianProfile.phone || demoStudent?.guardianMobile || '01712345678')
+        )
         .map((st) => st.id),
     });
   };
@@ -1691,31 +2038,60 @@ export default function App() {
   const handleSaveCroppedImage = (dataUrl: string) => {
     if (!cropModalState) return;
     const { entityType, entityId } = cropModalState;
-    if (entityType === 'central_admin') {
-      setAdminAccounts((prev) =>
-        prev.map((a) => (a.id === entityId ? { ...a, photoUrl: dataUrl } : a))
-      );
-    } else if (entityType === 'school_admin') {
-      setSchools((prev) =>
-        prev.map((s) => (s.id === entityId ? { ...s, headTeacherPhotoUrl: dataUrl } : s))
-      );
-    } else if (entityType === 'school_cover') {
+    const applyMediaUrl = (resolvedUrl: string) => {
+      if (entityType === 'central_admin') {
+        setAdminAccounts((prev) =>
+          prev.map((a) => (a.id === entityId ? { ...a, photoUrl: resolvedUrl } : a))
+        );
+      } else if (entityType === 'school_admin') {
+        setSchools((prev) =>
+          prev.map((s) => (s.id === entityId ? { ...s, headTeacherPhotoUrl: resolvedUrl } : s))
+        );
+      } else if (entityType === 'school_cover') {
+        persistSchoolCoverOverride(entityId, resolvedUrl);
+        setSchools((prev) =>
+          prev.map((s) => (s.id === entityId ? { ...s, coverImageUrl: resolvedUrl } : s))
+        );
+      } else if (entityType === 'teacher') {
+        setTeachers((prev) =>
+          prev.map((t) => (t.id === entityId ? { ...t, photoUrl: resolvedUrl } : t))
+        );
+      } else if (entityType === 'student') {
+        setStudents((prev) =>
+          prev.map((s) => (s.id === entityId ? { ...s, photoUrl: resolvedUrl } : s))
+        );
+      } else if (entityType === 'guardian') {
+        setGuardianPhotoUrl(resolvedUrl);
+      }
+    };
+
+    if (entityType === 'school_cover') {
       handleUpdateSchoolCover(entityId, dataUrl);
-      setCropModalState(null);
-      return;
-    } else if (entityType === 'teacher') {
-      setTeachers((prev) =>
-        prev.map((t) => (t.id === entityId ? { ...t, photoUrl: dataUrl } : t))
-      );
-    } else if (entityType === 'student') {
-      setStudents((prev) =>
-        prev.map((s) => (s.id === entityId ? { ...s, photoUrl: dataUrl } : s))
-      );
-    } else if (entityType === 'guardian') {
-      setGuardianPhotoUrl(dataUrl);
+    } else {
+      applyMediaUrl(dataUrl);
+      showToast(b('প্রোফাইল ছবি সফলভাবে সংরক্ষণ ও ক্রপ করা হয়েছে।', 'Profile photo cropped & saved.', lang));
     }
-    showToast(b('প্রোফাইল ছবি সফলভাবে সংরক্ষণ ও ক্রপ করা হয়েছে।', 'Profile photo cropped & saved.', lang));
     setCropModalState(null);
+
+    if (auth.currentUser?.emailVerified) {
+      const storageScopeId = entityId || auth.currentUser.uid;
+      void uploadDataUrlToStorage({
+        dataUrl,
+        category: entityType === 'school_cover' ? 'school_covers' : 'profile_photos',
+        scopeId: storageScopeId,
+      }).then((uploadRes) => {
+        if (uploadRes.ok && uploadRes.url) {
+          applyMediaUrl(uploadRes.url);
+          void recordActivityLogInFirestore({
+            actorRole: role,
+            actionType: 'SPARK_MEDIA_VAULT_UPLOAD',
+            targetType: 'storage',
+            targetId: storageScopeId,
+            summary: `Saved ${entityType} media to Spark Free Media Vault (${uploadRes.path ?? ''})`,
+          });
+        }
+      });
+    }
   };
 
   const handleRemovePhoto = () => {
@@ -2024,33 +2400,36 @@ export default function App() {
       return;
     }
     setSchools((prev) => [newSchool, ...prev]);
-    setRequests((prev) => [
-      {
-        id: `REQ-${Date.now().toString().slice(-4)}`,
-        type: 'school',
-        typeLabelBn:
-          newSchool.addressSource === 'MANUAL'
-            ? 'নতুন বিদ্যালয় (Manual Address)'
-            : `নতুন বিদ্যালয় (${newSchool.registrationMethod})`,
-        typeLabelEn:
-          newSchool.addressSource === 'MANUAL'
-            ? 'New School (Manual Address)'
-            : `New School (${newSchool.registrationMethod})`,
-        applicantName: newSchool.nameBn,
-        schoolName: `${newSchool.code} • ${newSchool.district}`,
-        schoolId: newSchool.id,
-        schoolType: newSchool.schoolType,
-        addressSource: newSchool.addressSource,
-        submittedAt: 'এইমাত্র',
-        status: 'pending',
-        priority: newSchool.addressSource === 'MANUAL' ? 'urgent' : 'normal',
-        details:
-          newSchool.addressSource === 'MANUAL'
-            ? `Manual address entered (${newSchool.division}, ${newSchool.district}, ${newSchool.upazila}). Verification required.`
-            : `School Type: ${newSchool.schoolType}. Documents: ${newSchool.documents.join(', ')}`,
-      },
-      ...prev,
-    ]);
+    const newSchoolReq: ApprovalRequest = {
+      id: `REQ-${Date.now().toString().slice(-4)}`,
+      type: 'school',
+      typeLabelBn:
+        newSchool.addressSource === 'MANUAL'
+          ? 'নতুন বিদ্যালয় (Manual Address)'
+          : `নতুন বিদ্যালয় (${newSchool.registrationMethod})`,
+      typeLabelEn:
+        newSchool.addressSource === 'MANUAL'
+          ? 'New School (Manual Address)'
+          : `New School (${newSchool.registrationMethod})`,
+      applicantName: newSchool.nameBn,
+      schoolName: `${newSchool.code} • ${newSchool.district}`,
+      schoolId: newSchool.id,
+      targetEntityId: newSchool.id,
+      schoolType: newSchool.schoolType,
+      addressSource: newSchool.addressSource,
+      submittedAt: 'এইমাত্র',
+      status: 'pending',
+      priority: newSchool.addressSource === 'MANUAL' ? 'urgent' : 'normal',
+      details:
+        newSchool.addressSource === 'MANUAL'
+          ? `Manual address entered (${newSchool.division}, ${newSchool.district}, ${newSchool.upazila}). Verification required.`
+          : `School Type: ${newSchool.schoolType}. Documents: ${newSchool.documents.join(', ')}`,
+    };
+    setRequests((prev) => [newSchoolReq, ...prev]);
+    if (auth.currentUser?.emailVerified) {
+      void syncSchoolToFirestore(newSchool);
+      void submitApplicationToFirestore(newSchoolReq, 'school_admin');
+    }
     appendAuditLog({
       who:
         newSchool.registrationMethod === 'MANUAL'
@@ -2103,30 +2482,31 @@ export default function App() {
             : mappedSchoolStatus === 'under_review'
               ? 'under_review'
               : 'pending';
-      setSchools((prev) =>
-        prev.map((s) =>
-          s.id === target.schoolId
-            ? {
-                ...s,
-                status: mappedSchoolStatus,
-                approvalStatus: mappedApprovalStatus,
-                verifiedDate: mappedSchoolStatus === 'active' ? '১৭ নভে ২০২৬' : s.verifiedDate,
-                approvalHistory: [
-                  {
-                    id: `APH-${Date.now().toString().slice(-5)}`,
-                    date: todayIso,
-                    actor: `${CENTRAL_ADMIN_CREDENTIALS.displayNameBn} (Central Admin)`,
-                    action: `Request Status → ${mappedSchoolStatus}`,
-                    fromStatus: s.status,
-                    toStatus: mappedSchoolStatus,
-                    note: reason || undefined,
-                  },
-                  ...(s.approvalHistory ?? []),
-                ],
-              }
-            : s
-        )
-      );
+      const targetSchool = schools.find((s) => s.id === target.schoolId);
+      if (targetSchool) {
+        const nextSchool: SchoolRecord = {
+          ...targetSchool,
+          status: mappedSchoolStatus,
+          approvalStatus: mappedApprovalStatus,
+          verifiedDate: mappedSchoolStatus === 'active' ? '১৭ নভে ২০২৬' : targetSchool.verifiedDate,
+          approvalHistory: [
+            {
+              id: `APH-${Date.now().toString().slice(-5)}`,
+              date: todayIso,
+              actor: `${CENTRAL_ADMIN_CREDENTIALS.displayNameBn} (Central Admin)`,
+              action: `Request Status → ${mappedSchoolStatus}`,
+              fromStatus: targetSchool.status,
+              toStatus: mappedSchoolStatus,
+              note: reason || undefined,
+            },
+            ...(targetSchool.approvalHistory ?? []),
+          ],
+        };
+        setSchools((prev) => prev.map((s) => (s.id === target.schoolId ? nextSchool : s)));
+        if (auth.currentUser?.emailVerified) {
+          void syncSchoolToFirestore(nextSchool);
+        }
+      }
       dispatchNotification({
         roleTarget: 'school_admin',
         schoolId: target.schoolId,
@@ -2165,30 +2545,30 @@ export default function App() {
             : status === 'revision_requested'
               ? 'revision_requested'
               : target?.approvalStatus;
-    setSchools((prev) =>
-      prev.map((s) =>
-        s.id === schoolId
-          ? {
-              ...s,
-              status,
-              approvalStatus: nextAppStatus,
-              verifiedDate: status === 'active' || status === 'approved' ? '১৭ নভে ২০২৬' : s.verifiedDate,
-              approvalHistory: [
-                {
-                  id: `APH-${Date.now().toString().slice(-5)}`,
-                  date: todayIso,
-                  actor: `${CENTRAL_ADMIN_CREDENTIALS.displayNameBn} (Central Admin)`,
-                  action: `Status Changed to ${status}`,
-                  fromStatus: s.status,
-                  toStatus: status,
-                  note: reason || undefined,
-                },
-                ...(s.approvalHistory ?? []),
-              ],
-            }
-          : s
-      )
-    );
+    if (target) {
+      const updatedSchool: SchoolRecord = {
+        ...target,
+        status,
+        approvalStatus: nextAppStatus,
+        verifiedDate: status === 'active' || status === 'approved' ? '১৭ নভে ২০২৬' : target.verifiedDate,
+        approvalHistory: [
+          {
+            id: `APH-${Date.now().toString().slice(-5)}`,
+            date: todayIso,
+            actor: `${CENTRAL_ADMIN_CREDENTIALS.displayNameBn} (Central Admin)`,
+            action: `Status Changed to ${status}`,
+            fromStatus: target.status,
+            toStatus: status,
+            note: reason || undefined,
+          },
+          ...(target.approvalHistory ?? []),
+        ],
+      };
+      setSchools((prev) => prev.map((s) => (s.id === schoolId ? updatedSchool : s)));
+      if (auth.currentUser?.emailVerified) {
+        void syncSchoolToFirestore(updatedSchool);
+      }
+    }
     if (target) {
       appendAuditLog({
         who: `${CENTRAL_ADMIN_CREDENTIALS.displayNameBn} (Central Admin)`,
@@ -2725,6 +3105,15 @@ export default function App() {
   const handleDeleteSchool = (schoolId: string, reason: string) => {
     const target = schools.find((s) => s.id === schoolId);
     setSchools((prev) => prev.filter((s) => s.id !== schoolId));
+    if (auth.currentUser?.emailVerified) {
+      void executeClientCascadeDelete({
+        targetType: 'school',
+        targetId: schoolId,
+        schoolId,
+        reason,
+        actorRole: 'central_admin',
+      });
+    }
     if (target) {
       appendAuditLog({
         who: `${CENTRAL_ADMIN_CREDENTIALS.displayNameBn} (Central Admin)`,
@@ -2834,6 +3223,9 @@ export default function App() {
       new Date().toISOString().slice(0, 10)
     );
     setStudents((prev) => prev.map((s) => (s.id === studentId ? updated : s)));
+    if (auth.currentUser?.emailVerified) {
+      void syncStudentToFirestore(updated);
+    }
     appendAuditLog({
       who: actor,
       role: actorRole,
@@ -3462,6 +3854,26 @@ export default function App() {
       },
       ...prev,
     ]);
+    if (auth.currentUser?.emailVerified) {
+      void syncTeacherToFirestore(newTeacher);
+      void submitApplicationToFirestore(
+        {
+          id: reqId,
+          type: 'teacher',
+          typeLabelBn: 'নতুন শিক্ষক নিবন্ধন / অনুমোদন',
+          typeLabelEn: 'New Teacher Registration / Approval',
+          applicantName: newTeacher.nameBn,
+          schoolName: newTeacher.schoolNameBn,
+          schoolId: newTeacher.schoolId,
+          targetEntityId: newTeacher.id,
+          submittedAt: 'এইমাত্র',
+          status: 'pending',
+          priority: 'normal',
+          details: `${newTeacher.designation} (${newTeacher.subjects.join(', ')})`,
+        },
+        'teacher'
+      );
+    }
     appendAuditLog({
       who: `${CENTRAL_ADMIN_CREDENTIALS.displayNameBn} (Central Admin)`,
       role: 'central_admin',
@@ -3491,6 +3903,9 @@ export default function App() {
     const todayIso = new Date().toISOString().slice(0, 10);
     const { updatedTeacher } = applyTeacherEdit(existing, patch, actor, todayIso);
     setTeachers((prev) => prev.map((t) => (t.id === teacherId ? updatedTeacher : t)));
+    if (auth.currentUser?.emailVerified) {
+      void syncTeacherToFirestore(updatedTeacher);
+    }
     appendAuditLog({
       who: actor,
       role: 'central_admin',
@@ -3576,6 +3991,9 @@ export default function App() {
     const todayIso = new Date().toISOString().slice(0, 10);
     const updated = executeTeacherStatusChange(existing, status, reason, actor, todayIso);
     setTeachers((prev) => prev.map((t) => (t.id === teacherId ? updated : t)));
+    if (auth.currentUser?.emailVerified) {
+      void syncTeacherToFirestore(updated);
+    }
     appendAuditLog({
       who: actor,
       role: 'central_admin',
@@ -4136,10 +4554,14 @@ export default function App() {
       return;
     }
     setStudents((prev) => [newStudent, ...prev]);
+    if (auth.currentUser?.emailVerified) {
+      void syncStudentToFirestore(newStudent);
+    }
     if (newStudent.status === 'pending') {
+      const sReqId = `SREQ-${Date.now().toString().slice(-4)}`;
       setStudentRequests((prev) => [
         {
-          id: `SREQ-${Date.now().toString().slice(-4)}`,
+          id: sReqId,
           studentId: newStudent.id,
           permanentId: newStudent.permanentId,
           studentNameBn: newStudent.nameBn,
@@ -4158,6 +4580,25 @@ export default function App() {
         },
         ...prev,
       ]);
+      if (auth.currentUser?.emailVerified) {
+        void submitApplicationToFirestore(
+          {
+            id: sReqId,
+            type: 'student',
+            typeLabelBn: 'নতুন শিক্ষার্থীর নিবন্ধন ও ভর্তি আবেদন',
+            typeLabelEn: 'New Student Admission Application',
+            applicantName: newStudent.nameBn,
+            schoolName: newStudent.schoolNameBn,
+            schoolId: newStudent.schoolId,
+            targetEntityId: newStudent.id,
+            submittedAt: 'এইমাত্র',
+            status: 'pending',
+            priority: 'normal',
+            details: `${newStudent.className} (${newStudent.section})`,
+          },
+          'student'
+        );
+      }
     }
     appendAuditLog({
       who: `${schoolAdminOwnSchool.headTeacher} (School Admin)`,
@@ -4336,12 +4777,20 @@ export default function App() {
   };
 
   const handleAddClassSection = (cfg: Omit<ClassSectionRoomConfig, 'id'>) => {
-    setClassSections((prev) => [...prev, { ...cfg, id: `cs-${Date.now().toString().slice(-4)}` }]);
+    const newCls: ClassSectionRoomConfig = { ...cfg, id: `cs-${Date.now().toString().slice(-4)}` };
+    setClassSections((prev) => [...prev, newCls]);
+    if (auth.currentUser?.emailVerified) {
+      void syncClassToFirestore(newCls, schoolAdminOwnSchool.id);
+    }
     showToast(b(`শ্রেণি ${cfg.className} (${cfg.section}) যুক্ত হয়েছে।`, `Added ${cfg.className} (${cfg.section}).`, lang));
   };
 
   const handleAddSubject = (sub: Omit<AcademicSubjectConfig, 'id'>) => {
-    setAcademicSubjects((prev) => [...prev, { ...sub, id: `sub-${Date.now().toString().slice(-4)}` }]);
+    const newSub: AcademicSubjectConfig = { ...sub, id: `sub-${Date.now().toString().slice(-4)}` };
+    setAcademicSubjects((prev) => [...prev, newSub]);
+    if (auth.currentUser?.emailVerified) {
+      void syncSubjectToFirestore(newSub, schoolAdminOwnSchool.id);
+    }
     showToast(b(`বিষয় "${sub.nameBn}" যুক্ত হয়েছে।`, `Subject "${sub.nameEn}" added.`, lang));
   };
 
@@ -5155,6 +5604,9 @@ export default function App() {
   const handleCreateNoticeStructured = (payload: CreateNoticePayload) => {
     const created = createNoticeRecord(payload);
     setNotices((prev) => [created, ...prev]);
+    if (auth.currentUser?.emailVerified) {
+      void syncNoticeToFirestore(created);
+    }
     dispatchNotificationsForNotice(created);
     appendAuditLog({
       who: payload.author,
@@ -5275,6 +5727,9 @@ export default function App() {
     if (res.status === 'recorded' && res.scanEvent && res.historyEntry && res.guardianNotification) {
       setKioskScans((prev) => [res.scanEvent!, ...prev]);
       setAttendanceHistory((prev) => [res.historyEntry!, ...prev]);
+      if (auth.currentUser?.emailVerified) {
+        void syncAttendanceToFirestore(res.historyEntry);
+      }
       setNotifications((prev) => [
         {
           ...res.guardianNotification!,
@@ -5322,6 +5777,9 @@ export default function App() {
       newEntry,
       ...prev.filter((h) => !(h.studentId === student.id && h.dateIso === dateIso)),
     ]);
+    if (auth.currentUser?.emailVerified) {
+      void syncAttendanceToFirestore(newEntry);
+    }
 
     if (status === 'present' || status === 'late') {
       const alreadyScanned = kioskScans.some(
@@ -5498,6 +5956,9 @@ export default function App() {
   const handleCreateLocalExam = (payload: CreateLocalExamPayload) => {
     const created = createExamWithGovernance(payload);
     setExams((prev) => [created, ...prev]);
+    if (auth.currentUser?.emailVerified) {
+      void syncExamToFirestore(created);
+    }
     const localNotifs: NotificationItem[] = (['school_admin', 'student', 'guardian'] as Role[]).map(
       (r, idx) => ({
         id: `nt-local-exm-${Date.now()}-${idx}`,
@@ -5593,7 +6054,7 @@ export default function App() {
               ? activeTeacherRecord.nameBn
               : role === 'student'
                 ? activeStudentRecord?.nameBn ?? 'Student'
-                : 'মোঃ জামাল উদ্দিন (অভিভাবক)'
+                : guardianProfile.displayName
       }
       actorId={
         role === 'central_admin'
@@ -5614,7 +6075,7 @@ export default function App() {
             ? schoolAdminOwnSchool.email
             : role === 'teacher'
               ? activeTeacherRecord.email
-              : systemSettings.accountRecoveryEmail || 'user@psms.gov.bd')
+              : guardianProfile.email || systemSettings.accountRecoveryEmail || 'user@psms.gov.bd')
       }
       actorPhone={
         role === 'central_admin'
@@ -5625,7 +6086,7 @@ export default function App() {
               ? activeTeacherRecord.mobile
               : role === 'student'
                 ? activeStudentRecord?.guardianMobile ?? systemSettings.accountRecoveryPhone
-                : systemSettings.accountRecoveryPhone
+                : guardianProfile.phone || systemSettings.accountRecoveryPhone
       }
       actorAvatarUrl={
         role === 'central_admin'
@@ -5689,29 +6150,58 @@ export default function App() {
             )
           );
         } else if (role === 'school_admin') {
+          const updatedSchool: SchoolRecord = {
+            ...schoolAdminOwnSchool,
+            headTeacher: patch.displayName,
+            email: patch.email,
+            mobile: patch.phone,
+          };
           setSchools((prev) =>
-            prev.map((s) =>
-              s.id === schoolAdminOwnSchool.id
-                ? { ...s, headTeacher: patch.displayName, email: patch.email, mobile: patch.phone }
-                : s
-            )
+            prev.map((s) => (s.id === schoolAdminOwnSchool.id ? updatedSchool : s))
           );
+          if (auth.currentUser?.emailVerified) {
+            void syncSchoolToFirestore(updatedSchool);
+          }
         } else if (role === 'teacher') {
+          const updatedTeacher: TeacherRecord = {
+            ...activeTeacherRecord,
+            nameBn: patch.displayName,
+            nameEn: patch.displayName,
+            email: patch.email,
+            mobile: patch.phone,
+          };
           setTeachers((prev) =>
-            prev.map((t) =>
-              t.id === activeTeacherRecord.id
-                ? { ...t, nameBn: patch.displayName, email: patch.email, mobile: patch.phone }
-                : t
-            )
+            prev.map((t) => (t.id === activeTeacherRecord.id ? updatedTeacher : t))
           );
+          if (auth.currentUser?.emailVerified) {
+            void syncTeacherToFirestore(updatedTeacher);
+          }
         } else if (role === 'student' && activeStudentRecord) {
+          const updatedStudent: StudentRecord = {
+            ...activeStudentRecord,
+            nameBn: patch.displayName,
+            nameEn: patch.displayName,
+            guardianMobile: patch.phone,
+          };
           setStudents((prev) =>
-            prev.map((st) =>
-              st.id === activeStudentRecord.id
-                ? { ...st, nameBn: patch.displayName, guardianMobile: patch.phone }
-                : st
-            )
+            prev.map((st) => (st.id === activeStudentRecord.id ? updatedStudent : st))
           );
+          if (auth.currentUser?.emailVerified) {
+            void syncStudentToFirestore(updatedStudent);
+          }
+        } else if (role === 'guardian') {
+          setGuardianProfile((prev) => ({
+            ...prev,
+            displayName: patch.displayName,
+            email: patch.email,
+            phone: patch.phone,
+          }));
+        }
+        if (auth.currentUser?.emailVerified) {
+          void syncOwnFirebaseProfile({
+            displayName: patch.displayName,
+            phone: patch.phone,
+          });
         }
       }}
       onOpenCoverGallery={() => setCoverGalleryOpen(true)}
@@ -5826,6 +6316,8 @@ export default function App() {
                 onOpenAppDownloadAndShare={() => setAppDownloadShareModalOpen(true)}
                 centralAdminPhotoUrl={activeCentralAdmin?.photoUrl}
                 guardianPhotoUrl={guardianPhotoUrl}
+                centralAdminName={activeCentralAdmin?.name}
+                guardianName={guardianProfile.displayName}
                 onOpenPhotoEditor={() => openProfilePhotoEditorForRole(protectedRole)}
                 isSchoolLoginLocked={Boolean(authenticatedSchoolLockId)}
                 onUnlockSchoolLogin={() => {
@@ -5906,6 +6398,9 @@ export default function App() {
               }
               onAddNotice={(n) => {
                 setNotices((prev) => [n, ...prev]);
+                if (auth.currentUser?.emailVerified) {
+                  void syncNoticeToFirestore(n);
+                }
                 showToast(b('কেন্দ্রীয় নোটিশ প্রকাশিত হয়েছে।', 'Central notice published.', lang));
               }}
               onToggleAdminStatus={handleToggleAdminStatus}
@@ -6074,6 +6569,9 @@ export default function App() {
               onCollectFee={handleCollectFee}
               onAddNotice={(n) => {
                 setNotices((prev) => [n, ...prev]);
+                if (auth.currentUser?.emailVerified) {
+                  void syncNoticeToFirestore(n);
+                }
                 showToast(b('নোটিশ ও SMS পাঠানো হয়েছে।', 'Notice & SMS dispatched.', lang));
               }}
               onPromoteAllEligible={() => {

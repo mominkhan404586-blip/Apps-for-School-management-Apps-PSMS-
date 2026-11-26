@@ -1,5 +1,10 @@
 import { getApp, getApps, initializeApp } from 'firebase/app';
 import {
+  initializeAppCheck,
+  ReCaptchaV3Provider,
+  type AppCheck,
+} from 'firebase/app-check';
+import {
   EmailAuthProvider,
   GoogleAuthProvider,
   browserLocalPersistence,
@@ -17,6 +22,7 @@ import {
   type User,
 } from 'firebase/auth';
 import {
+  doc as firestoreDoc,
   addDoc,
   collection,
   doc,
@@ -25,6 +31,7 @@ import {
   getFirestore,
   serverTimestamp,
   setDoc,
+  updateDoc,
 } from 'firebase/firestore';
 import {
   get as rtdbGet,
@@ -44,6 +51,11 @@ import {
   type AuthenticatedSession,
   type CloudBackupSnapshotInput,
 } from './utils/authGuard';
+import {
+  evaluateAppCheckConfig,
+  isAccountLoginBlocked,
+  type AppCheckConfigEvaluation,
+} from './utils/firebaseDataSync';
 import {
   RTDB_DATABASE_URL,
   applyRealtimeUserToSession,
@@ -84,7 +96,7 @@ export interface FirestoreErrorInfo {
   };
 }
 
-const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+export const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
 const configuredDbId =
   typeof firebaseConfig.firestoreDatabaseId === 'string'
@@ -108,15 +120,57 @@ export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
+const envRecord = (
+  import.meta as unknown as { env?: Record<string, string | undefined> }
+).env;
+const configuredRecaptchaSiteKey =
+  envRecord?.VITE_FIREBASE_APP_CHECK_SITE_KEY?.trim() ||
+  (typeof (firebaseConfig as { recaptchaSiteKey?: string }).recaptchaSiteKey === 'string'
+    ? (firebaseConfig as { recaptchaSiteKey?: string }).recaptchaSiteKey!.trim()
+    : '');
+const configuredDebugToken = envRecord?.VITE_FIREBASE_APP_CHECK_DEBUG_TOKEN?.trim() || '';
+
+let appCheckInstance: AppCheck | null = null;
+if (typeof window !== 'undefined') {
+  if (configuredDebugToken) {
+    (window as unknown as { FIREBASE_APPCHECK_DEBUG_TOKEN?: string | boolean }).FIREBASE_APPCHECK_DEBUG_TOKEN =
+      configuredDebugToken === 'true' ? true : configuredDebugToken;
+  }
+  if (configuredRecaptchaSiteKey.length >= 10) {
+    try {
+      appCheckInstance = initializeAppCheck(app, {
+        provider: new ReCaptchaV3Provider(configuredRecaptchaSiteKey),
+        isTokenAutoRefreshEnabled: true,
+      });
+    } catch {
+      // Non-blocking in local/preview environments
+    }
+  }
+}
+
+export function getFirebaseAppCheckStatus(): AppCheckConfigEvaluation & { initialized: boolean } {
+  const evalResult = evaluateAppCheckConfig(configuredRecaptchaSiteKey, configuredDebugToken);
+  return {
+    ...evalResult,
+    initialized: Boolean(appCheckInstance),
+  };
+}
+
 export function getActiveFirebaseProjectInfo(): {
   projectId: string;
   databaseId: string;
   databaseURL: string;
+  mediaCollection: string;
+  billingPlan: string;
+  appCheckConfigured: boolean;
 } {
   return {
     projectId: firebaseConfig.projectId,
     databaseId: configuredDbId || '(default)',
     databaseURL: configuredRtdbUrl,
+    mediaCollection: 'media_assets (Firestore Free Tier)',
+    billingPlan: 'Spark Free Plan ($0 / No Card)',
+    appCheckConfigured: evaluateAppCheckConfig(configuredRecaptchaSiteKey, configuredDebugToken).configured,
   };
 }
 
@@ -169,11 +223,13 @@ export interface FirestoreUserProfile {
   uid: string;
   email: string;
   displayName: string;
+  phone?: string;
   role: Role | 'pending';
   schoolId?: string;
   teacherId?: string;
   studentId?: string;
-  status: 'active' | 'pending' | 'suspended';
+  status: 'active' | 'pending' | 'suspended' | 'rejected' | 'deactivated';
+  isActive?: boolean;
 }
 
 export async function signInWithFirebaseGoogle(): Promise<User> {
@@ -246,6 +302,8 @@ export async function resolveAndSyncFirebaseUser(
   session: AuthenticatedSession | null;
   pendingRoleSelection: boolean;
   unverifiedEmail?: boolean;
+  blockedReasonBn?: string;
+  blockedReasonEn?: string;
 }> {
   if (!firebaseUser.emailVerified) {
     return {
@@ -280,6 +338,18 @@ export async function resolveAndSyncFirebaseUser(
   const isAdminEmail =
     firebaseUser.emailVerified &&
     (firebaseUser.email ?? '').trim().toLowerCase() === BOOT_ADMIN_EMAIL.toLowerCase();
+
+  if (!isAdminEmail && existingData) {
+    const blockCheck = isAccountLoginBlocked(existingData);
+    if (blockCheck.blocked) {
+      return {
+        session: null,
+        pendingRoleSelection: false,
+        blockedReasonBn: blockCheck.reasonBn,
+        blockedReasonEn: blockCheck.reasonEn,
+      };
+    }
+  }
 
   const resolvedRole = resolveGoogleUserRole(
     firebaseUser.email,
@@ -318,6 +388,7 @@ export async function resolveAndSyncFirebaseUser(
           displayName,
           role: 'central_admin',
           status: 'active',
+          isActive: true,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         });
@@ -327,7 +398,11 @@ export async function resolveAndSyncFirebaseUser(
           handleFirestoreError(error, OperationType.WRITE, userPath);
         }
       }
-    } else if (existingData.role !== 'central_admin' || existingData.status !== 'active') {
+    } else if (
+      existingData.role !== 'central_admin' ||
+      existingData.status !== 'active' ||
+      existingData.isActive !== true
+    ) {
       try {
         await setDoc(
           doc(db, 'users', firebaseUser.uid),
@@ -335,6 +410,7 @@ export async function resolveAndSyncFirebaseUser(
             ...existingData,
             role: 'central_admin',
             status: 'active',
+            isActive: true,
             updatedAt: serverTimestamp(),
           },
           { merge: true }
@@ -354,6 +430,7 @@ export async function resolveAndSyncFirebaseUser(
         displayName: firebaseUser.displayName?.trim() || 'Portal User',
         role: hasAdminDoc ? 'central_admin' : 'pending',
         status: hasAdminDoc ? 'active' : 'pending',
+        isActive: hasAdminDoc,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -388,6 +465,7 @@ export async function resolveAndSyncFirebaseUser(
         displayName: existingData?.displayName || firebaseUser.displayName?.trim() || 'PSMS User',
         role: resolvedRole,
         status: existingData?.status ?? 'active',
+        isActive: existingData ? existingData.isActive !== false && existingData.status === 'active' : true,
         ...(existingData?.schoolId ? { schoolId: existingData.schoolId } : {}),
         ...(existingData?.teacherId ? { teacherId: existingData.teacherId } : {}),
         ...(existingData?.studentId ? { studentId: existingData.studentId } : {}),
@@ -399,7 +477,7 @@ export async function resolveAndSyncFirebaseUser(
     }
   }
 
-  if (!resolvedRole || existingData?.status === 'suspended') {
+  if (!resolvedRole || (existingData && existingData.status !== 'active' && !isAdminEmail)) {
     return { session: null, pendingRoleSelection: true };
   }
 
@@ -664,6 +742,7 @@ export async function updateRealtimeUserAccount(
     recoveryPhone: normalized.recoveryPhone,
     role: normalized.role,
     status: normalized.status,
+    isActive: normalized.status === 'active',
     updatedByUid: currentUser.uid,
     updatedAt: rtdbServerTimestamp(),
   };
@@ -698,21 +777,34 @@ export async function updateRealtimeUserAccount(
       await updateProfile(currentUser, { displayName: normalized.displayName }).catch(() => {});
     }
 
-    await setDoc(
-      doc(db, 'users', cleanTargetUid),
-      {
-        uid: cleanTargetUid,
-        email: normalized.email,
+    const isBootAdmin =
+      (currentUser.email ?? '').trim().toLowerCase() === BOOT_ADMIN_EMAIL.toLowerCase();
+
+    if (cleanTargetUid === currentUser.uid && !isBootAdmin) {
+      await updateDoc(firestoreDoc(db, 'users', cleanTargetUid), {
         displayName: normalized.displayName,
-        role: normalized.role,
-        status: normalized.status,
-        ...(rtdbPayload.schoolId ? { schoolId: rtdbPayload.schoolId } : {}),
-        ...(rtdbPayload.teacherId ? { teacherId: rtdbPayload.teacherId } : {}),
-        ...(rtdbPayload.studentId ? { studentId: rtdbPayload.studentId } : {}),
+        phone: normalized.phone,
         updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    ).catch(() => {});
+      }).catch(() => {});
+    } else {
+      await setDoc(
+        doc(db, 'users', cleanTargetUid),
+        {
+          uid: cleanTargetUid,
+          email: normalized.email,
+          displayName: normalized.displayName,
+          ...(normalized.phone ? { phone: normalized.phone } : {}),
+          role: normalized.role,
+          status: normalized.status,
+          isActive: normalized.status === 'active',
+          ...(rtdbPayload.schoolId ? { schoolId: rtdbPayload.schoolId } : {}),
+          ...(rtdbPayload.teacherId ? { teacherId: rtdbPayload.teacherId } : {}),
+          ...(rtdbPayload.studentId ? { studentId: rtdbPayload.studentId } : {}),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      ).catch(() => {});
+    }
 
     return { ok: true, validation };
   } catch (err) {
@@ -875,4 +967,40 @@ export async function loadRtdbAccountSnapshot(uid?: string): Promise<RtdbAccount
   } catch {
     return null;
   }
+}
+
+export async function syncOwnFirebaseProfile(patch: {
+  displayName: string;
+  phone?: string;
+}): Promise<{ ok: boolean; syncedCloud: boolean }> {
+  const user = auth.currentUser;
+  if (!user || !user.emailVerified) {
+    return { ok: false, syncedCloud: false };
+  }
+  const cleanName = patch.displayName.trim().slice(0, 120);
+  const cleanPhone = (patch.phone ?? '').trim().slice(0, 24);
+  if (!cleanName) {
+    return { ok: false, syncedCloud: false };
+  }
+
+  await updateProfile(user, { displayName: cleanName }).catch(() => {});
+
+  const fsOk = await updateDoc(doc(db, 'users', user.uid), {
+    displayName: cleanName,
+    phone: cleanPhone,
+    updatedAt: serverTimestamp(),
+  })
+    .then(() => true)
+    .catch(() => false);
+
+  const rtdbOk = await rtdbUpdate(rtdbRef(rtdb, `users/${user.uid}`), {
+    displayName: cleanName,
+    phone: cleanPhone,
+    updatedByUid: user.uid,
+    updatedAt: rtdbServerTimestamp(),
+  })
+    .then(() => true)
+    .catch(() => false);
+
+  return { ok: fsOk || rtdbOk, syncedCloud: fsOk || rtdbOk };
 }

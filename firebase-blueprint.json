@@ -21,6 +21,10 @@
           "minLength": 1,
           "maxLength": 120
         },
+        "phone": {
+          "type": "string",
+          "maxLength": 24
+        },
         "role": {
           "type": "string",
           "enum": ["central_admin", "school_admin", "teacher", "guardian", "student", "pending"]
@@ -39,7 +43,10 @@
         },
         "status": {
           "type": "string",
-          "enum": ["active", "pending", "suspended"]
+          "enum": ["active", "pending", "suspended", "rejected", "deactivated"]
+        },
+        "isActive": {
+          "type": "boolean"
         },
         "createdAt": {
           "type": "string",
@@ -133,6 +140,182 @@
         }
       },
       "required": ["schoolId", "ownerUid", "nameBn", "nameEn", "status", "createdAt", "updatedAt"]
+    },
+    "TeacherProfile": {
+      "title": "TeacherProfile",
+      "description": "School-scoped teacher account and institutional assignment.",
+      "type": "object",
+      "properties": {
+        "teacherId": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "schoolId": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "teacherCode": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "nameBn": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "nameEn": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "designation": { "type": "string", "maxLength": 80 },
+        "mobile": { "type": "string", "maxLength": 24 },
+        "email": { "type": "string", "maxLength": 254 },
+        "status": { "type": "string", "enum": ["active", "pending", "suspended", "rejected", "deactivated"] },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["teacherId", "schoolId", "ownerUid", "teacherCode", "nameBn", "nameEn", "designation", "mobile", "status", "isActive", "createdAt", "updatedAt"]
+    },
+    "StudentProfile": {
+      "title": "StudentProfile",
+      "description": "School-scoped student profile linked to school and guardian.",
+      "type": "object",
+      "properties": {
+        "studentId": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "schoolId": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "guardianUid": { "type": "string", "maxLength": 128 },
+        "permanentId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "nameBn": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "nameEn": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "className": { "type": "string", "maxLength": 64 },
+        "section": { "type": "string", "maxLength": 32 },
+        "roll": { "type": "integer" },
+        "guardianMobile": { "type": "string", "maxLength": 24 },
+        "status": { "type": "string", "enum": ["active", "pending", "suspended", "rejected", "deactivated"] },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["studentId", "schoolId", "ownerUid", "permanentId", "nameBn", "nameEn", "className", "section", "roll", "guardianMobile", "status", "isActive", "createdAt", "updatedAt"]
+    },
+    "ClassSectionRecord": {
+      "title": "ClassSectionRecord",
+      "description": "Classroom and section configuration per school.",
+      "type": "object",
+      "properties": {
+        "classId": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "schoolId": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "className": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "section": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "roomNo": { "type": "string", "maxLength": 32 },
+        "capacity": { "type": "integer" },
+        "enrolledCount": { "type": "integer" },
+        "classTeacherId": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["classId", "schoolId", "ownerUid", "className", "section", "roomNo", "capacity", "enrolledCount", "classTeacherId", "createdAt", "updatedAt"]
+    },
+    "SubjectRecord": {
+      "title": "SubjectRecord",
+      "description": "Academic subject definition scoped to a school.",
+      "type": "object",
+      "properties": {
+        "subjectId": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "schoolId": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "code": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "nameBn": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "nameEn": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "classRange": { "type": "string", "maxLength": 64 },
+        "fullMarks": { "type": "integer" },
+        "passMarks": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["subjectId", "schoolId", "ownerUid", "code", "nameBn", "nameEn", "classRange", "fullMarks", "passMarks", "createdAt", "updatedAt"]
+    },
+    "AttendanceRecord": {
+      "title": "AttendanceRecord",
+      "description": "Student daily attendance record.",
+      "type": "object",
+      "properties": {
+        "attendanceId": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "schoolId": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "studentId": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "recordedByUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "dateIso": { "type": "string", "maxLength": 20 },
+        "status": { "type": "string", "enum": ["present", "late", "absent"] },
+        "source": { "type": "string", "enum": ["auto_camera", "manual_teacher", "kiosk"] },
+        "guardianNotified": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["attendanceId", "schoolId", "studentId", "recordedByUid", "dateIso", "status", "source", "guardianNotified", "createdAt", "updatedAt"]
+    },
+    "ExamSummaryRecord": {
+      "title": "ExamSummaryRecord",
+      "description": "Scheduled or published examination metadata.",
+      "type": "object",
+      "properties": {
+        "examId": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "schoolId": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "createdByUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "titleBn": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "titleEn": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "className": { "type": "string", "maxLength": 64 },
+        "dateRange": { "type": "string", "maxLength": 100 },
+        "status": { "type": "string", "enum": ["scheduled", "marks_entry", "published", "held"] },
+        "centralPublished": { "type": "boolean" },
+        "fullMarks": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["examId", "schoolId", "createdByUid", "titleBn", "titleEn", "className", "dateRange", "status", "centralPublished", "fullMarks", "createdAt", "updatedAt"]
+    },
+    "ResultRecord": {
+      "title": "ResultRecord",
+      "description": "Per-student subject exam result record.",
+      "type": "object",
+      "properties": {
+        "resultId": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "examId": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "schoolId": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "studentId": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "publishedByUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "subjectEn": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "totalMarks": { "type": "integer" },
+        "fullMarks": { "type": "integer" },
+        "passed": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["resultId", "examId", "schoolId", "studentId", "publishedByUid", "subjectEn", "totalMarks", "fullMarks", "passed", "createdAt", "updatedAt"]
+    },
+    "ApplicationRecord": {
+      "title": "ApplicationRecord",
+      "description": "School, teacher, student, or account registration approval request.",
+      "type": "object",
+      "properties": {
+        "applicationId": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "applicantUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "requestedRole": { "type": "string", "enum": ["central_admin", "school_admin", "teacher", "guardian", "student"] },
+        "applicationType": { "type": "string", "enum": ["school", "teacher", "student", "academic", "tc"] },
+        "schoolId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "applicantName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "targetEntityId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "status": { "type": "string", "enum": ["pending", "under_review", "approved", "rejected", "suspended"] },
+        "details": { "type": "string", "maxLength": 600 },
+        "reviewedByUid": { "type": "string", "maxLength": 128 },
+        "reviewNote": { "type": "string", "maxLength": 300 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["applicationId", "applicantUid", "requestedRole", "applicationType", "schoolId", "applicantName", "targetEntityId", "status", "details", "createdAt", "updatedAt"]
+    },
+    "ActivityLogRecord": {
+      "title": "ActivityLogRecord",
+      "description": "Append-only admin and governance activity history.",
+      "type": "object",
+      "properties": {
+        "actorUid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "actorRole": { "type": "string", "enum": ["central_admin", "school_admin", "teacher", "guardian", "student"] },
+        "actionType": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "targetType": { "type": "string", "enum": ["user", "school", "teacher", "student", "notice", "exam", "application", "storage", "system"] },
+        "targetId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "summary": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "schoolId": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["actorUid", "actorRole", "actionType", "targetType", "targetId", "summary", "createdAt"]
     },
     "AuditLogRecord": {
       "title": "AuditLogRecord",
@@ -366,6 +549,72 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "MediaAssetRecord": {
+      "title": "MediaAssetRecord",
+      "description": "Free Spark-plan compressed image or bounded document asset stored in Cloud Firestore.",
+      "type": "object",
+      "properties": {
+        "assetId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "category": {
+          "type": "string",
+          "enum": ["profile_photos", "school_covers", "documents", "notices"]
+        },
+        "scopeId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "fileName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "mimeType": {
+          "type": "string",
+          "enum": ["image/jpeg", "image/png", "image/webp", "application/pdf"]
+        },
+        "sizeBytes": {
+          "type": "integer"
+        },
+        "dataUrl": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 700000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "assetId",
+        "ownerUid",
+        "category",
+        "scopeId",
+        "fileName",
+        "mimeType",
+        "sizeBytes",
+        "dataUrl",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -385,6 +634,42 @@
       "schema": { "$ref": "#/entities/SchoolSummary" },
       "description": "Registered institution records scoped by ownerUid or Central Admin."
     },
+    "/teachers/{teacherId}": {
+      "schema": { "$ref": "#/entities/TeacherProfile" },
+      "description": "School-scoped teacher directory and institutional role records."
+    },
+    "/students/{studentId}": {
+      "schema": { "$ref": "#/entities/StudentProfile" },
+      "description": "School-scoped student records linked to school and guardian."
+    },
+    "/classes/{classId}": {
+      "schema": { "$ref": "#/entities/ClassSectionRecord" },
+      "description": "Classroom and section configuration per school."
+    },
+    "/subjects/{subjectId}": {
+      "schema": { "$ref": "#/entities/SubjectRecord" },
+      "description": "Subject catalog per school."
+    },
+    "/attendance/{attendanceId}": {
+      "schema": { "$ref": "#/entities/AttendanceRecord" },
+      "description": "Daily student attendance records."
+    },
+    "/exams/{examId}": {
+      "schema": { "$ref": "#/entities/ExamSummaryRecord" },
+      "description": "Scheduled and published examinations."
+    },
+    "/results/{resultId}": {
+      "schema": { "$ref": "#/entities/ResultRecord" },
+      "description": "Student subject result records."
+    },
+    "/applications/{applicationId}": {
+      "schema": { "$ref": "#/entities/ApplicationRecord" },
+      "description": "Pending and processed approval requests."
+    },
+    "/activityLogs/{logId}": {
+      "schema": { "$ref": "#/entities/ActivityLogRecord" },
+      "description": "Immutable admin and governance activity logs."
+    },
     "/notices/{noticeId}": {
       "schema": { "$ref": "#/entities/NoticeRecord" },
       "description": "Official central and school announcements synced across authenticated clients."
@@ -400,6 +685,10 @@
     "/cloud_backups/{backupId}": {
       "schema": { "$ref": "#/entities/CloudBackupRecord" },
       "description": "Owner-isolated Firestore cloud backup snapshots for account restore and recovery."
+    },
+    "/media_assets/{assetId}": {
+      "schema": { "$ref": "#/entities/MediaAssetRecord" },
+      "description": "Free Spark-plan compressed profile photos, school covers, and bounded PDF documents."
     }
   }
 }

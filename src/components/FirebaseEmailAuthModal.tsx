@@ -94,6 +94,10 @@ export const FirebaseEmailAuthModal: React.FC<FirebaseEmailAuthModalProps> = ({
       }
 
       const resolved = await resolveAndSyncFirebaseUser(user);
+      if (resolved.blockedReasonBn || resolved.blockedReasonEn) {
+        setError(b(resolved.blockedReasonBn ?? 'অ্যাকাউন্ট ব্লক করা হয়েছে।', resolved.blockedReasonEn ?? 'Account is blocked.', lang));
+        return;
+      }
       if (resolved.session) {
         onAuthSuccess(resolved.session);
         onClose();
