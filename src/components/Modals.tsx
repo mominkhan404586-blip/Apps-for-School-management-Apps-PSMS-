@@ -9,6 +9,8 @@ import {
   ChevronLeft,
   Camera,
   CreditCard,
+  Eye,
+  EyeOff,
   FileText,
   GraduationCap,
   KeyRound,
@@ -25,6 +27,11 @@ import {
   Lock,
 } from 'lucide-react';
 import type { AdminAccount, Language, Role, SchoolRecord, StudentRecord, TeacherRecord } from '../types';
+import {
+  loadRememberedLoginIdentifier,
+  saveRememberedLoginIdentifier,
+  validateLoginIdentifierRealtime,
+} from '../utils/unifiedLoginEngine';
 import { calculateBMI, generateStudentCodes } from '../utils/rbacAndGrading';
 import { validateStudentActivationLogin } from '../utils/schoolConfigAndAddress';
 import {
@@ -1176,30 +1183,49 @@ export const LoginModal: React.FC<{
   const [studentIdInput, setStudentIdInput] = useState('STD-2026-GPS1042-0012');
   const [studentMobileInput, setStudentMobileInput] = useState('01712345678');
   const [activationCodeInput, setActivationCodeInput] = useState('ACT-0012-74');
+  const [rememberMe, setRememberMe] = useState(() => Boolean(loadRememberedLoginIdentifier()));
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
     if (open) {
+      const remembered = loadRememberedLoginIdentifier();
+      setRememberMe(Boolean(remembered));
+      setShowPassword(false);
       setViewMode(initialMode);
       setError('');
       setShowForgotHelp(false);
       setSuperAdminUnverified(false);
       setSuperAdminStatusMsg(null);
       if (initialMode === 'super_admin') {
-        setAdminIdentifier(CENTRAL_ADMIN_CREDENTIALS.email);
+        setAdminIdentifier(remembered && remembered.includes('@') ? remembered : CENTRAL_ADMIN_CREDENTIALS.email);
         setAdminPassword('');
       } else if (initialMode === 'teacher') {
-        setIdentifier('tch_rahim');
+        setIdentifier(remembered || 'tch_rahim');
         setPassword('teacher@123');
       } else if (initialMode === 'school') {
-        setSchoolAuthIdentifier('SCH-2026-00015');
+        setSchoolAuthIdentifier(remembered || 'SCH-2026-00015');
         setSchoolAuthPassword('school@123');
       } else if (initialMode === 'guardian') {
-        setGuardianIdentifier('01712345678');
+        setGuardianIdentifier(remembered || '01712345678');
         setGuardianPassword('parent@123');
+      } else if (remembered) {
+        setIdentifier(remembered);
       }
     }
   }, [open, initialMode]);
+
+  const activeIdentifierValue =
+    viewMode === 'super_admin'
+      ? adminIdentifier
+      : viewMode === 'school'
+        ? schoolAuthIdentifier
+        : viewMode === 'guardian'
+          ? guardianIdentifier
+          : viewMode === 'student'
+            ? studentIdInput
+            : identifier;
+  const activeIdentifierValidation = validateLoginIdentifierRealtime(activeIdentifierValue);
 
   if (!open) return null;
 
@@ -1207,11 +1233,16 @@ export const LoginModal: React.FC<{
     e.preventDefault();
     if (viewMode === 'super_admin') {
       const cleanEmail = adminIdentifier.trim();
-      if (!cleanEmail || !adminPassword) {
+      const emailCheck = validateLoginIdentifierRealtime(cleanEmail);
+      if (!emailCheck.valid || emailCheck.kind !== 'email' || !adminPassword) {
         setError(
           b(
-            'অনুগ্রহ করে Super Central Admin Gmail এবং Firebase পাসওয়ার্ড লিখুন।',
-            'Please enter your Super Central Admin Gmail and Firebase password.',
+            emailCheck.valid
+              ? 'অনুগ্রহ করে Super Central Admin Gmail এবং Firebase পাসওয়ার্ড লিখুন।'
+              : emailCheck.messageBn,
+            emailCheck.valid
+              ? 'Please enter your Super Central Admin Gmail and Firebase password.'
+              : emailCheck.messageEn,
             lang
           )
         );
@@ -1233,6 +1264,7 @@ export const LoginModal: React.FC<{
       try {
         const res = await onSuperAdminFirebaseSignIn(cleanEmail, adminPassword);
         if (res.ok) {
+          saveRememberedLoginIdentifier(cleanEmail, rememberMe);
           setAdminPassword('');
           onClose();
           return;
@@ -1264,11 +1296,17 @@ export const LoginModal: React.FC<{
     }
 
     if (viewMode === 'school') {
+      const schoolCheck = validateLoginIdentifierRealtime(schoolAuthIdentifier);
+      if (!schoolCheck.valid) {
+        setError(b(schoolCheck.messageBn, schoolCheck.messageEn, lang));
+        return;
+      }
       const auth = authenticateSchoolAccount(schools, schoolAuthIdentifier, schoolAuthPassword);
       if (!auth.ok || !auth.school) {
         setError(b(auth.errorBn ?? 'বিদ্যালয় লগইন সঠিক নয়।', auth.errorEn ?? 'Invalid school login.', lang));
         return;
       }
+      saveRememberedLoginIdentifier(schoolAuthIdentifier, rememberMe);
       setError('');
       onLoginSuccess('school_admin', undefined, auth.school.id);
       onClose();
@@ -1276,6 +1314,11 @@ export const LoginModal: React.FC<{
     }
 
     if (viewMode === 'guardian') {
+      const guardianCheck = validateLoginIdentifierRealtime(guardianIdentifier);
+      if (!guardianCheck.valid) {
+        setError(b(guardianCheck.messageBn, guardianCheck.messageEn, lang));
+        return;
+      }
       const guardianAuth = authenticateGuardianAccount(students, guardianIdentifier, guardianPassword);
       if (!guardianAuth.ok) {
         setError(
@@ -1287,6 +1330,7 @@ export const LoginModal: React.FC<{
         );
         return;
       }
+      saveRememberedLoginIdentifier(guardianIdentifier, rememberMe);
       setError('');
       onLoginSuccess('guardian', guardianAuth.linkedStudentIds?.[0], undefined, {
         guardianMobile: guardianAuth.guardianMobile,
@@ -1307,6 +1351,7 @@ export const LoginModal: React.FC<{
         setError(b(res.errorBn ?? 'তথ্য সঠিক নয়।', res.errorEn ?? 'Invalid student login.', lang));
         return;
       }
+      saveRememberedLoginIdentifier(studentIdInput, rememberMe);
       setError('');
       onLoginSuccess('student', res.student.id, res.student.schoolId);
       onClose();
@@ -1315,15 +1360,20 @@ export const LoginModal: React.FC<{
 
     const rawId = identifier;
     const rawPass = password;
-    const id = rawId.trim().toLowerCase();
+    const idCheck = validateLoginIdentifierRealtime(rawId);
 
-    if (!id || !rawPass.trim()) {
-      setError(b('লগইন আইডি ও পাসওয়ার্ড দিন।', 'Please enter login identifier and password.', lang));
+    if (!idCheck.valid || !rawPass.trim()) {
+      setError(
+        idCheck.valid
+          ? b('লগইন আইডি ও পাসওয়ার্ড দিন।', 'Please enter login identifier and password.', lang)
+          : b(idCheck.messageBn, idCheck.messageEn, lang)
+      );
       return;
     }
 
     const matchedSchool = authenticateSchoolAccount(schools, rawId, rawPass);
     if (matchedSchool.ok && matchedSchool.school) {
+      saveRememberedLoginIdentifier(rawId, rememberMe);
       setError('');
       onLoginSuccess('school_admin', undefined, matchedSchool.school.id);
       onClose();
@@ -1332,6 +1382,7 @@ export const LoginModal: React.FC<{
 
     const matchedTeacher = authenticateTeacherAccount(teachers, rawId, rawPass);
     if (matchedTeacher.ok && matchedTeacher.teacher) {
+      saveRememberedLoginIdentifier(rawId, rememberMe);
       setError('');
       onLoginSuccess('teacher', undefined, matchedTeacher.teacher.schoolId, {
         teacherId: matchedTeacher.teacher.id,
@@ -1342,6 +1393,7 @@ export const LoginModal: React.FC<{
 
     const matchedGuardian = authenticateGuardianAccount(students, rawId, rawPass);
     if (matchedGuardian.ok) {
+      saveRememberedLoginIdentifier(rawId, rememberMe);
       setError('');
       onLoginSuccess('guardian', matchedGuardian.linkedStudentIds?.[0], undefined, {
         guardianMobile: matchedGuardian.guardianMobile,
@@ -1419,6 +1471,18 @@ export const LoginModal: React.FC<{
                 placeholder={CENTRAL_ADMIN_CREDENTIALS.email}
                 className="w-full h-10 px-3.5 rounded-xl border border-slate-700 bg-slate-900/90 text-white placeholder:text-slate-500 outline-none focus:border-violet-500"
               />
+              {adminIdentifier.trim().length > 0 && (
+                <p
+                  data-testid="login-modal-identifier-validation"
+                  className={`mt-1 text-[11px] font-medium ${
+                    activeIdentifierValidation.valid && activeIdentifierValidation.kind === 'email'
+                      ? 'text-emerald-400'
+                      : 'text-red-400'
+                  }`}
+                >
+                  {b(activeIdentifierValidation.messageBn, activeIdentifierValidation.messageEn, lang)}
+                </p>
+              )}
             </div>
             <div>
               <div className="flex items-center justify-between mb-1.5">
@@ -1439,17 +1503,42 @@ export const LoginModal: React.FC<{
                   </button>
                 )}
               </div>
-              <input
-                type="password"
-                data-testid="super-admin-password-input"
-                value={adminPassword}
-                onChange={(e) => {
-                  setAdminPassword(e.target.value);
-                  setError('');
-                }}
-                placeholder={b('Firebase-এ সেট করা পাসওয়ার্ড লিখুন', 'Enter your Firebase Auth password', lang)}
-                className="w-full h-10 px-3.5 rounded-xl border border-slate-700 bg-slate-900/90 text-white placeholder:text-slate-500 outline-none focus:border-violet-500"
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  data-testid="super-admin-password-input"
+                  value={adminPassword}
+                  onChange={(e) => {
+                    setAdminPassword(e.target.value);
+                    setError('');
+                  }}
+                  placeholder={b('Firebase-এ সেট করা পাসওয়ার্ড লিখুন', 'Enter your Firebase Auth password', lang)}
+                  className="w-full h-10 pl-3.5 pr-10 rounded-xl border border-slate-700 bg-slate-900/90 text-white placeholder:text-slate-500 outline-none focus:border-violet-500"
+                />
+                <button
+                  type="button"
+                  data-testid="login-modal-password-toggle"
+                  onClick={() => setShowPassword((v) => !v)}
+                  aria-label={showPassword ? b('পাসওয়ার্ড লুকান', 'Hide password', lang) : b('পাসওয়ার্ড দেখুন', 'Show password', lang)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-lg text-slate-400 hover:text-white cursor-pointer"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <label className="inline-flex items-center gap-2 mt-2.5 text-[11px] font-medium text-slate-300 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  data-testid="login-modal-remember-me"
+                  checked={rememberMe}
+                  onChange={(e) => {
+                    const next = e.target.checked;
+                    setRememberMe(next);
+                    saveRememberedLoginIdentifier(adminIdentifier, next);
+                  }}
+                  className="w-3.5 h-3.5 rounded border-slate-600 bg-slate-800 text-violet-500 cursor-pointer"
+                />
+                <span>{b('মনে রাখুন (Remember Me)', 'Remember Me', lang)}</span>
+              </label>
             </div>
 
             {superAdminUnverified && (
@@ -1705,23 +1794,58 @@ export const LoginModal: React.FC<{
                   placeholder="01712345678"
                   className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono outline-none focus:border-sky-600"
                 />
+                {guardianIdentifier.trim().length > 0 && (
+                  <p
+                    data-testid="login-modal-identifier-validation"
+                    className={`mt-1 text-[11px] font-medium ${
+                      activeIdentifierValidation.valid ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600'
+                    }`}
+                  >
+                    {b(activeIdentifierValidation.messageBn, activeIdentifierValidation.messageEn, lang)}
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   {b('পাসওয়ার্ড *', 'Password *', lang)}
                 </label>
-                <input
-                  data-testid="guardian-login-password"
-                  type="password"
-                  value={guardianPassword}
-                  onChange={(e) => {
-                    setGuardianPassword(e.target.value);
-                    setError('');
-                  }}
-                  placeholder="••••••••"
-                  className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 outline-none focus:border-sky-600"
-                />
+                <div className="relative">
+                  <input
+                    data-testid="guardian-login-password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={guardianPassword}
+                    onChange={(e) => {
+                      setGuardianPassword(e.target.value);
+                      setError('');
+                    }}
+                    placeholder="••••••••"
+                    className="w-full h-10 pl-3 pr-10 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 outline-none focus:border-sky-600"
+                  />
+                  <button
+                    type="button"
+                    data-testid="login-modal-password-toggle"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={showPassword ? b('পাসওয়ার্ড লুকান', 'Hide password', lang) : b('পাসওয়ার্ড দেখুন', 'Show password', lang)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-lg text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
+              <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  data-testid="login-modal-remember-me"
+                  checked={rememberMe}
+                  onChange={(e) => {
+                    const next = e.target.checked;
+                    setRememberMe(next);
+                    saveRememberedLoginIdentifier(guardianIdentifier, next);
+                  }}
+                  className="w-3.5 h-3.5 rounded border-slate-300 text-sky-600 cursor-pointer"
+                />
+                <span>{b('মনে রাখুন (Remember Me)', 'Remember Me', lang)}</span>
+              </label>
 
               {error && <p className="text-xs text-red-600 font-semibold">{error}</p>}
 
@@ -1800,23 +1924,58 @@ export const LoginModal: React.FC<{
                   placeholder="SCH-2026-00015 বা GPS-1042"
                   className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono outline-none focus:border-emerald-600"
                 />
+                {schoolAuthIdentifier.trim().length > 0 && (
+                  <p
+                    data-testid="login-modal-identifier-validation"
+                    className={`mt-1 text-[11px] font-medium ${
+                      activeIdentifierValidation.valid ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600'
+                    }`}
+                  >
+                    {b(activeIdentifierValidation.messageBn, activeIdentifierValidation.messageEn, lang)}
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   {b('পাসওয়ার্ড *', 'Password *', lang)}
                 </label>
-                <input
-                  data-testid="school-login-password"
-                  type="password"
-                  value={schoolAuthPassword}
-                  onChange={(e) => {
-                    setSchoolAuthPassword(e.target.value);
-                    setError('');
-                  }}
-                  placeholder="••••••••"
-                  className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 outline-none focus:border-emerald-600"
-                />
+                <div className="relative">
+                  <input
+                    data-testid="school-login-password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={schoolAuthPassword}
+                    onChange={(e) => {
+                      setSchoolAuthPassword(e.target.value);
+                      setError('');
+                    }}
+                    placeholder="••••••••"
+                    className="w-full h-10 pl-3 pr-10 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 outline-none focus:border-emerald-600"
+                  />
+                  <button
+                    type="button"
+                    data-testid="login-modal-password-toggle"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={showPassword ? b('পাসওয়ার্ড লুকান', 'Hide password', lang) : b('পাসওয়ার্ড দেখুন', 'Show password', lang)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-lg text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
+              <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  data-testid="login-modal-remember-me"
+                  checked={rememberMe}
+                  onChange={(e) => {
+                    const next = e.target.checked;
+                    setRememberMe(next);
+                    saveRememberedLoginIdentifier(schoolAuthIdentifier, next);
+                  }}
+                  className="w-3.5 h-3.5 rounded border-slate-300 text-emerald-600 cursor-pointer"
+                />
+                <span>{b('মনে রাখুন (Remember Me)', 'Remember Me', lang)}</span>
+              </label>
 
               {error && <p className="text-xs text-red-600 font-semibold">{error}</p>}
 
@@ -1938,23 +2097,58 @@ export const LoginModal: React.FC<{
                   placeholder="STD-2026-GPS1042-0012"
                   className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono outline-none focus:border-amber-500"
                 />
+                {studentIdInput.trim().length > 0 && (
+                  <p
+                    data-testid="login-modal-identifier-validation"
+                    className={`mt-1 text-[11px] font-medium ${
+                      activeIdentifierValidation.valid ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600'
+                    }`}
+                  >
+                    {b(activeIdentifierValidation.messageBn, activeIdentifierValidation.messageEn, lang)}
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   {b('নিবন্ধিত মোবাইল / পাসওয়ার্ড *', 'Registered Mobile / Password *', lang)}
                 </label>
-                <input
-                  data-testid="student-login-mobile"
-                  type="tel"
-                  value={studentMobileInput}
-                  onChange={(e) => {
-                    setStudentMobileInput(e.target.value);
-                    setError('');
-                  }}
-                  placeholder="01712345678"
-                  className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono outline-none focus:border-amber-500"
-                />
+                <div className="relative">
+                  <input
+                    data-testid="student-login-mobile"
+                    type={showPassword ? 'text' : 'tel'}
+                    value={studentMobileInput}
+                    onChange={(e) => {
+                      setStudentMobileInput(e.target.value);
+                      setError('');
+                    }}
+                    placeholder="01712345678"
+                    className="w-full h-10 pl-3 pr-10 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono outline-none focus:border-amber-500"
+                  />
+                  <button
+                    type="button"
+                    data-testid="login-modal-password-toggle"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={showPassword ? b('লুকান', 'Hide', lang) : b('দেখুন', 'Show', lang)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-lg text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
+              <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  data-testid="login-modal-remember-me"
+                  checked={rememberMe}
+                  onChange={(e) => {
+                    const next = e.target.checked;
+                    setRememberMe(next);
+                    saveRememberedLoginIdentifier(studentIdInput, next);
+                  }}
+                  className="w-3.5 h-3.5 rounded border-slate-300 text-amber-600 cursor-pointer"
+                />
+                <span>{b('মনে রাখুন (Remember Me)', 'Remember Me', lang)}</span>
+              </label>
               {showActivationInput && (
                 <div>
                   <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
@@ -2025,27 +2219,66 @@ export const LoginModal: React.FC<{
                     setError('');
                   }}
                   placeholder="e.g. TCH-GPS1042-02 বা tch_rahim"
-                  className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 outline-none focus:border-blue-600"
+                  className={`w-full h-10 px-3 rounded-xl border bg-slate-50 dark:bg-slate-800 outline-none ${
+                    identifier.trim().length > 0 && !activeIdentifierValidation.valid
+                      ? 'border-red-500 focus:border-red-600'
+                      : 'border-slate-200 dark:border-slate-700 focus:border-blue-600'
+                  }`}
                 />
+                {identifier.trim().length > 0 && (
+                  <p
+                    data-testid="login-modal-identifier-validation"
+                    className={`mt-1 text-[11px] font-medium ${
+                      activeIdentifierValidation.valid ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600'
+                    }`}
+                  >
+                    {b(activeIdentifierValidation.messageBn, activeIdentifierValidation.messageEn, lang)}
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
                   {b('পাসওয়ার্ড *', 'Password *', lang)}
                 </label>
-                <input
-                  data-testid="teacher-login-password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    setError('');
-                  }}
-                  placeholder="••••••••"
-                  className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 outline-none focus:border-blue-600"
-                />
+                <div className="relative">
+                  <input
+                    data-testid="teacher-login-password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      setError('');
+                    }}
+                    placeholder="••••••••"
+                    className="w-full h-10 pl-3 pr-10 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 outline-none focus:border-blue-600"
+                  />
+                  <button
+                    type="button"
+                    data-testid="login-modal-password-toggle"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={showPassword ? b('পাসওয়ার্ড লুকান', 'Hide password', lang) : b('পাসওয়ার্ড দেখুন', 'Show password', lang)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-lg text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
 
-              <div className="flex justify-end">
+              <div className="flex items-center justify-between gap-2">
+                <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    data-testid="login-modal-remember-me"
+                    checked={rememberMe}
+                    onChange={(e) => {
+                      const next = e.target.checked;
+                      setRememberMe(next);
+                      saveRememberedLoginIdentifier(identifier, next);
+                    }}
+                    className="w-3.5 h-3.5 rounded border-slate-300 text-blue-600 cursor-pointer"
+                  />
+                  <span>{b('মনে রাখুন (Remember Me)', 'Remember Me', lang)}</span>
+                </label>
                 <button
                   type="button"
                   onClick={() => setShowForgotHelp((v) => !v)}

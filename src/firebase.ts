@@ -705,12 +705,48 @@ export interface UpdateRealtimeUserAccountResult {
   errorMessage?: string;
 }
 
+export async function getRealtimeUserAccount(
+  uid: string
+): Promise<RealtimeUserAccountRecord | null> {
+  const cleanUid = uid.trim();
+  if (!cleanUid) return null;
+  try {
+    const snap = await rtdbGet(rtdbRef(rtdb, `users/${cleanUid}`));
+    if (!snap.exists()) return null;
+    return normalizeRtdbUserRecord(cleanUid, snap.val() as Record<string, unknown>);
+  } catch {
+    return null;
+  }
+}
+
 export async function updateRealtimeUserAccount(
   targetUid: string,
   current: Partial<RealtimeUserAccountRecord>,
   next: RealtimeUserAccountInput
 ): Promise<UpdateRealtimeUserAccountResult> {
-  const validation = validateRealtimeUserAccountUpdate(current, next);
+  const currentUser = auth.currentUser;
+  const cleanTargetUid = targetUid.trim() || currentUser?.uid || '';
+
+  let existingRtdb: RealtimeUserAccountRecord | null = null;
+  if (cleanTargetUid && currentUser?.emailVerified) {
+    existingRtdb = await getRealtimeUserAccount(cleanTargetUid);
+  }
+
+  const effectiveCurrent: Partial<RealtimeUserAccountRecord> = {
+    ...existingRtdb,
+    ...current,
+    ...(existingRtdb?.schoolId !== undefined && current.schoolId === undefined
+      ? { schoolId: existingRtdb.schoolId }
+      : {}),
+    ...(existingRtdb?.teacherId !== undefined && current.teacherId === undefined
+      ? { teacherId: existingRtdb.teacherId }
+      : {}),
+    ...(existingRtdb?.studentId !== undefined && current.studentId === undefined
+      ? { studentId: existingRtdb.studentId }
+      : {}),
+  };
+
+  const validation = validateRealtimeUserAccountUpdate(effectiveCurrent, next);
   if (!validation.valid) {
     return {
       ok: false,
@@ -720,7 +756,6 @@ export async function updateRealtimeUserAccount(
     };
   }
 
-  const currentUser = auth.currentUser;
   if (!currentUser || !currentUser.emailVerified) {
     return {
       ok: false,
@@ -730,8 +765,13 @@ export async function updateRealtimeUserAccount(
     };
   }
 
-  const cleanTargetUid = targetUid.trim() || currentUser.uid;
   const { normalized } = validation;
+  const resolvedSchoolId =
+    next.schoolId !== undefined ? next.schoolId.trim().slice(0, 64) : (effectiveCurrent.schoolId ?? '').slice(0, 64);
+  const resolvedTeacherId =
+    next.teacherId !== undefined ? next.teacherId.trim().slice(0, 64) : (effectiveCurrent.teacherId ?? '').slice(0, 64);
+  const resolvedStudentId =
+    next.studentId !== undefined ? next.studentId.trim().slice(0, 64) : (effectiveCurrent.studentId ?? '').slice(0, 64);
 
   const rtdbPayload: Record<string, unknown> = {
     uid: cleanTargetUid,
@@ -746,14 +786,14 @@ export async function updateRealtimeUserAccount(
     updatedByUid: currentUser.uid,
     updatedAt: rtdbServerTimestamp(),
   };
-  if (current.schoolId || next.schoolId) {
-    rtdbPayload.schoolId = (next.schoolId ?? current.schoolId ?? '').slice(0, 64);
+  if (resolvedSchoolId || existingRtdb?.schoolId !== undefined) {
+    rtdbPayload.schoolId = resolvedSchoolId;
   }
-  if (current.teacherId || next.teacherId) {
-    rtdbPayload.teacherId = (next.teacherId ?? current.teacherId ?? '').slice(0, 64);
+  if (resolvedTeacherId || existingRtdb?.teacherId !== undefined) {
+    rtdbPayload.teacherId = resolvedTeacherId;
   }
-  if (current.studentId || next.studentId) {
-    rtdbPayload.studentId = (next.studentId ?? current.studentId ?? '').slice(0, 64);
+  if (resolvedStudentId || existingRtdb?.studentId !== undefined) {
+    rtdbPayload.studentId = resolvedStudentId;
   }
 
   try {
@@ -797,9 +837,9 @@ export async function updateRealtimeUserAccount(
           role: normalized.role,
           status: normalized.status,
           isActive: normalized.status === 'active',
-          ...(rtdbPayload.schoolId ? { schoolId: rtdbPayload.schoolId } : {}),
-          ...(rtdbPayload.teacherId ? { teacherId: rtdbPayload.teacherId } : {}),
-          ...(rtdbPayload.studentId ? { studentId: rtdbPayload.studentId } : {}),
+          ...(resolvedSchoolId ? { schoolId: resolvedSchoolId } : {}),
+          ...(resolvedTeacherId ? { teacherId: resolvedTeacherId } : {}),
+          ...(resolvedStudentId ? { studentId: resolvedStudentId } : {}),
           updatedAt: serverTimestamp(),
         },
         { merge: true }
@@ -972,15 +1012,15 @@ export async function loadRtdbAccountSnapshot(uid?: string): Promise<RtdbAccount
 export async function syncOwnFirebaseProfile(patch: {
   displayName: string;
   phone?: string;
-}): Promise<{ ok: boolean; syncedCloud: boolean }> {
+}): Promise<{ ok: boolean; syncedCloud: boolean; rtdbOk: boolean; errorCode?: 'PERMISSION_DENIED' | 'WRITE_FAILED' }> {
   const user = auth.currentUser;
   if (!user || !user.emailVerified) {
-    return { ok: false, syncedCloud: false };
+    return { ok: false, syncedCloud: false, rtdbOk: false };
   }
   const cleanName = patch.displayName.trim().slice(0, 120);
   const cleanPhone = (patch.phone ?? '').trim().slice(0, 24);
   if (!cleanName) {
-    return { ok: false, syncedCloud: false };
+    return { ok: false, syncedCloud: false, rtdbOk: false };
   }
 
   await updateProfile(user, { displayName: cleanName }).catch(() => {});
@@ -993,14 +1033,142 @@ export async function syncOwnFirebaseProfile(patch: {
     .then(() => true)
     .catch(() => false);
 
+  const existingRtdb = await getRealtimeUserAccount(user.uid);
+  let errorCode: 'PERMISSION_DENIED' | 'WRITE_FAILED' | undefined;
   const rtdbOk = await rtdbUpdate(rtdbRef(rtdb, `users/${user.uid}`), {
+    uid: user.uid,
+    email: existingRtdb?.email || user.email || '',
     displayName: cleanName,
     phone: cleanPhone,
+    recoveryPhone: cleanPhone,
+    role: existingRtdb?.role || 'pending',
+    status: existingRtdb?.status || 'pending',
+    isActive: existingRtdb?.isActive ?? false,
     updatedByUid: user.uid,
     updatedAt: rtdbServerTimestamp(),
   })
     .then(() => true)
-    .catch(() => false);
+    .catch((err) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      errorCode = msg.toLowerCase().includes('permission') ? 'PERMISSION_DENIED' : 'WRITE_FAILED';
+      return false;
+    });
 
-  return { ok: fsOk || rtdbOk, syncedCloud: fsOk || rtdbOk };
+  return { ok: fsOk || rtdbOk, syncedCloud: fsOk || rtdbOk, rtdbOk, errorCode };
 }
+
+export interface RtdbSchoolProfilePatch {
+  schoolId: string;
+  nameBn?: string;
+  nameEn?: string;
+  headTeacher?: string;
+  email?: string;
+  mobile?: string;
+  eiin?: string;
+  fullAddress?: string;
+  status?: string;
+}
+
+export interface RtdbTeacherPatch {
+  teacherId: string;
+  schoolId: string;
+  nameBn?: string;
+  nameEn?: string;
+  email?: string;
+  mobile?: string;
+  designation?: string;
+  status?: string;
+}
+
+export interface RtdbStudentPatch {
+  studentId: string;
+  schoolId: string;
+  nameBn?: string;
+  nameEn?: string;
+  className?: string;
+  section?: string;
+  roll?: number | string;
+  guardianMobile?: string;
+  status?: string;
+}
+
+export function subscribeRtdbSchoolScope(
+  schoolId: string,
+  callbacks: {
+    onProfile?: (patch: RtdbSchoolProfilePatch) => void;
+    onTeachers?: (list: RtdbTeacherPatch[]) => void;
+    onStudents?: (list: RtdbStudentPatch[]) => void;
+    onError?: (err: string) => void;
+  }
+): () => void {
+  const cleanSchoolId = schoolId.trim();
+  if (!cleanSchoolId) return () => {};
+
+  const unsubProfile = onValue(
+    rtdbRef(rtdb, `schools/${cleanSchoolId}/profile`),
+    (snapshot) => {
+      const raw = snapshot.val() as Record<string, unknown> | null;
+      if (!raw || typeof raw !== 'object') return;
+      callbacks.onProfile?.({
+        schoolId: cleanSchoolId,
+        nameBn: typeof raw.nameBn === 'string' ? raw.nameBn : undefined,
+        nameEn: typeof raw.nameEn === 'string' ? raw.nameEn : undefined,
+        headTeacher: typeof raw.headTeacher === 'string' ? raw.headTeacher : undefined,
+        email: typeof raw.email === 'string' ? raw.email : undefined,
+        mobile: typeof raw.mobile === 'string' ? raw.mobile : undefined,
+        eiin: typeof raw.eiin === 'string' ? raw.eiin : undefined,
+        fullAddress: typeof raw.fullAddress === 'string' ? raw.fullAddress : undefined,
+        status: typeof raw.status === 'string' ? raw.status : undefined,
+      });
+    },
+    (err) => callbacks.onError?.(err instanceof Error ? err.message : String(err))
+  );
+
+  const unsubTeachers = onValue(
+    rtdbRef(rtdb, `schools/${cleanSchoolId}/teachers`),
+    (snapshot) => {
+      const raw = snapshot.val() as Record<string, Record<string, unknown>> | null;
+      if (!raw || typeof raw !== 'object') return;
+      const list: RtdbTeacherPatch[] = Object.entries(raw).map(([tid, item]) => ({
+        teacherId: typeof item.teacherId === 'string' ? item.teacherId : tid,
+        schoolId: cleanSchoolId,
+        nameBn: typeof item.nameBn === 'string' ? item.nameBn : undefined,
+        nameEn: typeof item.nameEn === 'string' ? item.nameEn : undefined,
+        email: typeof item.email === 'string' ? item.email : undefined,
+        mobile: typeof item.mobile === 'string' ? item.mobile : undefined,
+        designation: typeof item.designation === 'string' ? item.designation : undefined,
+        status: typeof item.status === 'string' ? item.status : undefined,
+      }));
+      callbacks.onTeachers?.(list);
+    },
+    () => {}
+  );
+
+  const unsubStudents = onValue(
+    rtdbRef(rtdb, `schools/${cleanSchoolId}/students`),
+    (snapshot) => {
+      const raw = snapshot.val() as Record<string, Record<string, unknown>> | null;
+      if (!raw || typeof raw !== 'object') return;
+      const list: RtdbStudentPatch[] = Object.entries(raw).map(([sid, item]) => ({
+        studentId: typeof item.studentId === 'string' ? item.studentId : sid,
+        schoolId: cleanSchoolId,
+        nameBn: typeof item.nameBn === 'string' ? item.nameBn : undefined,
+        nameEn: typeof item.nameEn === 'string' ? item.nameEn : undefined,
+        className: typeof item.className === 'string' ? item.className : undefined,
+        section: typeof item.section === 'string' ? item.section : undefined,
+        roll: typeof item.roll === 'number' || typeof item.roll === 'string' ? item.roll : undefined,
+        guardianMobile: typeof item.guardianMobile === 'string' ? item.guardianMobile : undefined,
+        status: typeof item.status === 'string' ? item.status : undefined,
+      }));
+      callbacks.onStudents?.(list);
+    },
+    () => {}
+  );
+
+  return () => {
+    unsubProfile();
+    unsubTeachers();
+    unsubStudents();
+  };
+}
+

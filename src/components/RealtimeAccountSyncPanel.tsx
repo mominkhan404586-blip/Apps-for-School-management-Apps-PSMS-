@@ -42,7 +42,10 @@ export interface RealtimeAccountSyncPanelProps {
   draftName: string;
   draftEmail: string;
   draftPhone: string;
-  onSyncLocalProfile?: (patch: { displayName: string; email: string; phone: string }) => void;
+  onSyncLocalProfile?: (
+    patch: { displayName: string; email: string; phone: string },
+    options?: { skipCloudUserSync?: boolean }
+  ) => void;
   showRulesBoxByDefault?: boolean;
 }
 
@@ -89,9 +92,19 @@ export const RealtimeAccountSyncPanel: React.FC<RealtimeAccountSyncPanelProps> =
 
     const unsubUser = subscribeRealtimeUserAccount(
       firebaseUser.uid,
-      (record) => {
+      (record, meta) => {
         setLiveSelfUser(record);
         setRtdbError(null);
+        if (record && meta && meta.changedFields.length > 0) {
+          onSyncLocalProfile?.(
+            {
+              displayName: record.displayName,
+              email: record.email,
+              phone: record.phone ?? record.recoveryPhone ?? '',
+            },
+            { skipCloudUserSync: true }
+          );
+        }
       },
       (err) => {
         setRtdbError(err);
@@ -203,11 +216,14 @@ export const RealtimeAccountSyncPanel: React.FC<RealtimeAccountSyncPanelProps> =
       });
 
       if (res.ok) {
-        onSyncLocalProfile?.({
-          displayName: res.validation.normalized.displayName,
-          email: res.validation.normalized.email,
-          phone: res.validation.normalized.phone,
-        });
+        onSyncLocalProfile?.(
+          {
+            displayName: res.validation.normalized.displayName,
+            email: res.validation.normalized.email,
+            phone: res.validation.normalized.phone,
+          },
+          { skipCloudUserSync: true }
+        );
         setSyncMessage(
           b(
             'Firebase Realtime Database-এ অ্যাকাউন্ট সাথে সাথে আপডেট ও সিঙ্ক হয়েছে!',

@@ -12,6 +12,7 @@ export interface AuthenticatedSession {
   role: Role;
   displayName: string;
   email?: string;
+  phone?: string;
   provider: AuthProviderKind;
   schoolId?: string;
   teacherId?: string;
@@ -312,6 +313,7 @@ export function validateStoredSessionPayload(raw: unknown): AuthenticatedSession
     role: candidate.role,
     displayName: candidate.displayName.trim(),
     email: typeof candidate.email === 'string' ? candidate.email.trim() : undefined,
+    phone: typeof candidate.phone === 'string' ? candidate.phone.trim() : undefined,
     provider: candidate.provider,
     schoolId: typeof candidate.schoolId === 'string' ? candidate.schoolId.trim() : undefined,
     teacherId: typeof candidate.teacherId === 'string' ? candidate.teacherId.trim() : undefined,

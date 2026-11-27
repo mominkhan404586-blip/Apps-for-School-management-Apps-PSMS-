@@ -322,3 +322,193 @@ export function buildAbsentGuardianNotifications(
     messageEn: `${stu.nameEn} (${stu.className}, Roll ${stu.roll}) was marked absent on ${dateIso}.`,
   }));
 }
+
+export interface TimedAttendanceQrSession {
+  token: string;
+  schoolId: string;
+  teacherId?: string;
+  teacherName?: string;
+  className: string;
+  section: string;
+  issuedAtMs: number;
+  expiresAtMs: number;
+  ttlMinutes: number;
+  nonce: string;
+}
+
+export interface TimedAttendanceQrValidation {
+  isTimedAttendanceQr: boolean;
+  valid: boolean;
+  expired?: boolean;
+  wrongSchool?: boolean;
+  revoked?: boolean;
+  tampered?: boolean;
+  remainingSeconds: number;
+  payload?: {
+    schoolId: string;
+    className: string;
+    section: string;
+    expiresAtMs: number;
+    nonce: string;
+  };
+  messageBn: string;
+  messageEn: string;
+}
+
+function sanitizePipeField(raw: string, fallback: string): string {
+  const cleaned = String(raw || '')
+    .replace(/\|/g, '-')
+    .trim();
+  return cleaned || fallback;
+}
+
+function computeTimedQrChecksum(coreString: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < coreString.length; i += 1) {
+    hash ^= coreString.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0').toUpperCase();
+}
+
+export function generateTimedAttendanceQrSession(params: {
+  schoolId: string;
+  teacherId?: string;
+  teacherName?: string;
+  className: string;
+  section?: string;
+  ttlMinutes?: number;
+  nowMs?: number;
+  nonce?: string;
+}): TimedAttendanceQrSession {
+  const issuedAtMs = typeof params.nowMs === 'number' && Number.isFinite(params.nowMs)
+    ? Math.floor(params.nowMs)
+    : Date.now();
+  const ttlMinutes = Math.max(1, Math.min(60, Math.round(params.ttlMinutes ?? 5)));
+  const expiresAtMs = issuedAtMs + ttlMinutes * 60_000;
+  const schoolId = sanitizePipeField(params.schoolId, 'sch-1');
+  const className = sanitizePipeField(params.className || 'All', 'All');
+  const section = sanitizePipeField(params.section || 'All', 'All');
+  const nonce = sanitizePipeField(
+    params.nonce || Math.random().toString(36).slice(2, 8).toUpperCase(),
+    'ATT001'
+  );
+
+  const core = `PSMS-ATT-QR|v1|${schoolId}|${className}|${section}|${expiresAtMs}|${nonce}`;
+  const checksum = computeTimedQrChecksum(core);
+
+  return {
+    token: `${core}|${checksum}`,
+    schoolId,
+    teacherId: params.teacherId,
+    teacherName: params.teacherName,
+    className,
+    section,
+    issuedAtMs,
+    expiresAtMs,
+    ttlMinutes,
+    nonce,
+  };
+}
+
+export function validateTimedAttendanceQrToken(
+  rawCode: string,
+  ctx: {
+    expectedSchoolId: string;
+    nowMs?: number;
+    revokedNonces?: string[];
+  }
+): TimedAttendanceQrValidation {
+  const trimmed = rawCode.trim();
+  if (!trimmed.toUpperCase().startsWith('PSMS-ATT-QR|')) {
+    return {
+      isTimedAttendanceQr: false,
+      valid: false,
+      remainingSeconds: 0,
+      messageBn: '',
+      messageEn: '',
+    };
+  }
+
+  const parts = trimmed.split('|');
+  if (parts.length !== 8 || parts[1] !== 'v1') {
+    return {
+      isTimedAttendanceQr: true,
+      valid: false,
+      tampered: true,
+      remainingSeconds: 0,
+      messageBn: 'অবৈধ সময়সীমিত উপস্থিতি QR ফরম্যাট।',
+      messageEn: 'Invalid time-limited attendance QR format.',
+    };
+  }
+
+  const [, , schoolId, className, section, expiresRaw, nonce, checksum] = parts;
+  const core = parts.slice(0, 7).join('|');
+  if (computeTimedQrChecksum(core) !== checksum.toUpperCase()) {
+    return {
+      isTimedAttendanceQr: true,
+      valid: false,
+      tampered: true,
+      remainingSeconds: 0,
+      messageBn: 'QR কোডটি পরিবর্তিত বা ত্রুটিপূর্ণ (Invalid signature)।',
+      messageEn: 'Attendance QR signature mismatch or tampered code.',
+    };
+  }
+
+  if (ctx.revokedNonces?.includes(nonce)) {
+    return {
+      isTimedAttendanceQr: true,
+      valid: false,
+      revoked: true,
+      remainingSeconds: 0,
+      payload: { schoolId, className, section, expiresAtMs: Number(expiresRaw) || 0, nonce },
+      messageBn: 'শিক্ষক কর্তৃক এই উপস্থিতি QR কোডটি বাতিল (Revoked) করা হয়েছে।',
+      messageEn: 'This attendance QR code has been revoked by the teacher.',
+    };
+  }
+
+  if (ctx.expectedSchoolId && schoolId !== ctx.expectedSchoolId) {
+    return {
+      isTimedAttendanceQr: true,
+      valid: false,
+      wrongSchool: true,
+      remainingSeconds: 0,
+      payload: { schoolId, className, section, expiresAtMs: Number(expiresRaw) || 0, nonce },
+      messageBn: `অন্য বিদ্যালয়ের (${schoolId}) উপস্থিতি QR কোড গ্রহণযোগ্য নয়।`,
+      messageEn: `Attendance QR belongs to another school (${schoolId}).`,
+    };
+  }
+
+  const expiresAtMs = Number(expiresRaw);
+  const nowMs = typeof ctx.nowMs === 'number' && Number.isFinite(ctx.nowMs) ? ctx.nowMs : Date.now();
+  const remainingSeconds = Math.max(0, Math.ceil((expiresAtMs - nowMs) / 1000));
+
+  if (!Number.isFinite(expiresAtMs) || nowMs > expiresAtMs) {
+    return {
+      isTimedAttendanceQr: true,
+      valid: false,
+      expired: true,
+      remainingSeconds: 0,
+      payload: { schoolId, className, section, expiresAtMs: expiresAtMs || 0, nonce },
+      messageBn: 'সময়সীমিত উপস্থিতি QR কোডের মেয়াদ শেষ হয়ে গেছে। নতুন QR তৈরি করুন।',
+      messageEn: 'Time-limited attendance QR code has expired. Generate a fresh QR.',
+    };
+  }
+
+  return {
+    isTimedAttendanceQr: true,
+    valid: true,
+    remainingSeconds,
+    payload: { schoolId, className, section, expiresAtMs, nonce },
+    messageBn: `সময়সীমিত উপস্থিতি QR যাচাই সম্পন্ন (${className}) — বাকি ${formatRemainingDurationMmSs(remainingSeconds)}।`,
+    messageEn: `Time-limited attendance QR verified (${className}) — ${formatRemainingDurationMmSs(remainingSeconds)} remaining.`,
+  };
+}
+
+export function formatRemainingDurationMmSs(totalSeconds: number): string {
+  const safe = Math.max(0, Math.floor(totalSeconds));
+  const mins = Math.floor(safe / 60);
+  const secs = safe % 60;
+  return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+

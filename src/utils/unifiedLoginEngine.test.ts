@@ -11,6 +11,7 @@ import {
   buildPasswordOverrideKey,
   lookupRegistrationApprovalStatus,
   resolveUnifiedPortalLogin,
+  validateLoginIdentifierRealtime,
   validatePasswordChangeInput,
 } from './unifiedLoginEngine';
 
@@ -137,6 +138,24 @@ test('validatePasswordChangeInput validates mismatches, weak passwords, and iden
     confirmPassword: 'teacher@2026',
   });
   assert.equal(valid.ok, true);
+});
+
+test('validateLoginIdentifierRealtime validates emails, mobile numbers, and usernames in real time', () => {
+  assert.equal(validateLoginIdentifierRealtime('').kind, 'empty');
+  assert.equal(validateLoginIdentifierRealtime('bad@').valid, false);
+  assert.equal(validateLoginIdentifierRealtime('bad@').kind, 'invalid_email');
+  assert.equal(validateLoginIdentifierRealtime('teacher@school.edu.bd').valid, true);
+  assert.equal(validateLoginIdentifierRealtime('teacher@school.edu.bd').kind, 'email');
+
+  assert.equal(validateLoginIdentifierRealtime('01712').valid, false);
+  assert.equal(validateLoginIdentifierRealtime('01712').kind, 'invalid_phone');
+  assert.equal(validateLoginIdentifierRealtime('01712345678').valid, true);
+  assert.equal(validateLoginIdentifierRealtime('01712345678').kind, 'phone');
+
+  assert.equal(validateLoginIdentifierRealtime('ab').valid, false);
+  assert.equal(validateLoginIdentifierRealtime('ab').kind, 'too_short');
+  assert.equal(validateLoginIdentifierRealtime('tch_rahim').valid, true);
+  assert.equal(validateLoginIdentifierRealtime('tch_rahim').kind, 'code_or_username');
 });
 
 test('lookupRegistrationApprovalStatus checks school, teacher, and student registrations accurately', () => {

@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "lastSyncedAt": "2026-11-26T11:53:06.767Z",
+  "lastSyncedAt": "2026-11-27T09:04:34.451Z",
   "settings": {
-    "version": 5,
-    "updatedAt": "2026-11-26T11:53:06.767Z",
-    "updatedBy": "মোসাঃ ফাতেমা বেগম আপডেটেড",
-    "accountRecoveryEmail": "fatema.updated@gmail.com",
-    "accountRecoveryPhone": "01799887766",
+    "version": 6,
+    "updatedAt": "2026-11-27T09:04:34.451Z",
+    "updatedBy": "মোঃ আব্দুর রহিম (সিঙ্ক টেস্ট)",
+    "accountRecoveryEmail": "rahim.math@edu.bd",
+    "accountRecoveryPhone": "01722334455",
     "security": {
       "twoFactorEnabled": true,
       "otpVerificationRequired": true,
@@ -268,6 +268,17 @@
     "supportTickets": []
   },
   "auditLogs": [
+    {
+      "id": "AUD-PROF-1795770274429",
+      "who": "মোঃ আব্দুর রহিম",
+      "role": "teacher",
+      "when": "2026-11-27 09:04",
+      "what": "Profile & Recovery Info Updated",
+      "targetName": "মোঃ আব্দুর রহিম (সিঙ্ক টেস্ট)",
+      "requestId": "PROF-TCH-GPS1042-02",
+      "oldValue": "01799887766",
+      "newValue": "01722334455 | rahim.math@edu.bd"
+    },
     {
       "id": "AUD-PROF-1795693986748",
       "who": "বেগম ফাতেমা খাতুন",

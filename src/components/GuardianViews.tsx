@@ -69,6 +69,7 @@ import { RoutineManagementSystem } from './RoutineManagementSystem';
 import { ExamRoutineSystem } from './ExamRoutineSystem';
 import { OfficialDocumentSystem } from './OfficialDocumentSystem';
 import { SchoolCoverBanner } from './SchoolCoverBanner';
+import { useSyncEffect } from '../hooks/useSyncEffect';
 
 interface GuardianViewsProps {
   activeTab: string;
@@ -112,6 +113,7 @@ interface GuardianViewsProps {
   teachers?: TeacherRecord[];
   guardianPhotoUrl?: string;
   onOpenPhotoEditor?: () => void;
+  rtdbSyncTick?: number;
   settingsCenterElement?: React.ReactNode;
 }
 
@@ -157,6 +159,7 @@ export const GuardianViews: React.FC<GuardianViewsProps> = ({
   teachers = [],
   guardianPhotoUrl,
   onOpenPhotoEditor,
+  rtdbSyncTick = 0,
   settingsCenterElement,
 }) => {
   const [leaveReason, setLeaveReason] = useState('অসুস্থতা');
@@ -167,6 +170,18 @@ export const GuardianViews: React.FC<GuardianViewsProps> = ({
   const [linkStudentCode, setLinkStudentCode] = useState('');
   const [linkFeedback, setLinkFeedback] = useState('');
   const [marksheetOpen, setMarksheetOpen] = useState(false);
+  const [, setRtdbRefreshNonce] = useState(0);
+
+  useSyncEffect({
+    syncTick: rtdbSyncTick,
+    rtdbPath: child?.schoolId && child?.id ? `schools/${child.schoolId}/students/${child.id}` : undefined,
+    onSync: () => {
+      if (child?.schoolId) {
+        setLinkSchoolCode(child.schoolId);
+      }
+      setRtdbRefreshNonce((v) => v + 1);
+    },
+  });
 
   const childAssignments = assignments.filter((a) => a.studentId === child.id);
   const pendingCount = childAssignments.filter((a) => a.status === 'pending').length;

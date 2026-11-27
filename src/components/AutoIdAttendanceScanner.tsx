@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import jsQR from 'jsqr';
+import QRCode from 'qrcode';
 import {
   AlertTriangle,
   BellRing,
@@ -15,12 +16,16 @@ import {
   Play,
   Printer,
   QrCode,
+  RefreshCw,
   Send,
   ShieldAlert,
+  ShieldCheck,
   Square,
+  Timer,
   Upload,
   UserCheck,
   Users,
+  XCircle,
 } from 'lucide-react';
 import type {
   KioskScanEvent,
@@ -30,7 +35,13 @@ import type {
   StudentRecord,
 } from '../types';
 import { b } from '../i18n/translations';
-import { computeAttendanceSessionStats } from '../utils/attendanceScannerEngine';
+import {
+  computeAttendanceSessionStats,
+  formatRemainingDurationMmSs,
+  generateTimedAttendanceQrSession,
+  validateTimedAttendanceQrToken,
+  type TimedAttendanceQrSession,
+} from '../utils/attendanceScannerEngine';
 import {
   buildAttendanceExportRows,
   generateAttendanceCsvContent,
@@ -142,6 +153,19 @@ export const AutoIdAttendanceScanner: React.FC<AutoIdAttendanceScannerProps> = (
   const [smsSendingAbsent, setSmsSendingAbsent] = useState(false);
   const [smsAbsentFeedback, setSmsAbsentFeedback] = useState<string | null>(null);
 
+  // Time-limited Attendance QR Generator state
+  const [timedQrPanelOpen, setTimedQrPanelOpen] = useState(false);
+  const [timedQrClass, setTimedQrClass] = useState<string>(
+    () => allowedClasses?.[0] ?? students.find((s) => s.schoolId === schoolId)?.className ?? 'Class 4'
+  );
+  const [timedQrTtlMinutes, setTimedQrTtlMinutes] = useState<number>(5);
+  const [activeTimedQr, setActiveTimedQr] = useState<TimedAttendanceQrSession | null>(null);
+  const [timedQrDataUrl, setTimedQrDataUrl] = useState<string>('');
+  const [timedQrRemainingSec, setTimedQrRemainingSec] = useState<number>(0);
+  const [revokedNonces, setRevokedNonces] = useState<string[]>([]);
+  const [timedCheckInStudentId, setTimedCheckInStudentId] = useState<string>('');
+  const [timedQrFeedback, setTimedQrFeedback] = useState<{ ok: boolean; text: string } | null>(null);
+
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const decodeCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -217,6 +241,57 @@ export const AutoIdAttendanceScanner: React.FC<AutoIdAttendanceScannerProps> = (
     };
   }, [stopCameraTracks]);
 
+  const handleGenerateTimedQr = useCallback(
+    (overrideTtl?: number, overrideClass?: string) => {
+      if (!canTakeAttendance) return;
+      const ttl = overrideTtl ?? timedQrTtlMinutes;
+      const cls = overrideClass ?? timedQrClass;
+      const session = generateTimedAttendanceQrSession({
+        schoolId,
+        teacherName: school?.headTeacher,
+        className: cls,
+        section: 'All',
+        ttlMinutes: ttl,
+      });
+      setActiveTimedQr(session);
+      setTimedQrRemainingSec(Math.max(0, Math.ceil((session.expiresAtMs - Date.now()) / 1000)));
+      setTimedQrFeedback(null);
+      setTimedQrPanelOpen(true);
+    },
+    [canTakeAttendance, school?.headTeacher, schoolId, timedQrClass, timedQrTtlMinutes]
+  );
+
+  useEffect(() => {
+    if (!activeTimedQr) {
+      setTimedQrDataUrl('');
+      setTimedQrRemainingSec(0);
+      return;
+    }
+    let cancelled = false;
+    QRCode.toDataURL(activeTimedQr.token, {
+      width: 240,
+      margin: 2,
+      color: { dark: '#0f172a', light: '#ffffff' },
+    })
+      .then((url) => {
+        if (!cancelled) setTimedQrDataUrl(url);
+      })
+      .catch(() => {
+        if (!cancelled) setTimedQrDataUrl('');
+      });
+
+    const updateRemaining = () => {
+      const rem = Math.max(0, Math.ceil((activeTimedQr.expiresAtMs - Date.now()) / 1000));
+      setTimedQrRemainingSec(rem);
+    };
+    updateRemaining();
+    const id = window.setInterval(updateRemaining, 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [activeTimedQr]);
+
   const handleStartScanning = async () => {
     if (!canTakeAttendance) return;
     setScannerState('scanning');
@@ -270,6 +345,95 @@ export const AutoIdAttendanceScanner: React.FC<AutoIdAttendanceScannerProps> = (
         minute: '2-digit',
       });
 
+      const timedCheck = validateTimedAttendanceQrToken(trimmed, {
+        expectedSchoolId: schoolId,
+        revokedNonces,
+      });
+
+      if (timedCheck.isTimedAttendanceQr) {
+        if (!timedCheck.valid) {
+          setSessionCounters((prev) => ({
+            ...prev,
+            totalScans: prev.totalScans + 1,
+            invalidScans: prev.invalidScans + 1,
+          }));
+          setLastVerifiedScan({
+            status: timedCheck.wrongSchool ? 'wrong_school' : 'not_found',
+            message: b(timedCheck.messageBn, timedCheck.messageEn, lang),
+            scanTime: nowTime,
+            rawCode: trimmed,
+          });
+          setScanCodeInput('');
+          inputRef.current?.focus();
+          return;
+        }
+
+        const targetStudent =
+          schoolStudents.find((s) => s.id === timedCheckInStudentId) ??
+          schoolStudents.find(
+            (s) =>
+              (!timedCheck.payload?.className ||
+                timedCheck.payload.className === 'All' ||
+                s.className === timedCheck.payload.className) &&
+              !schoolScans.some((sc) => sc.studentId === s.id)
+          ) ??
+          schoolStudents[0];
+
+        if (targetStudent) {
+          const studentScanRes = onRecordAutoScan({
+            rawCode: targetStudent.qrPayload || targetStudent.permanentId,
+            schoolId,
+            isLate: markAsLateMode,
+            source,
+            dateIso: todayIso,
+            allowedClasses,
+          });
+          setSessionCounters((prev) => ({
+            totalScans: prev.totalScans + 1,
+            duplicateScans:
+              studentScanRes.status === 'duplicate'
+                ? prev.duplicateScans + 1
+                : prev.duplicateScans,
+            invalidScans:
+              studentScanRes.status === 'not_found' ||
+              studentScanRes.status === 'wrong_school' ||
+              studentScanRes.status === 'unauthorized_class'
+                ? prev.invalidScans + 1
+                : prev.invalidScans,
+          }));
+          setLastVerifiedScan({
+            status: studentScanRes.status,
+            message: b(studentScanRes.messageBn, studentScanRes.messageEn, lang),
+            student: studentScanRes.student,
+            scanTime: studentScanRes.scanEvent?.scanTime ?? nowTime,
+            firstScanTime: studentScanRes.firstScanTime,
+            attendanceState: studentScanRes.scanEvent?.attendanceState,
+            rawCode: trimmed,
+          });
+          if (studentScanRes.status === 'recorded' && studentScanRes.student) {
+            setLiveSessionScans((prev) => [
+              {
+                id: studentScanRes.scanEvent?.id ?? `live-${Date.now()}`,
+                nameBn: studentScanRes.student!.nameBn,
+                className: studentScanRes.student!.className,
+                time: studentScanRes.scanEvent?.scanTime ?? nowTime,
+                state:
+                  studentScanRes.scanEvent?.attendanceState ??
+                  (markAsLateMode ? 'late' : 'present'),
+              },
+              ...prev,
+            ]);
+          }
+          setTimedQrFeedback({
+            ok: studentScanRes.status === 'recorded',
+            text: `${b(timedCheck.messageBn, timedCheck.messageEn, lang)} · ${b(studentScanRes.messageBn, studentScanRes.messageEn, lang)}`,
+          });
+        }
+        setScanCodeInput('');
+        inputRef.current?.focus();
+        return;
+      }
+
       const res = onRecordAutoScan({
         rawCode: trimmed,
         schoolId,
@@ -314,7 +478,19 @@ export const AutoIdAttendanceScanner: React.FC<AutoIdAttendanceScannerProps> = (
       setScanCodeInput('');
       inputRef.current?.focus();
     },
-    [allowedClasses, isActivelyDecoding, lang, markAsLateMode, onRecordAutoScan, schoolId, todayIso]
+    [
+      allowedClasses,
+      isActivelyDecoding,
+      lang,
+      markAsLateMode,
+      onRecordAutoScan,
+      revokedNonces,
+      schoolId,
+      schoolScans,
+      schoolStudents,
+      timedCheckInStudentId,
+      todayIso,
+    ]
   );
 
   // Real continuous QR code decoding loop over camera frames via jsQR + BarcodeDetector
@@ -632,6 +808,27 @@ export const AutoIdAttendanceScanner: React.FC<AutoIdAttendanceScannerProps> = (
 
           <button
             type="button"
+            data-testid="generate-attendance-qr-btn"
+            disabled={!canTakeAttendance}
+            onClick={() => {
+              if (!timedQrPanelOpen) {
+                if (!activeTimedQr) {
+                  handleGenerateTimedQr();
+                } else {
+                  setTimedQrPanelOpen(true);
+                }
+              } else {
+                setTimedQrPanelOpen(false);
+              }
+            }}
+            className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl border border-blue-600/40 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/50 disabled:opacity-50 text-blue-800 dark:text-blue-200 font-bold cursor-pointer transition-colors"
+          >
+            <Timer className="w-3.5 h-3.5" />
+            {b('Generate QR for Attendance', 'Generate QR for Attendance', lang)}
+          </button>
+
+          <button
+            type="button"
             data-testid="open-qr-stickers-btn"
             onClick={() => setQrStickersModalOpen(true)}
             className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl border border-emerald-600/40 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300 font-bold cursor-pointer transition-colors"
@@ -699,6 +896,251 @@ export const AutoIdAttendanceScanner: React.FC<AutoIdAttendanceScannerProps> = (
               lang
             )}
           </span>
+        </div>
+      )}
+
+      {/* Time-Limited Teacher Attendance QR Generator Card */}
+      {timedQrPanelOpen && (
+        <div
+          data-testid="timed-attendance-qr-panel"
+          className="bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 rounded-2xl p-5 space-y-4 shadow-sm"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-3">
+            <div>
+              <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Timer className="w-4 h-4 text-blue-700 dark:text-blue-400" />
+                {b('সময়সীমিত ক্লাস উপস্থিতি QR কোড (Time-Limited Attendance QR)', 'Time-Limited Attendance QR Generator', lang)}
+              </h2>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                {b(
+                  'শিক্ষার্থীরা নির্ধারিত সময়ের মধ্যে এই QR স্ক্যান করে উপস্থিতি নিশ্চিত করতে পারবে। মেয়াদ শেষে কোডটি স্বয়ংক্রিয়ভাবে অকার্যকর হবে।',
+                  'Students scan this time-limited QR before expiry to verify attendance through the scanner engine.',
+                  lang
+                )}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setTimedQrPanelOpen(false)}
+              className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-semibold cursor-pointer"
+            >
+              {b('বন্ধ করুন', 'Close', lang)}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-5 items-start">
+            {/* QR Visual + Live Countdown */}
+            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/40 p-4 flex flex-col items-center text-center space-y-2.5">
+              {timedQrDataUrl ? (
+                <img
+                  src={timedQrDataUrl}
+                  alt="Time-Limited Attendance QR Code"
+                  data-testid="generated-attendance-qr-img"
+                  className={`w-48 h-48 rounded-lg bg-white p-2 border border-slate-200 ${
+                    timedQrRemainingSec === 0 || (activeTimedQr && revokedNonces.includes(activeTimedQr.nonce))
+                      ? 'opacity-35 grayscale'
+                      : ''
+                  }`}
+                />
+              ) : (
+                <div className="w-48 h-48 rounded-lg bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-slate-500">
+                  QR...
+                </div>
+              )}
+
+              {activeTimedQr && (
+                <div
+                  data-testid="timed-qr-countdown"
+                  className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono font-bold ${
+                    revokedNonces.includes(activeTimedQr.nonce)
+                      ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
+                      : timedQrRemainingSec > 0
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                        : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                  }`}
+                >
+                  <Clock className="w-3.5 h-3.5" />
+                  {revokedNonces.includes(activeTimedQr.nonce)
+                    ? b('বাতিলকৃত (REVOKED)', 'REVOKED', lang)
+                    : timedQrRemainingSec > 0
+                      ? `${b('সক্রিয়:', 'Expires in', lang)} ${formatRemainingDurationMmSs(timedQrRemainingSec)}`
+                      : b('মেয়াদোত্তীর্ণ (EXPIRED)', 'EXPIRED', lang)}
+                </div>
+              )}
+            </div>
+
+            {/* Configuration + Scanner Check-In Integration */}
+            <div className="space-y-3.5">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <div>
+                  <label className="block font-semibold text-slate-600 dark:text-slate-300 mb-1">
+                    {b('শ্রেণি নির্বাচন', 'Class', lang)}
+                  </label>
+                  <select
+                    aria-label={b('QR শ্রেণি', 'QR Class', lang)}
+                    value={timedQrClass}
+                    onChange={(e) => {
+                      const cls = e.target.value;
+                      setTimedQrClass(cls);
+                      handleGenerateTimedQr(timedQrTtlMinutes, cls);
+                    }}
+                    className="w-full h-9 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-semibold cursor-pointer"
+                  >
+                    {classOptions.map((c) => (
+                      <option key={c} value={c}>
+                        {c === 'All' ? b('সকল শ্রেণি', 'All Classes', lang) : c}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-600 dark:text-slate-300 mb-1">
+                    {b('মেয়াদ (Expiry TTL)', 'Valid Duration', lang)}
+                  </label>
+                  <select
+                    aria-label={b('QR মেয়াদ', 'QR Duration', lang)}
+                    data-testid="timed-qr-ttl-select"
+                    value={timedQrTtlMinutes}
+                    onChange={(e) => {
+                      const nextTtl = Number(e.target.value);
+                      setTimedQrTtlMinutes(nextTtl);
+                      handleGenerateTimedQr(nextTtl, timedQrClass);
+                    }}
+                    className="w-full h-9 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-semibold cursor-pointer"
+                  >
+                    <option value={2}>2 {b('মিনিট', 'Minutes', lang)}</option>
+                    <option value={5}>5 {b('মিনিট', 'Minutes', lang)}</option>
+                    <option value={10}>10 {b('মিনিট', 'Minutes', lang)}</option>
+                    <option value={15}>15 {b('মিনিট', 'Minutes', lang)}</option>
+                  </select>
+                </div>
+
+                <div className="flex items-end gap-2">
+                  <button
+                    type="button"
+                    data-testid="refresh-timed-qr-btn"
+                    onClick={() => handleGenerateTimedQr()}
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-lg bg-blue-700 hover:bg-blue-800 text-white font-semibold cursor-pointer"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    {b('নতুন QR', 'Refresh QR', lang)}
+                  </button>
+                  {activeTimedQr && !revokedNonces.includes(activeTimedQr.nonce) && (
+                    <button
+                      type="button"
+                      data-testid="revoke-timed-qr-btn"
+                      onClick={() => setRevokedNonces((prev) => [...prev, activeTimedQr.nonce])}
+                      className="inline-flex items-center justify-center gap-1 h-9 px-3 rounded-lg border border-rose-300 text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/30 font-semibold cursor-pointer"
+                    >
+                      <XCircle className="w-3.5 h-3.5" />
+                      {b('বাতিল', 'Revoke', lang)}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {activeTimedQr && (
+                <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 font-mono text-[11px] break-all text-slate-700 dark:text-slate-300">
+                  <span className="font-bold text-slate-900 dark:text-white">Token: </span>
+                  <span data-testid="timed-qr-token-text">{activeTimedQr.token}</span>
+                </div>
+              )}
+
+              {/* Direct Student Check-In Verification via Active Time-Limited QR */}
+              <div className="p-3 rounded-xl border border-emerald-200 dark:border-emerald-800/60 bg-emerald-50/50 dark:bg-emerald-950/20 space-y-2">
+                <div className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />
+                  {b('শিক্ষার্থী QR চেক-ইন যাচাই (Scanner Engine Integration)', 'Verify Student Check-In Against Active QR', lang)}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    aria-label={b('শিক্ষার্থী নির্বাচন', 'Select student for timed QR check-in', lang)}
+                    value={timedCheckInStudentId || schoolStudents[0]?.id || ''}
+                    onChange={(e) => setTimedCheckInStudentId(e.target.value)}
+                    className="flex-1 min-w-[180px] h-9 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-semibold"
+                  >
+                    {schoolStudents
+                      .filter((s) => timedQrClass === 'All' || s.className === timedQrClass)
+                      .map((stu) => (
+                        <option key={stu.id} value={stu.id}>
+                          Roll {stu.roll} · {stu.nameBn} ({stu.className})
+                        </option>
+                      ))}
+                  </select>
+                  <button
+                    type="button"
+                    data-testid="verify-timed-qr-checkin-btn"
+                    disabled={!activeTimedQr}
+                    onClick={() => {
+                      if (!activeTimedQr) return;
+                      const check = validateTimedAttendanceQrToken(activeTimedQr.token, {
+                        expectedSchoolId: schoolId,
+                        revokedNonces,
+                      });
+                      if (!check.valid) {
+                        setSessionCounters((prev) => ({
+                          ...prev,
+                          totalScans: prev.totalScans + 1,
+                          invalidScans: prev.invalidScans + 1,
+                        }));
+                        setTimedQrFeedback({
+                          ok: false,
+                          text: b(check.messageBn, check.messageEn, lang),
+                        });
+                        return;
+                      }
+                      const scopedPool = schoolStudents.filter(
+                        (s) => timedQrClass === 'All' || s.className === timedQrClass
+                      );
+                      const chosen =
+                        scopedPool.find((s) => s.id === timedCheckInStudentId) ?? scopedPool[0];
+                      if (!chosen) return;
+                      const res = onRecordAutoScan({
+                        rawCode: chosen.qrPayload || chosen.permanentId,
+                        schoolId,
+                        isLate: markAsLateMode,
+                        source: 'auto_camera',
+                        dateIso: todayIso,
+                        allowedClasses,
+                      });
+                      setSessionCounters((prev) => ({
+                        totalScans: prev.totalScans + 1,
+                        duplicateScans:
+                          res.status === 'duplicate' ? prev.duplicateScans + 1 : prev.duplicateScans,
+                        invalidScans:
+                          res.status === 'not_found' ||
+                          res.status === 'wrong_school' ||
+                          res.status === 'unauthorized_class'
+                            ? prev.invalidScans + 1
+                            : prev.invalidScans,
+                      }));
+                      setTimedQrFeedback({
+                        ok: res.status === 'recorded',
+                        text: `${b(check.messageBn, check.messageEn, lang)} · ${b(res.messageBn, res.messageEn, lang)}`,
+                      });
+                    }}
+                    className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white font-semibold cursor-pointer"
+                  >
+                    <UserCheck className="w-3.5 h-3.5" />
+                    {b('উপস্থিতি রেকর্ড করুন', 'Verify & Mark Present', lang)}
+                  </button>
+                </div>
+                {timedQrFeedback && (
+                  <p
+                    data-testid="timed-qr-feedback"
+                    className={`text-[11px] font-semibold ${
+                      timedQrFeedback.ok
+                        ? 'text-emerald-700 dark:text-emerald-300'
+                        : 'text-rose-700 dark:text-rose-300'
+                    }`}
+                  >
+                    {timedQrFeedback.text}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

@@ -1,15 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#059669" />
-      <stop offset="55%" stop-color="#0f766e" />
-      <stop offset="100%" stop-color="#0f172a" />
+    <linearGradient id="psmsBlueBg" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0%" stop-color="#0039e6" />
+      <stop offset="55%" stop-color="#0284c7" />
+      <stop offset="100%" stop-color="#00e5ff" />
     </linearGradient>
   </defs>
-  <rect width="512" height="512" rx="112" fill="url(#bg)" />
-  <circle cx="256" cy="256" r="184" fill="#ffffff" fill-opacity="0.1" stroke="#34d399" stroke-opacity="0.35" stroke-width="6" />
-  <path d="M256 124L132 184l124 60 124-60-124-60z" fill="#ffffff" />
-  <path d="M174 220v74c0 28 36.7 52 82 52s82-24 82-52v-74l-82 39.7L174 220z" fill="#d1fae5" />
-  <path d="M362 198v88" stroke="#fbbf24" stroke-width="14" stroke-linecap="round" />
-  <circle cx="362" cy="298" r="14" fill="#fbbf24" />
+  <rect width="512" height="512" rx="112" fill="url(#psmsBlueBg)" />
+  <path
+    d="M248 342c-36-34-88-46-138-44v-154c54-2 104 16 138 64v134zm16 0c36-34 88-46 138-44v-154c-54-2-104 16-138 64v134z"
+    fill="#ffffff"
+  />
+  <path
+    d="M256 358c-44-42-108-52-166-46v-138c-12 2-22 10-22 22v144c0 14 12 24 26 22 54-8 112 2 162 42 50-40 108-50 162-42 14 2 26-8 26-22v-144c0-12-10-20-22-22v138c-58-6-122 4-166 46z"
+    fill="#ffffff"
+    fill-opacity="0.96"
+  />
 </svg>

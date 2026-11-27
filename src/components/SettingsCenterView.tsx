@@ -38,6 +38,7 @@ import {
   Search,
   Send,
   Settings,
+  Share2,
   Shield,
   ShieldCheck,
   Sliders,
@@ -119,9 +120,13 @@ export interface SettingsCenterViewProps {
   onToggleTeacherStatus?: (teacherId: string, nextStatus: 'active' | 'suspended') => void;
   onToggleStudentStatus?: (studentId: string, nextStatus: 'active' | 'suspended') => void;
   onUpdateSchoolInfo?: (schoolId: string, patch: Partial<SchoolRecord>) => void;
-  onUpdateActorProfile?: (patch: { displayName: string; email: string; phone: string }) => void;
+  onUpdateActorProfile?: (
+    patch: { displayName: string; email: string; phone: string },
+    options?: { skipCloudUserSync?: boolean }
+  ) => void;
   onOpenCoverGallery?: () => void;
   onOpenBannerCrop?: () => void;
+  onOpenAppDownloadAndShare?: () => void;
 }
 
 const FEATURE_GROUP_LABELS: Record<
@@ -183,6 +188,7 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
   onUpdateActorProfile,
   onOpenCoverGallery,
   onOpenBannerCrop,
+  onOpenAppDownloadAndShare,
 }) => {
   const visibleCategories = useMemo(() => getVisibleSettingsSectionsForRole(role), [role]);
   const [activeCategory, setActiveCategory] = useState<SettingsCategoryId>('account_profile');
@@ -585,11 +591,14 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
       },
       audit
     );
-    onUpdateActorProfile?.({
-      displayName: validation.normalized.displayName,
-      email: validation.normalized.email,
-      phone: validation.normalized.phone,
-    });
+    onUpdateActorProfile?.(
+      {
+        displayName: validation.normalized.displayName,
+        email: validation.normalized.email,
+        phone: validation.normalized.phone,
+      },
+      { skipCloudUserSync: Boolean(auth.currentUser?.emailVerified) }
+    );
 
     if (auth.currentUser?.emailVerified) {
       const rtdbRes = await updateRealtimeUserAccount(
@@ -600,7 +609,6 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
           email: auth.currentUser.email || actorEmail,
           phone: actorPhone,
           role,
-          status: 'active',
         },
         {
           displayName: validation.normalized.displayName,
@@ -614,6 +622,13 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
         showToast(
           'প্রোফাইল এবং Firebase Realtime Database সাথে সাথে আপডেট হয়েছে!',
           'Profile & Firebase Realtime Database updated immediately!'
+        );
+        return;
+      }
+      if (rtdbRes.errorCode === 'PERMISSION_DENIED') {
+        showToast(
+          'প্রোফাইল লোকাল ও ডিসপ্লেতে সেভ হয়েছে, তবে RTDB Rules (database.rules.json) Console-এ Publish করুন।',
+          'Profile updated in UI/local storage, but RTDB returned PERMISSION_DENIED — publish database.rules.json.'
         );
         return;
       }
@@ -894,13 +909,13 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
               draftName={profileName}
               draftEmail={recoveryEmail || profileEmail}
               draftPhone={recoveryPhone || profilePhone}
-              onSyncLocalProfile={(patch) => {
+              onSyncLocalProfile={(patch, opts) => {
                 setProfileName(patch.displayName);
                 setProfileEmail(patch.email);
                 setRecoveryEmail(patch.email);
                 setProfilePhone(patch.phone);
                 setRecoveryPhone(patch.phone);
-                onUpdateActorProfile?.(patch);
+                onUpdateActorProfile?.(patch, opts);
               }}
             />
 
@@ -2722,6 +2737,33 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
 
         return (
           <div className="space-y-4" data-testid="deployment-app-links-section">
+            {/* Consolidated App Tools (Download APK / Share / Web Browser Access) */}
+            {onOpenAppDownloadAndShare && (
+              <div className="rounded-xl border border-indigo-200 dark:border-indigo-800/70 bg-indigo-50/70 dark:bg-indigo-950/30 p-4 flex flex-wrap items-center justify-between gap-3">
+                <div className="space-y-0.5 min-w-0">
+                  <div className="text-xs font-extrabold text-indigo-900 dark:text-indigo-200">
+                    {b('App Tools · ডাউনলোড ও শেয়ার ইউটিলিটি', 'App Tools · Download, Share & Web Utility', lang)}
+                  </div>
+                  <p className="text-[11px] text-indigo-800 dark:text-indigo-300">
+                    {b(
+                      'অ্যান্ড্রয়েড APK ফাইল ডাউনলোড, বন্ধুদের শেয়ার এবং ওয়েব ব্রাউজার লিংক এক জায়গা থেকেই খুলুন ও শেয়ার করুন।',
+                      'Download Android APK, share links with colleagues/parents, or launch Web Browser access from one place.',
+                      lang
+                    )}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  data-testid="settings-open-app-tools-btn"
+                  onClick={onOpenAppDownloadAndShare}
+                  className="h-9 px-3.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer shrink-0 transition-colors"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                  <span>{b('App Tools খুলুন (APK / Share)', 'Open App Tools (APK / Share)', lang)}</span>
+                </button>
+              </div>
+            )}
+
             {/* Unified Web + Android Architecture Banner */}
             <div className="rounded-xl border border-emerald-200 dark:border-emerald-800/60 bg-emerald-50/70 dark:bg-emerald-950/30 p-4 flex flex-wrap items-center justify-between gap-3">
               <div className="space-y-1 min-w-0">

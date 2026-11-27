@@ -119,6 +119,7 @@ import {
   SchoolCampusIllustration,
 } from './PortalIllustrations';
 import { SchoolCoverBanner } from './SchoolCoverBanner';
+import { useSyncEffect } from '../hooks/useSyncEffect';
 
 interface SchoolAdminViewsProps {
   activeTab: string;
@@ -301,6 +302,7 @@ interface SchoolAdminViewsProps {
   onOpenPhotoEditor?: () => void;
   onEditStudentPhoto?: (student: StudentRecord) => void;
   onEditTeacherPhoto?: (teacher: TeacherRecord) => void;
+  rtdbSyncTick?: number;
   settingsCenterElement?: React.ReactNode;
 }
 
@@ -422,10 +424,12 @@ export const SchoolAdminViews: React.FC<SchoolAdminViewsProps> = ({
   onOpenPhotoEditor,
   onEditStudentPhoto,
   onEditTeacherPhoto,
+  rtdbSyncTick = 0,
   settingsCenterElement,
 }) => {
   const [classFilter, setClassFilter] = useState('all');
   const [payMethod, setPayMethod] = useState<FeeRecord['method']>('bKash');
+  const [, setRtdbRefreshNonce] = useState(0);
   const [smsLog] = useState([
     { id: 'sms-1', target: 'সকল অভিভাবক (২৪৮ জন)', message: 'আগামী ২০ নভেম্বর বার্ষিক পরীক্ষা শুরু।', status: 'Delivered (99.2%)', time: 'আজ সকাল ১০:০০' },
     { id: 'sms-2', target: 'অনুপস্থিত শিক্ষার্থীর অভিভাবক (১২ জন)', message: 'আপনার সন্তান আজ বিদ্যালয়ে অনুপস্থিত।', status: 'Delivered (100%)', time: 'আজ সকাল ০৯:৪৫' },
@@ -435,6 +439,17 @@ export const SchoolAdminViews: React.FC<SchoolAdminViewsProps> = ({
   const allowedClasses = typeConfig.defaultClasses;
   const effectiveClassFilter = classFilter === 'all' || allowedClasses.includes(classFilter) ? classFilter : 'all';
   const filteredStudents = filterStudents(students, searchQuery, effectiveClassFilter);
+
+  useSyncEffect({
+    syncTick: rtdbSyncTick,
+    rtdbPath: ownSchool?.id ? `schools/${ownSchool.id}` : undefined,
+    onSync: () => {
+      if (classFilter !== 'all' && !allowedClasses.includes(classFilter)) {
+        setClassFilter('all');
+      }
+      setRtdbRefreshNonce((v) => v + 1);
+    },
+  });
 
   const classDistributionData = allowedClasses.slice(0, 6).map((cls, idx) => {
     const actualCount = students.filter((s) => s.className === cls).length;
@@ -1448,6 +1463,7 @@ export const SchoolAdminViews: React.FC<SchoolAdminViewsProps> = ({
                 lang={lang}
                 school={ownSchool}
                 exams={exams}
+                students={students}
                 subjectSubmissions={subjectSubmissions}
                 resultAuditLogs={resultAuditLogs}
                 onSendDelayedTeacherAlert={onSendDelayedTeacherAlert}

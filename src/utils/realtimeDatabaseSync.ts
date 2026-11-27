@@ -83,7 +83,7 @@ export interface RealtimeUserChangeLog {
 }
 
 const EMAIL_REGEX = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
-const PHONE_CHARS_REGEX = /^[+0-9\-\s]{6,24}$/;
+const PHONE_CHARS_REGEX = /^[+0-9()\-\s]{6,24}$/;
 const BD_MOBILE_DIGITS_REGEX = /^(?:\+?88)?01[3-9]\d{8}$/;
 
 export function isValidEmailAddress(email: string): boolean {
@@ -397,9 +397,10 @@ export function applyRealtimeUserToSession(
   const nextRole: Role = rtdbUser.role !== 'pending' ? rtdbUser.role : currentSession.role;
   const nextDisplayName = rtdbUser.displayName || currentSession.displayName;
   const nextEmail = rtdbUser.email || currentSession.email;
-  const nextSchoolId = rtdbUser.schoolId ?? currentSession.schoolId;
-  const nextTeacherId = rtdbUser.teacherId ?? currentSession.teacherId;
-  const nextStudentId = rtdbUser.studentId ?? currentSession.studentId;
+  const nextPhone = rtdbUser.phone || rtdbUser.recoveryPhone || currentSession.phone;
+  const nextSchoolId = rtdbUser.schoolId !== undefined ? rtdbUser.schoolId || undefined : currentSession.schoolId;
+  const nextTeacherId = rtdbUser.teacherId !== undefined ? rtdbUser.teacherId || undefined : currentSession.teacherId;
+  const nextStudentId = rtdbUser.studentId !== undefined ? rtdbUser.studentId || undefined : currentSession.studentId;
   const nextGuardianMobile =
     nextRole === 'guardian'
       ? rtdbUser.phone || rtdbUser.recoveryPhone || currentSession.guardianMobile
@@ -408,6 +409,7 @@ export function applyRealtimeUserToSession(
   const changed =
     currentSession.displayName !== nextDisplayName ||
     currentSession.email !== nextEmail ||
+    currentSession.phone !== nextPhone ||
     currentSession.role !== nextRole ||
     currentSession.schoolId !== nextSchoolId ||
     currentSession.teacherId !== nextTeacherId ||
@@ -425,6 +427,7 @@ export function applyRealtimeUserToSession(
       ...currentSession,
       displayName: nextDisplayName,
       email: nextEmail,
+      ...(nextPhone ? { phone: nextPhone } : {}),
       role: nextRole,
       ...(nextSchoolId ? { schoolId: nextSchoolId } : {}),
       ...(nextTeacherId ? { teacherId: nextTeacherId } : {}),
@@ -444,6 +447,9 @@ const IS_TEACHER_OF = `(${IS_ACTIVE_USER} && ${USER_NODE}.child('role').val() ==
 const IS_STUDENT_OF = `(${IS_ACTIVE_USER} && ${USER_NODE}.child('role').val() == 'student' && ${USER_NODE}.child('schoolId').val() == $schoolId)`;
 const IS_GUARDIAN_OF = `(${IS_ACTIVE_USER} && ${USER_NODE}.child('role').val() == 'guardian' && ${USER_NODE}.child('schoolId').val() == $schoolId)`;
 const BELONGS_TO_SCHOOL = `(${IS_ACTIVE_USER} && ${USER_NODE}.child('schoolId').val() == $schoolId)`;
+const SAME_SCHOOL_ID = `((!data.child('schoolId').exists() && (!newData.child('schoolId').exists() || newData.child('schoolId').val() == '')) || (data.child('schoolId').exists() && newData.child('schoolId').val() == data.child('schoolId').val()))`;
+const SAME_TEACHER_ID = `((!data.child('teacherId').exists() && (!newData.child('teacherId').exists() || newData.child('teacherId').val() == '')) || (data.child('teacherId').exists() && newData.child('teacherId').val() == data.child('teacherId').val()))`;
+const SAME_STUDENT_ID = `((!data.child('studentId').exists() && (!newData.child('studentId').exists() || newData.child('studentId').val() == '')) || (data.child('studentId').exists() && newData.child('studentId').val() == data.child('studentId').val()))`;
 
 export const REALTIME_DATABASE_RULES_OBJECT = {
   rules: {
@@ -475,7 +481,7 @@ export const REALTIME_DATABASE_RULES_OBJECT = {
       '.read': `${IS_SUPER_ADMIN} || ${IS_ACTIVE_REVIEW_ADMIN}`,
       $uid: {
         '.read': `${IS_SUPER_ADMIN} || ${IS_ACTIVE_REVIEW_ADMIN} || (${IS_VERIFIED_AUTH} && auth.uid == $uid) || (${IS_ACTIVE_USER} && ${USER_NODE}.child('role').val() == 'school_admin' && data.child('schoolId').val() == ${USER_NODE}.child('schoolId').val())`,
-        '.write': `${IS_SUPER_ADMIN} || (${IS_ACTIVE_USER} && ${USER_NODE}.child('role').val() == 'school_admin' && newData.exists() && newData.child('schoolId').val() == ${USER_NODE}.child('schoolId').val() && (newData.child('role').val() == 'teacher' || newData.child('role').val() == 'student' || newData.child('role').val() == 'guardian')) || (${IS_VERIFIED_AUTH} && auth.uid == $uid && newData.exists() && ((!data.exists() && newData.child('role').val() == 'pending' && newData.child('status').val() == 'pending') || (data.exists() && newData.child('role').val() == data.child('role').val() && newData.child('status').val() == data.child('status').val() && newData.child('schoolId').val() == data.child('schoolId').val())))`,
+        '.write': `${IS_SUPER_ADMIN} || (${IS_ACTIVE_USER} && ${USER_NODE}.child('role').val() == 'school_admin' && newData.exists() && (!data.exists() || data.child('schoolId').val() == ${USER_NODE}.child('schoolId').val()) && newData.child('schoolId').val() == ${USER_NODE}.child('schoolId').val() && (newData.child('role').val() == 'teacher' || newData.child('role').val() == 'student' || newData.child('role').val() == 'guardian')) || (${IS_VERIFIED_AUTH} && auth.uid == $uid && newData.exists() && ((!data.exists() && newData.child('role').val() == 'pending' && newData.child('status').val() == 'pending') || (data.exists() && newData.child('role').val() == data.child('role').val() && newData.child('status').val() == data.child('status').val() && ${SAME_SCHOOL_ID} && ${SAME_TEACHER_ID} && ${SAME_STUDENT_ID})))`,
         '.validate': "newData.hasChildren(['uid', 'email', 'displayName', 'role', 'status', 'updatedAt'])",
         uid: { '.validate': 'newData.isString() && newData.val() == $uid' },
         email: {
@@ -485,7 +491,7 @@ export const REALTIME_DATABASE_RULES_OBJECT = {
         displayName: { '.validate': 'newData.isString() && newData.val().length >= 2 && newData.val().length <= 120' },
         phone: {
           '.validate':
-            'newData.isString() && (newData.val().length == 0 || (newData.val().length >= 6 && newData.val().length <= 24 && newData.val().matches(/^[+0-9\\-\\s]{6,24}$/)))',
+            'newData.isString() && (newData.val().length == 0 || (newData.val().length >= 6 && newData.val().length <= 24 && newData.val().matches(/^[+0-9()\\-\\s]{6,24}$/)))',
         },
         recoveryEmail: {
           '.validate':
@@ -493,7 +499,7 @@ export const REALTIME_DATABASE_RULES_OBJECT = {
         },
         recoveryPhone: {
           '.validate':
-            'newData.isString() && (newData.val().length == 0 || (newData.val().length >= 6 && newData.val().length <= 24 && newData.val().matches(/^[+0-9\\-\\s]{6,24}$/)))',
+            'newData.isString() && (newData.val().length == 0 || (newData.val().length >= 6 && newData.val().length <= 24 && newData.val().matches(/^[+0-9()\\-\\s]{6,24}$/)))',
         },
         role: {
           '.validate':
@@ -516,6 +522,7 @@ export const REALTIME_DATABASE_RULES_OBJECT = {
     schools: {
       '.read': `${IS_SUPER_ADMIN} || ${IS_ACTIVE_REVIEW_ADMIN}`,
       $schoolId: {
+        '.read': `${IS_SUPER_ADMIN} || ${IS_ACTIVE_REVIEW_ADMIN} || ${BELONGS_TO_SCHOOL}`,
         profile: {
           '.read': `${IS_SUPER_ADMIN} || ${IS_ACTIVE_REVIEW_ADMIN} || ${BELONGS_TO_SCHOOL}`,
           '.write': `${IS_SUPER_ADMIN} || ${IS_SCHOOL_ADMIN_OF}`,
@@ -523,6 +530,11 @@ export const REALTIME_DATABASE_RULES_OBJECT = {
           schoolId: { '.validate': 'newData.isString() && newData.val() == $schoolId' },
           nameBn: { '.validate': 'newData.isString() && newData.val().length >= 2 && newData.val().length <= 200' },
           nameEn: { '.validate': 'newData.isString() && newData.val().length <= 200' },
+          headTeacher: { '.validate': 'newData.isString() && newData.val().length <= 120' },
+          email: { '.validate': 'newData.isString() && newData.val().length <= 254' },
+          mobile: { '.validate': 'newData.isString() && newData.val().length <= 24' },
+          eiin: { '.validate': 'newData.isString() && newData.val().length <= 32' },
+          fullAddress: { '.validate': 'newData.isString() && newData.val().length <= 300' },
           status: {
             '.validate':
               "newData.isString() && (newData.val() == 'active' || newData.val() == 'pending' || newData.val() == 'under_review' || newData.val() == 'suspended' || newData.val() == 'deactivated')",
@@ -540,10 +552,14 @@ export const REALTIME_DATABASE_RULES_OBJECT = {
             teacherId: { '.validate': 'newData.isString() && newData.val() == $teacherId' },
             schoolId: { '.validate': 'newData.isString() && newData.val() == $schoolId' },
             nameBn: { '.validate': 'newData.isString() && newData.val().length >= 2 && newData.val().length <= 120' },
+            nameEn: { '.validate': 'newData.isString() && newData.val().length <= 120' },
+            email: { '.validate': 'newData.isString() && newData.val().length <= 254' },
             mobile: { '.validate': 'newData.isString() && newData.val().length <= 24' },
+            designation: { '.validate': 'newData.isString() && newData.val().length <= 120' },
             status: {
               '.validate': "newData.isString() && (newData.val() == 'active' || newData.val() == 'pending' || newData.val() == 'suspended')",
             },
+            updatedByUid: { '.validate': 'newData.isString() && newData.val().length <= 128' },
             updatedAt: { '.validate': 'newData.isNumber() || newData.isString()' },
             $other: { '.validate': false },
           },
@@ -557,10 +573,15 @@ export const REALTIME_DATABASE_RULES_OBJECT = {
             studentId: { '.validate': 'newData.isString() && newData.val() == $studentId' },
             schoolId: { '.validate': 'newData.isString() && newData.val() == $schoolId' },
             nameBn: { '.validate': 'newData.isString() && newData.val().length >= 2 && newData.val().length <= 120' },
+            nameEn: { '.validate': 'newData.isString() && newData.val().length <= 120' },
+            className: { '.validate': 'newData.isString() && newData.val().length <= 64' },
+            section: { '.validate': 'newData.isString() && newData.val().length <= 64' },
+            roll: { '.validate': 'newData.isNumber() || newData.isString()' },
             guardianMobile: { '.validate': 'newData.isString() && newData.val().length <= 24' },
             status: {
               '.validate': "newData.isString() && (newData.val() == 'active' || newData.val() == 'pending' || newData.val() == 'suspended')",
             },
+            updatedByUid: { '.validate': 'newData.isString() && newData.val().length <= 128' },
             updatedAt: { '.validate': 'newData.isNumber() || newData.isString()' },
             $other: { '.validate': false },
           },
@@ -607,7 +628,7 @@ export const REALTIME_DATABASE_RULES_OBJECT = {
         '.indexOn': ['updatedAt'],
         '.read': `${IS_SUPER_ADMIN} || ${IS_ACTIVE_REVIEW_ADMIN} || (${IS_VERIFIED_AUTH} && auth.uid == $uid)`,
         $logId: {
-          '.write': `${IS_SUPER_ADMIN} || (${IS_VERIFIED_AUTH} && auth.uid == $uid && newData.exists() && newData.child('changedByUid').val() == auth.uid)`,
+          '.write': `${IS_SUPER_ADMIN} || (${IS_ACTIVE_USER} && ${USER_NODE}.child('role').val() == 'school_admin' && root.child('users').child($uid).child('schoolId').val() == ${USER_NODE}.child('schoolId').val() && newData.exists() && newData.child('changedByUid').val() == auth.uid) || (${IS_VERIFIED_AUTH} && auth.uid == $uid && newData.exists() && newData.child('changedByUid').val() == auth.uid)`,
           '.validate':
             "newData.hasChildren(['uid', 'changedByUid', 'field', 'oldValue', 'newValue', 'validationStatus', 'updatedAt'])",
           uid: { '.validate': 'newData.isString() && newData.val() == $uid' },

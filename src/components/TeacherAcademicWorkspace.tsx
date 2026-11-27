@@ -86,6 +86,7 @@ import { RoutineManagementSystem } from './RoutineManagementSystem';
 import { OfficialDocumentSystem } from './OfficialDocumentSystem';
 import { ExamRoutineSystem } from './ExamRoutineSystem';
 import { SchoolCoverBanner } from './SchoolCoverBanner';
+import { useSyncEffect } from '../hooks/useSyncEffect';
 
 interface TeacherAcademicWorkspaceProps {
   activeTab: string;
@@ -218,6 +219,7 @@ interface TeacherAcademicWorkspaceProps {
     summary: string
   ) => void;
   onOpenPhotoEditor?: () => void;
+  rtdbSyncTick?: number;
   settingsCenterElement?: React.ReactNode;
 }
 
@@ -292,6 +294,7 @@ export const TeacherAcademicWorkspace: React.FC<TeacherAcademicWorkspaceProps> =
   maxNoticeImages = 4,
   onUpdateNoticeImages,
   onOpenPhotoEditor,
+  rtdbSyncTick = 0,
   settingsCenterElement,
 }) => {
   const [subReason, setSubReason] = useState('Teacher Absent');
@@ -333,6 +336,20 @@ export const TeacherAcademicWorkspace: React.FC<TeacherAcademicWorkspaceProps> =
   const myAttendance = teacherAttendance.find((a) => a.teacherId === teacher.id);
   const myAssignments = teacherAssignments.filter((a) => a.teacherId === teacher.id);
   const scopedSchoolId = activeSchool?.id ?? activeAssignment?.schoolId ?? teacher.schoolId;
+
+  useSyncEffect({
+    syncTick: rtdbSyncTick,
+    rtdbPath: scopedSchoolId && teacher?.id ? `schools/${scopedSchoolId}/teachers/${teacher.id}` : undefined,
+    onSync: () => {
+      setPartBDegree(teacher.academicDegree ?? teacher.qualification ?? 'B.A / B.Ed');
+      setPartBMajor(teacher.subjectMajor ?? teacher.subjects.join(', ') ?? 'বাংলা ও গণিত');
+      setPartBTraining(teacher.training ?? 'C-in-Ed / B.Ed');
+      setPartBExp(teacher.experienceYears ?? 3);
+      setPartBPrevInst(teacher.previousInstitution ?? '');
+      setPartBStatus(teacher.employmentStatus ?? 'Active');
+      setPartBType(teacher.teacherType ?? 'Permanent');
+    },
+  });
   const scopedSchoolNameBn = activeSchool?.nameBn ?? activeAssignment?.schoolNameBn ?? teacher.schoolNameBn;
   const canAddStudent = activeAssignment ? activeAssignment.permissions.addStudent : true;
   const canCreateNotice = activeAssignment ? activeAssignment.permissions.createNotice : true;
@@ -731,7 +748,7 @@ export const TeacherAcademicWorkspace: React.FC<TeacherAcademicWorkspaceProps> =
           schoolId={teacher.schoolId}
           actorName={teacher.nameBn}
           teacher={teacher}
-          schools={[]}
+          schools={activeSchool ? [activeSchool] : []}
           students={students}
           exams={exams}
           teacherAssignments={teacherAssignments}

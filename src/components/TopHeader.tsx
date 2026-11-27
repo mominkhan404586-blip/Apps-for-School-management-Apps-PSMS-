@@ -15,17 +15,17 @@ import {
   Sun,
   User,
   UserCheck,
-  Wifi,
-  WifiOff,
   CheckCheck,
   MessageSquare,
   Camera,
+  CheckCircle2,
   Lock,
+  RefreshCw,
   Settings,
-  Share2,
+  Smartphone,
 } from 'lucide-react';
-import { PWAInstallButton } from './PWAInstallBanner';
 import { OfficialAppLogo } from './OfficialAppLogo';
+import { OfflineIndicator } from './PWAInstallBanner';
 import type { PlatformTarget } from '../utils/devicePreviewEngine';
 import type {
   GlobalAcademicSearchResult,
@@ -90,6 +90,7 @@ interface TopHeaderProps {
   authenticatedUserEmail?: string;
   centralAdminName?: string;
   guardianName?: string;
+  rtdbSyncStatus?: 'idle' | 'syncing' | 'synced' | 'error';
 }
 
 export const TopHeader: React.FC<TopHeaderProps> = ({
@@ -130,12 +131,13 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   onOpenPhotoEditor,
   isSchoolLoginLocked,
   onUnlockSchoolLogin,
-  platform = 'web',
+  platform: _platform = 'web',
   onLogout,
   roleSwitchLocked = true,
   authenticatedUserEmail,
   centralAdminName,
   guardianName,
+  rtdbSyncStatus = 'synced',
 }) => {
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -395,18 +397,6 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
           </button>
         )}
 
-        {/* Active Platform Badge (Web vs Android) */}
-        <span
-          data-testid="header-platform-mode"
-          className={`hidden xl:inline-flex items-center px-2 py-1 rounded-md text-[11px] font-bold border whitespace-nowrap shrink-0 ${
-            platform === 'android'
-              ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
-              : 'bg-sky-50 dark:bg-sky-950/50 text-sky-800 dark:text-sky-300 border-sky-200 dark:border-sky-800'
-          }`}
-        >
-          {platform === 'android' ? 'Platform: Android' : 'Platform: Web'}
-        </span>
-
         {/* Online School Registration Quick Trigger */}
         <button
           type="button"
@@ -452,41 +442,63 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
           </div>
         )}
 
-        {/* Offline / Cloud Sync Status Button */}
-        <button
-          type="button"
-          onClick={onToggleOffline}
-          title={b('অফলাইন / অনলাইন সিঙ্ক অবস্থা পরিবর্তন করুন', 'Toggle Offline Queue / Online Sync', lang)}
-          className={`hidden sm:inline-flex items-center gap-1.5 h-9 px-2 lg:px-2.5 rounded-lg text-xs font-medium border transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-            isOffline
-              ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800'
-              : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
-          }`}
-        >
-          {isOffline ? <WifiOff className="w-3.5 h-3.5" /> : <Wifi className="w-3.5 h-3.5" />}
-          <span className="hidden lg:inline tabular-nums">
-            {isOffline
-              ? `${tr('offlineMode', lang)} (${pendingSyncCount})`
-              : tr('onlineMode', lang)}
-          </span>
-        </button>
+        {/* Realtime Database Sync Indicator ('Syncing...' / 'Queued' / 'Synced') */}
+        {(() => {
+          const hasOfflineQueue = isOffline || pendingSyncCount > 0;
+          const badgeTone =
+            rtdbSyncStatus === 'syncing'
+              ? 'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800'
+              : rtdbSyncStatus === 'error'
+                ? 'bg-red-50 dark:bg-red-950/50 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800'
+                : hasOfflineQueue
+                  ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 border-amber-300 dark:border-amber-700'
+                  : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800';
+          const badgeLabel =
+            rtdbSyncStatus === 'syncing'
+              ? 'Syncing...'
+              : rtdbSyncStatus === 'error'
+                ? 'Sync Error'
+                : pendingSyncCount > 0
+                  ? `Queued (${pendingSyncCount})`
+                  : isOffline
+                    ? 'Offline'
+                    : 'Synced';
+          return (
+            <span
+              data-testid="header-rtdb-sync-indicator"
+              role="status"
+              aria-live="polite"
+              title={
+                rtdbSyncStatus === 'syncing'
+                  ? b('Firebase Realtime Database সিঙ্ক হচ্ছে...', 'Syncing live changes with Firebase Realtime Database...', lang)
+                  : rtdbSyncStatus === 'error'
+                    ? b('সিঙ্ক ত্রুটি — পুনরায় চেষ্টা করা হচ্ছে', 'Sync error — retrying...', lang)
+                    : hasOfflineQueue
+                      ? b('অফলাইন কিউ সক্রিয় — অনলাইনে ফিরলে সিঙ্ক হবে', 'Offline queue active — will sync when online', lang)
+                      : b('Firebase Realtime Database সরাসরি সিঙ্কড', 'Live changes synced with Firebase Realtime Database', lang)
+              }
+              className={`inline-flex items-center gap-1.5 h-8 sm:h-9 px-2 lg:px-2.5 rounded-lg text-[11px] font-bold border whitespace-nowrap shrink-0 transition-colors ${badgeTone}`}
+            >
+              {rtdbSyncStatus === 'syncing' ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin shrink-0" />
+              ) : hasOfflineQueue ? (
+                <RefreshCw className="w-3.5 h-3.5 shrink-0" />
+              ) : (
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+              )}
+              <span className="tabular-nums">{badgeLabel}</span>
+            </span>
+          );
+        })()}
 
-        {/* PWA Install App & Direct APK Download Button */}
-        <PWAInstallButton lang={lang} variant="compact" />
-
-        {/* Apps Download & Share Modal Trigger */}
-        {onOpenAppDownloadAndShare && (
-          <button
-            type="button"
-            onClick={onOpenAppDownloadAndShare}
-            data-testid="header-apps-download-share-btn"
-            title={b('অ্যাপস ডাউনলোড ও বন্ধুদের শেয়ার করুন', 'Download Apps & Share with Friends', lang)}
-            className="inline-flex items-center gap-1 h-9 px-2 rounded-lg text-xs font-semibold border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-200 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 whitespace-nowrap shrink-0 cursor-pointer"
-          >
-            <Share2 className="w-3.5 h-3.5 shrink-0" />
-            <span className="hidden 2xl:inline">{b('শেয়ার ও অ্যাপ', 'Share & Apps', lang)}</span>
-          </button>
-        )}
+        {/* Header OfflineIndicator + Pending Uploads Count Badge */}
+        <OfflineIndicator
+          variant="header"
+          lang={lang}
+          isOffline={isOffline}
+          pendingUploadsCount={pendingSyncCount}
+          onClickSync={onToggleOffline}
+        />
 
         {/* Language Toggle */}
         <button
@@ -773,8 +785,8 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                   }}
                   className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium rounded-lg text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/30 cursor-pointer"
                 >
-                  <Share2 className="w-4 h-4" />
-                  {b('অ্যাপস ডাউনলোড ও শেয়ার করুন', 'Download Apps & Share', lang)}
+                  <Smartphone className="w-4 h-4 shrink-0" />
+                  <span>{b('App Tools (APK / Share / Web)', 'App Tools (APK / Share / Web)', lang)}</span>
                 </button>
               )}
 

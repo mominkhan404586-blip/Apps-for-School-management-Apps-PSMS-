@@ -68,4 +68,15 @@
   body.printing-qr-stickers .qr-sticker-print-portal {
     display: block !important;
   }
+  body.printing-exam-pdf-report {
+    background: #ffffff !important;
+    margin: 0 !important;
+    padding: 10mm !important;
+  }
+  body.printing-exam-pdf-report #root {
+    display: none !important;
+  }
+  body.printing-exam-pdf-report .exam-pdf-print-portal {
+    display: block !important;
+  }
 }

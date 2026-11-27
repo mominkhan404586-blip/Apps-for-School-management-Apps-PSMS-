@@ -65,6 +65,7 @@ export interface CentralRealtimeDataPanelProps {
   students?: StudentRecord[];
   onDeleteSchool?: (schoolId: string, reason: string) => void;
   onRefreshAudit?: (what: string, targetName: string, oldValue: string, newValue: string) => void;
+  onRtdbUserUpdated?: (record: RealtimeUserAccountRecord) => void;
 }
 
 export const CentralRealtimeDataPanel: React.FC<CentralRealtimeDataPanelProps> = ({
@@ -74,6 +75,7 @@ export const CentralRealtimeDataPanel: React.FC<CentralRealtimeDataPanelProps> =
   students = [],
   onDeleteSchool,
   onRefreshAudit,
+  onRtdbUserUpdated,
 }) => {
   const projectInfo = getActiveFirebaseProjectInfo();
   const appCheckStatus = getFirebaseAppCheckStatus();
@@ -192,6 +194,20 @@ export const CentralRealtimeDataPanel: React.FC<CentralRealtimeDataPanelProps> =
   const selectedCurrentRecord: Partial<RealtimeUserAccountRecord> = useMemo(() => {
     const match = liveUsers.find((u) => u.uid === selectedUid);
     if (match) return match;
+    const fsMatch = firestoreUsers.find((u) => u.uid === selectedUid);
+    if (fsMatch) {
+      return {
+        uid: fsMatch.uid,
+        displayName: fsMatch.displayName,
+        email: fsMatch.email,
+        phone: fsMatch.phone ?? '',
+        role: fsMatch.role,
+        status: fsMatch.status,
+        schoolId: fsMatch.schoolId ?? '',
+        teacherId: fsMatch.teacherId,
+        studentId: fsMatch.studentId,
+      };
+    }
     return {
       uid: selectedUid || firebaseUser?.uid || 'test-uid',
       displayName: firebaseUser?.displayName || 'Super Central Admin',
@@ -201,7 +217,7 @@ export const CentralRealtimeDataPanel: React.FC<CentralRealtimeDataPanelProps> =
       status: 'active',
       schoolId: '',
     };
-  }, [liveUsers, selectedUid, firebaseUser]);
+  }, [liveUsers, firestoreUsers, selectedUid, firebaseUser]);
 
   const editValidation = useMemo(
     () =>
@@ -315,11 +331,26 @@ export const CentralRealtimeDataPanel: React.FC<CentralRealtimeDataPanelProps> =
         schoolId: editSchoolId.trim(),
       });
       if (res.ok) {
+        onRtdbUserUpdated?.({
+          uid: targetUid,
+          displayName: editValidation.normalized.displayName,
+          email: editValidation.normalized.email,
+          phone: editValidation.normalized.phone,
+          recoveryEmail: editValidation.normalized.recoveryEmail,
+          recoveryPhone: editValidation.normalized.recoveryPhone,
+          role: editValidation.normalized.role,
+          status: editValidation.normalized.status,
+          isActive: editValidation.normalized.status === 'active',
+          schoolId: editSchoolId.trim() || selectedCurrentRecord.schoolId,
+          teacherId: selectedCurrentRecord.teacherId,
+          studentId: selectedCurrentRecord.studentId,
+          updatedAt: Date.now(),
+        });
         setStatusFeedback({
           type: 'success',
           text: b(
-            `ইউজার (${editValidation.normalized.displayName}) RTDB, Firestore ও সেশনে সাথে সাথে আপডেট হয়েছে!`,
-            `User (${editValidation.normalized.displayName}) updated live across RTDB, Firestore, and session!`,
+            `ইউজার (${editValidation.normalized.displayName}) RTDB, Firestore ও ডিসপ্লেতে সাথে সাথে আপডেট হয়েছে!`,
+            `User (${editValidation.normalized.displayName}) updated live across RTDB, Firestore, and UI display!`,
             lang
           ),
         });
@@ -330,13 +361,16 @@ export const CentralRealtimeDataPanel: React.FC<CentralRealtimeDataPanelProps> =
           `${editValidation.normalized.role} (${editValidation.normalized.status})`
         );
       } else {
+        if (res.errorCode === 'PERMISSION_DENIED') {
+          setShowRules(true);
+        }
         setStatusFeedback({
           type: 'error',
           text:
             res.errorCode === 'PERMISSION_DENIED'
               ? b(
-                  'PERMISSION_DENIED: Firebase Console-এ database.rules.json Publish করুন।',
-                  'PERMISSION_DENIED: Publish database.rules.json in Firebase Console.',
+                  'PERMISSION_DENIED: নিচের আপডেটেড database.rules.json কপি করে Firebase Console > Realtime Database > Rules-এ Publish করুন।',
+                  'PERMISSION_DENIED: Copy and publish the updated database.rules.json below in Firebase Console > Realtime Database > Rules.',
                   lang
                 )
               : res.errorMessage || 'RTDB update failed.',
@@ -947,6 +981,28 @@ export const CentralRealtimeDataPanel: React.FC<CentralRealtimeDataPanelProps> =
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5">
+                    <button
+                      type="button"
+                      disabled={rowBusy}
+                      onClick={() =>
+                        handleSelectUserForEdit({
+                          uid: u.uid,
+                          displayName: u.displayName,
+                          email: u.email,
+                          phone: u.phone ?? '',
+                          role: u.role,
+                          status: u.status,
+                          isActive: u.isActive,
+                          schoolId: u.schoolId,
+                          teacherId: u.teacherId,
+                          studentId: u.studentId,
+                          updatedAt: Date.now(),
+                        })
+                      }
+                      className="h-8 px-2.5 rounded-lg border border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/40 font-bold cursor-pointer disabled:opacity-60"
+                    >
+                      {b('RTDB এডিট / সিঙ্ক', 'Edit in RTDB', lang)}
+                    </button>
                     {isSuspendedOrInactive ? (
                       <button
                         type="button"

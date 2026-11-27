@@ -315,6 +315,7 @@ interface CentralAdminViewsProps {
   onEditTeacherPhoto?: (teacher: TeacherRecord) => void;
   onEditSchoolCover?: (school: SchoolRecord) => void;
   settingsCenterElement?: React.ReactNode;
+  onRtdbUserUpdated?: (record: import('../utils/realtimeDatabaseSync').RealtimeUserAccountRecord) => void;
 }
 
 export const CentralAdminViews: React.FC<CentralAdminViewsProps> = ({
@@ -437,6 +438,7 @@ export const CentralAdminViews: React.FC<CentralAdminViewsProps> = ({
   onEditTeacherPhoto,
   onEditSchoolCover,
   settingsCenterElement,
+  onRtdbUserUpdated,
 }) => {
   const can = (key: PermissionKey) =>
     hasGovernancePermission(permissionMatrix, activeReviewerRole, key);
@@ -2927,6 +2929,7 @@ export const CentralAdminViews: React.FC<CentralAdminViewsProps> = ({
         teachers={teachers}
         students={students}
         onDeleteSchool={onDeleteSchool}
+        onRtdbUserUpdated={onRtdbUserUpdated}
       />
     );
   }

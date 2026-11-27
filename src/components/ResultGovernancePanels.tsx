@@ -3,6 +3,7 @@ import {
   Award,
   Bell,
   CheckCircle2,
+  FileDown,
   Globe,
   History,
   Lock,
@@ -12,6 +13,7 @@ import {
   Unlock,
   X,
 } from 'lucide-react';
+import { ExamPdfReportModal } from './ExamPdfReportModal';
 import type {
   ExamRecord,
   GradingRuleItem,
@@ -491,6 +493,7 @@ interface SchoolAdminResultManagementPanelProps {
   lang: Language;
   school: SchoolRecord;
   exams: ExamRecord[];
+  students?: StudentRecord[];
   subjectSubmissions: SubjectResultSubmission[];
   resultAuditLogs: ResultAuditEntry[];
   readOnlyOversight?: boolean;
@@ -502,12 +505,14 @@ export const SchoolAdminResultManagementPanel: React.FC<SchoolAdminResultManagem
   lang,
   school,
   exams,
+  students = [],
   subjectSubmissions,
   resultAuditLogs,
   readOnlyOversight = false,
   onSendDelayedTeacherAlert,
   onTogglePublishResult,
 }) => {
+  const [pdfReportOpen, setPdfReportOpen] = useState(false);
   const schoolExams = exams.filter((e) => !e.schoolId || e.schoolId === school.id);
   const exam =
     pickPrimaryTermOrPublishedExam(schoolExams) ?? pickPrimaryTermOrPublishedExam(exams);
@@ -555,6 +560,15 @@ export const SchoolAdminResultManagementPanel: React.FC<SchoolAdminResultManagem
                 ? b('Central Permission: Publish Allowed ✅', 'Central Permission: Allowed ✅', lang)
                 : b('Central Permission: Publish Locked 🔒', 'Central Permission: Locked 🔒', lang)}
             </span>
+            <button
+              type="button"
+              data-testid="results-generate-pdf-report-btn"
+              onClick={() => setPdfReportOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-800 dark:text-blue-200 font-semibold cursor-pointer whitespace-nowrap"
+            >
+              <FileDown className="w-4 h-4" />
+              {b('Generate PDF Report', 'Generate PDF Report', lang)}
+            </button>
             {!readOnlyOversight && (
               exam.status === 'published' ? (
                 <button
@@ -681,6 +695,15 @@ export const SchoolAdminResultManagementPanel: React.FC<SchoolAdminResultManagem
           ))}
         </div>
       </div>
+
+      <ExamPdfReportModal
+        open={pdfReportOpen}
+        onClose={() => setPdfReportOpen(false)}
+        lang={lang}
+        exam={exam}
+        school={school}
+        students={students}
+      />
     </div>
   );
 };

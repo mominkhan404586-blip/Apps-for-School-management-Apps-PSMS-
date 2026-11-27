@@ -39,7 +39,10 @@ import type {
 import { b } from '../i18n/translations';
 import { OfficialAppLogo } from './OfficialAppLogo';
 import {
+  loadRememberedLoginIdentifier,
   lookupRegistrationApprovalStatus,
+  saveRememberedLoginIdentifier,
+  validateLoginIdentifierRealtime,
   validatePasswordChangeInput,
   type ApprovalCheckCategory,
 } from '../utils/unifiedLoginEngine';
@@ -134,12 +137,19 @@ export const PortalLandingHub: React.FC<PortalLandingHubProps> = ({
   const [activeTab, setActiveTab] = useState<UnifiedLoginTab>('login');
 
   // Unified Login State
-  const [identifier, setIdentifier] = useState('');
+  const [identifier, setIdentifier] = useState(() => loadRememberedLoginIdentifier());
+  const [rememberMe, setRememberMe] = useState(() => Boolean(loadRememberedLoginIdentifier()));
+  const [identifierTouched, setIdentifierTouched] = useState(false);
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loginBusy, setLoginBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
+
+  const identifierValidation = useMemo(
+    () => validateLoginIdentifierRealtime(identifier),
+    [identifier]
+  );
 
   // Password Change / Forgot Password Inline Panel
   const [passwordTool, setPasswordTool] = useState<PasswordToolMode>('none');
@@ -198,16 +208,22 @@ export const PortalLandingHub: React.FC<PortalLandingHubProps> = ({
     e.preventDefault();
     setFormError(null);
     setFormSuccess(null);
-    if (!identifier.trim() || !password) {
+    setIdentifierTouched(true);
+    if (!identifierValidation.valid) {
+      setFormError(b(identifierValidation.messageBn, identifierValidation.messageEn, lang));
+      return;
+    }
+    if (!password) {
       setFormError(
         b(
-          'অনুগ্রহ করে ইউজারনেম / মোবাইল নম্বর / ইমেইল এবং পাসওয়ার্ড দিন।',
-          'Please enter your username / mobile number / email and password.',
+          'অনুগ্রহ করে পাসওয়ার্ড দিন।',
+          'Please enter your password.',
           lang
         )
       );
       return;
     }
+    saveRememberedLoginIdentifier(identifier.trim(), rememberMe);
     setLoginBusy(true);
     try {
       const res = await onUnifiedLoginSubmit(identifier.trim(), password);
@@ -396,9 +412,12 @@ export const PortalLandingHub: React.FC<PortalLandingHubProps> = ({
           >
             {/* Card Header */}
             <div className="px-5 sm:px-6 pt-6 pb-4 text-center space-y-2 border-b border-slate-100 dark:border-slate-800">
-              <div className="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200/80 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 mx-auto">
-                <Lock className="w-5 h-5" />
-              </div>
+              <OfficialAppLogo
+                sizeClass="w-12 h-12"
+                roundedClass="rounded-xl"
+                className="mx-auto shadow-sm"
+                alt={b('স্কুল ম্যানেজমেন্ট অ্যাপ লোগো', 'School Management App Logo', lang)}
+              />
               <h1
                 id="unified-login-heading"
                 className="text-lg sm:text-xl font-extrabold tracking-tight text-slate-900 dark:text-white"
@@ -512,8 +531,10 @@ export const PortalLandingHub: React.FC<PortalLandingHubProps> = ({
                         type="text"
                         autoComplete="username"
                         value={identifier}
+                        onBlur={() => setIdentifierTouched(true)}
                         onChange={(e) => {
                           setIdentifier(e.target.value);
+                          setIdentifierTouched(true);
                           setFormError(null);
                         }}
                         placeholder={b(
@@ -521,8 +542,27 @@ export const PortalLandingHub: React.FC<PortalLandingHubProps> = ({
                           'Enter ID, mobile (017...), or email',
                           lang
                         )}
-                        className="w-full h-11 px-3.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/80 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 outline-none focus:border-emerald-600 focus:bg-white dark:focus:bg-slate-900 transition-colors"
+                        aria-invalid={identifierTouched && !identifierValidation.valid}
+                        className={`w-full h-11 px-3.5 rounded-xl border bg-slate-50/70 dark:bg-slate-800/80 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 outline-none focus:bg-white dark:focus:bg-slate-900 transition-colors ${
+                          identifierTouched && identifier.trim().length > 0 && !identifierValidation.valid
+                            ? 'border-red-500 focus:border-red-600'
+                            : identifier.trim().length > 0 && identifierValidation.valid
+                              ? 'border-emerald-500 focus:border-emerald-600'
+                              : 'border-slate-300 dark:border-slate-700 focus:border-emerald-600'
+                        }`}
                       />
+                      {identifier.trim().length > 0 && (
+                        <p
+                          data-testid="unified-login-identifier-validation"
+                          className={`mt-1 text-[11px] font-medium ${
+                            identifierValidation.valid
+                              ? 'text-emerald-700 dark:text-emerald-400'
+                              : 'text-red-600 dark:text-red-400'
+                          }`}
+                        >
+                          {b(identifierValidation.messageBn, identifierValidation.messageEn, lang)}
+                        </p>
+                      )}
                     </div>
 
                     <div>
@@ -548,6 +588,7 @@ export const PortalLandingHub: React.FC<PortalLandingHubProps> = ({
                         />
                         <button
                           type="button"
+                          data-testid="unified-login-password-toggle"
                           onClick={() => setShowPassword((v) => !v)}
                           aria-label={
                             showPassword
@@ -561,11 +602,28 @@ export const PortalLandingHub: React.FC<PortalLandingHubProps> = ({
                       </div>
                     </div>
 
+                    <div className="flex items-center justify-between pt-0.5">
+                      <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          data-testid="unified-remember-me-checkbox"
+                          checked={rememberMe}
+                          onChange={(e) => {
+                            const next = e.target.checked;
+                            setRememberMe(next);
+                            saveRememberedLoginIdentifier(identifier, next);
+                          }}
+                          className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-600 cursor-pointer"
+                        />
+                        <span>{b('মনে রাখুন (Remember Me)', 'Remember Me', lang)}</span>
+                      </label>
+                    </div>
+
                     <button
                       type="submit"
                       data-testid="unified-login-submit-btn"
-                      disabled={loginBusy || googleSigningIn}
-                      className="w-full h-11 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold flex items-center justify-center gap-2 cursor-pointer transition-colors disabled:opacity-60"
+                      disabled={loginBusy || googleSigningIn || (identifier.trim().length > 0 && !identifierValidation.valid)}
+                      className="w-full h-11 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold flex items-center justify-center gap-2 cursor-pointer transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       {loginBusy ? (
                         <Loader2 className="w-4 h-4 animate-spin" />

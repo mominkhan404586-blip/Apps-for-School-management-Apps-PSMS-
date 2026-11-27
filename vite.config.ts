@@ -14,6 +14,7 @@ export default defineConfig(() => {
         registerType: 'autoUpdate',
         includeAssets: [
           'official-app-icon.png',
+          'favicon.ico',
           'favicon.png',
           'favicon-32x32.png',
           'apple-touch-icon.png',
@@ -26,7 +27,7 @@ export default defineConfig(() => {
           name: 'School Management System (PSMS Bangladesh)',
           short_name: 'PSMS BD',
           description: 'Unified School Management System (Android App + Web Browser) with Central Admin, School Admin, Teacher, Student & Guardian portals.',
-          theme_color: '#0A2463',
+          theme_color: '#0284c7',
           background_color: '#FFFFFF',
           display: 'standalone',
           orientation: 'any',
@@ -60,10 +61,21 @@ export default defineConfig(() => {
           skipWaiting: true,
           clientsClaim: true,
           maximumFileSizeToCacheInBytes: 12 * 1024 * 1024,
-          globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-          navigateFallback: '/index.html',
-          navigateFallbackDenylist: [/^\/api\//],
+          globPatterns: ['**/*.{js,css,ico,png,svg,woff2}'],
+          navigateFallback: null,
           runtimeCaching: [
+            {
+              urlPattern: ({request}) => request.mode === 'navigate',
+              handler: 'NetworkFirst',
+              options: {
+                cacheName: 'psms-html-nav-cache',
+                networkTimeoutSeconds: 4,
+                expiration: {
+                  maxEntries: 10,
+                  maxAgeSeconds: 60 * 60,
+                },
+              },
+            },
             {
               urlPattern: ({url}) => url.pathname.startsWith('/api/'),
               handler: 'NetworkFirst',
@@ -90,8 +102,7 @@ export default defineConfig(() => {
           ],
         },
         devOptions: {
-          enabled: true,
-          type: 'module',
+          enabled: false,
         },
       }),
       // Copies src/assets into dist/ so root-relative URLs like

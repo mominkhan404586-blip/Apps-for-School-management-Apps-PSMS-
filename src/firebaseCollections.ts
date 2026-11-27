@@ -148,6 +148,19 @@ export async function syncSchoolToFirestore(school: SchoolRecord): Promise<void>
   if (!user || !user.emailVerified) return;
   const payload = buildFirestoreSchoolPayload(school, user.uid);
   await upsertFirestoreDocStrict('schools', payload.schoolId, payload);
+  await rtdbUpdate(rtdbRef(rtdb, `schools/${payload.schoolId}/profile`), {
+    schoolId: payload.schoolId,
+    nameBn: payload.nameBn,
+    nameEn: payload.nameEn,
+    headTeacher: (school.headTeacher || '').slice(0, 120),
+    email: (school.email || '').slice(0, 254),
+    mobile: (school.mobile || '').slice(0, 24),
+    eiin: (school.eiin || '').slice(0, 32),
+    fullAddress: (school.fullAddress || '').slice(0, 300),
+    status: payload.status,
+    updatedByUid: user.uid,
+    updatedAt: rtdbServerTimestamp(),
+  }).catch(() => {});
 }
 
 export async function syncTeacherToFirestore(teacher: TeacherRecord): Promise<void> {
@@ -155,6 +168,18 @@ export async function syncTeacherToFirestore(teacher: TeacherRecord): Promise<vo
   if (!user || !user.emailVerified) return;
   const payload = buildFirestoreTeacherPayload(teacher, user.uid);
   await upsertFirestoreDocStrict('teachers', payload.teacherId, payload);
+  await rtdbUpdate(rtdbRef(rtdb, `schools/${payload.schoolId}/teachers/${payload.teacherId}`), {
+    teacherId: payload.teacherId,
+    schoolId: payload.schoolId,
+    nameBn: payload.nameBn,
+    nameEn: (teacher.nameEn || '').slice(0, 120),
+    email: (teacher.email || '').slice(0, 254),
+    mobile: (teacher.mobile || '').slice(0, 24),
+    designation: (teacher.designation || '').slice(0, 120),
+    status: payload.status === 'suspended' || payload.status === 'pending' ? payload.status : 'active',
+    updatedByUid: user.uid,
+    updatedAt: rtdbServerTimestamp(),
+  }).catch(() => {});
 }
 
 export async function syncStudentToFirestore(student: StudentRecord): Promise<void> {
@@ -162,6 +187,19 @@ export async function syncStudentToFirestore(student: StudentRecord): Promise<vo
   if (!user || !user.emailVerified) return;
   const payload = buildFirestoreStudentPayload(student, user.uid);
   await upsertFirestoreDocStrict('students', payload.studentId, payload);
+  await rtdbUpdate(rtdbRef(rtdb, `schools/${payload.schoolId}/students/${payload.studentId}`), {
+    studentId: payload.studentId,
+    schoolId: payload.schoolId,
+    nameBn: payload.nameBn,
+    nameEn: (student.nameEn || '').slice(0, 120),
+    className: (student.className || '').slice(0, 64),
+    section: (student.section || '').slice(0, 64),
+    roll: student.roll,
+    guardianMobile: (student.guardianMobile || '').slice(0, 24),
+    status: payload.status === 'suspended' || payload.status === 'pending' ? payload.status : 'active',
+    updatedByUid: user.uid,
+    updatedAt: rtdbServerTimestamp(),
+  }).catch(() => {});
 }
 
 export async function syncClassToFirestore(
@@ -292,6 +330,9 @@ export async function reviewApplicationAndUserInFirestore(input: {
   );
 
   await rtdbUpdate(rtdbRef(rtdb, `users/${cleanTargetUid}`), {
+    uid: cleanTargetUid,
+    email: String(prevData?.email ?? 'user@psms.gov.bd'),
+    displayName: String(prevData?.displayName ?? 'Portal User'),
     role: transition.assignedRole,
     status: transition.nextUserStatus,
     isActive: transition.nextIsActive,

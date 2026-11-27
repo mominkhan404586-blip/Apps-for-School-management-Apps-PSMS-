@@ -1,6 +1,6 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
-import { Bell, CalendarDays, LayoutDashboard, Settings, Share2, GraduationCap } from 'lucide-react';
+import { Bell, CalendarDays, LayoutDashboard, Settings, GraduationCap } from 'lucide-react';
 import type {
   AcademicCalendarEvent,
   AcademicCancelClassReason,
@@ -219,7 +219,6 @@ import { CoverGalleryModal } from './components/CoverGalleryModal';
 import { SettingsCenterView } from './components/SettingsCenterView';
 import { OfflineIndicator, PWAInstallBanner } from './components/PWAInstallBanner';
 import { AppDownloadAndShareModal } from './components/AppDownloadAndShareModal';
-import { DashboardAppQuickAccessCard } from './components/DashboardAppQuickAccessCard';
 import { AuthLoadingScreen } from './components/AuthScreens';
 import {
   FirebaseEmailAuthModal,
@@ -241,8 +240,11 @@ import {
   signInWithFirebaseGoogle,
   signOutFirebase,
   subscribeRealtimeUserAccount,
+  subscribeRtdbSchoolScope,
   syncOwnFirebaseProfile,
 } from './firebase';
+import { type RtdbSyncVisualState } from './hooks/useSyncEffect';
+import type { RealtimeUserAccountRecord } from './utils/realtimeDatabaseSync';
 import {
   executeClientCascadeDelete,
   recordActivityLogInFirestore,
@@ -294,15 +296,11 @@ import {
   mapExtendedNotificationsToPreferences,
   type SystemSettingsState,
 } from './utils/settingsEngine';
-import { DevicePreviewBar, DevicePreviewFrameStage } from './components/DevicePreviewBar';
 import {
   PREVIEW_ORIENTATION_STORAGE_KEY,
   PREVIEW_VIEW_MODE_STORAGE_KEY,
   detectAutomaticDeviceCategory,
   detectRuntimePlatform,
-  resolveEffectiveViewMode,
-  resolveInitialPreviewState,
-  shouldShowDeveloperDevicePreviewControls,
   type DetectedDeviceCategory,
   type DeviceOrientation,
   type DeviceViewMode,
@@ -399,34 +397,7 @@ function readInitialPreviewBootstrap(): InitialPreviewBootstrap {
     isCapacitorNative: isCapNative,
   });
 
-  // In production environments, force-hide Device Preview Controls regardless of any other parameters.
-  const showDevControls = envProfile.isProduction
-    ? false
-    : shouldShowDeveloperDevicePreviewControls({
-        isDevBuild,
-        isProdBuild,
-        buildMode: envMeta?.MODE,
-        hostname: window.location.hostname,
-        search: window.location.search,
-        isCapacitorNative: isCapNative,
-        isEmbeddedPreview: isEmbedded,
-      });
-
-  let savedMode: string | null = null;
-  let savedOrientation: string | null = null;
-  if (!envProfile.isProduction && showDevControls) {
-    try {
-      savedMode = window.sessionStorage.getItem(PREVIEW_VIEW_MODE_STORAGE_KEY);
-      savedOrientation = window.sessionStorage.getItem(PREVIEW_ORIENTATION_STORAGE_KEY);
-    } catch {
-      // ignore storage errors
-    }
-  }
-  const resolvedPreview = resolveInitialPreviewState(
-    window.location.search,
-    savedMode,
-    savedOrientation
-  );
+  const showDevControls = false;
 
   return {
     isEmbeddedPreview: isEmbedded,
@@ -437,10 +408,8 @@ function readInitialPreviewBootstrap(): InitialPreviewBootstrap {
     lang: initialLang,
     theme: initialTheme,
     platform: initialPlatform,
-    viewMode: envProfile.isProduction
-      ? 'auto'
-      : resolveEffectiveViewMode(resolvedPreview.viewMode, showDevControls, isEmbedded),
-    orientation: resolvedPreview.orientation,
+    viewMode: 'auto',
+    orientation: 'portrait',
   };
 }
 
@@ -448,7 +417,7 @@ export default function App() {
   const initialBootstrap = useMemo(() => readInitialPreviewBootstrap(), []);
   const isEmbeddedPreview = initialBootstrap.isEmbeddedPreview;
   const isProductionEnvironment = initialBootstrap.isProductionEnvironment;
-  const showDevPreviewControls = !isProductionEnvironment && initialBootstrap.showDevPreviewControls;
+  const showDevPreviewControls = false;
 
   const [authStatus, setAuthStatus] = useState<AuthStatus>('loading');
   const [authenticatedSession, setAuthenticatedSession] = useState<AuthenticatedSession | null>(null);
@@ -464,14 +433,11 @@ export default function App() {
   const [lang, setLang] = useState<Language>(initialBootstrap.lang);
   const [theme, setTheme] = useState<Theme>(initialBootstrap.theme);
   const [deviceViewMode, setDeviceViewMode] = useState<DeviceViewMode>(initialBootstrap.viewMode);
-  const [deviceOrientation, setDeviceOrientation] = useState<DeviceOrientation>(initialBootstrap.orientation);
+  const [deviceOrientation] = useState<DeviceOrientation>(initialBootstrap.orientation);
   const [previewPlatform, setPreviewPlatform] = useState<PlatformTarget>(initialBootstrap.platform);
   const [detectedDeviceCategory, setDetectedDeviceCategory] = useState<DetectedDeviceCategory>(() =>
     typeof window !== 'undefined' ? detectAutomaticDeviceCategory(window.innerWidth) : 'auto'
   );
-  const effectiveDeviceViewMode = isProductionEnvironment
-    ? 'auto'
-    : resolveEffectiveViewMode(deviceViewMode, showDevPreviewControls, isEmbeddedPreview);
   const [searchQuery, setSearchQuery] = useState('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -625,6 +591,35 @@ export default function App() {
     }
   });
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [rtdbSyncStatus, setRtdbSyncStatus] = useState<RtdbSyncVisualState>('synced');
+  const [rtdbSyncTick, setRtdbSyncTick] = useState<number>(0);
+  const rtdbSyncPulseTimerRef = useRef<number | null>(null);
+
+  const triggerRtdbSyncPulse = useCallback((settledState: 'synced' | 'error' = 'synced') => {
+    if (typeof window !== 'undefined' && rtdbSyncPulseTimerRef.current) {
+      window.clearTimeout(rtdbSyncPulseTimerRef.current);
+      rtdbSyncPulseTimerRef.current = null;
+    }
+    setRtdbSyncStatus('syncing');
+    setRtdbSyncTick((v) => v + 1);
+    if (typeof window !== 'undefined') {
+      rtdbSyncPulseTimerRef.current = window.setTimeout(() => {
+        setRtdbSyncStatus(settledState);
+        rtdbSyncPulseTimerRef.current = null;
+      }, 650);
+    } else {
+      setRtdbSyncStatus(settledState);
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (typeof window !== 'undefined' && rtdbSyncPulseTimerRef.current) {
+        window.clearTimeout(rtdbSyncPulseTimerRef.current);
+      }
+    };
+  }, []);
+
   const [authenticatedSchoolLockId, setAuthenticatedSchoolLockId] = useState<string | null>(null);
   const guardianPhotoUrl = guardianProfile.photoUrl;
   const setGuardianPhotoUrl = useCallback((nextPhotoUrl: string | undefined) => {
@@ -1072,30 +1067,114 @@ export default function App() {
       }
     });
 
+    const applyRtdbDomainUpdates = (rtdbUser: RealtimeUserAccountRecord) => {
+      if (
+        rtdbUser.status === 'suspended' ||
+        rtdbUser.status === 'rejected' ||
+        rtdbUser.status === 'deactivated' ||
+        rtdbUser.isActive === false
+      ) {
+        return;
+      }
+
+      if (rtdbUser.role === 'central_admin') {
+        setAdminAccounts((prevAdmins) =>
+          prevAdmins.map((adm) =>
+            adm.email === rtdbUser.email || adm.id === activeCentralAdmin?.id
+              ? {
+                  ...adm,
+                  name: rtdbUser.displayName || adm.name,
+                  email: rtdbUser.email || adm.email,
+                  mobile: rtdbUser.phone || adm.mobile,
+                }
+              : adm
+          )
+        );
+      } else if (rtdbUser.role === 'school_admin') {
+        setSchools((prevSchools) =>
+          prevSchools.map((sc) =>
+            (rtdbUser.schoolId && sc.id === rtdbUser.schoolId) ||
+            (rtdbUser.email && sc.email.toLowerCase() === rtdbUser.email.toLowerCase())
+              ? {
+                  ...sc,
+                  headTeacher: rtdbUser.displayName || sc.headTeacher,
+                  email: rtdbUser.email || sc.email,
+                  mobile: rtdbUser.phone || sc.mobile,
+                }
+              : sc
+          )
+        );
+      } else if (rtdbUser.role === 'teacher') {
+        setTeachers((prevTeachers) =>
+          prevTeachers.map((t) =>
+            (rtdbUser.teacherId && t.id === rtdbUser.teacherId) ||
+            (rtdbUser.email && (t.email ?? '').toLowerCase() === rtdbUser.email.toLowerCase())
+              ? {
+                  ...t,
+                  nameBn: rtdbUser.displayName || t.nameBn,
+                  nameEn: rtdbUser.displayName || t.nameEn,
+                  email: rtdbUser.email || t.email,
+                  mobile: rtdbUser.phone || t.mobile,
+                }
+              : t
+          )
+        );
+      } else if (rtdbUser.role === 'student') {
+        setStudents((prevStudents) =>
+          prevStudents.map((st) =>
+            rtdbUser.studentId && st.id === rtdbUser.studentId
+              ? {
+                  ...st,
+                  nameBn: rtdbUser.displayName || st.nameBn,
+                  nameEn: rtdbUser.displayName || st.nameEn,
+                  guardianMobile: rtdbUser.phone || st.guardianMobile,
+                }
+              : st
+          )
+        );
+      } else if (rtdbUser.role === 'guardian') {
+        setGuardianProfile((prevGuard) => ({
+          ...prevGuard,
+          displayName: rtdbUser.displayName || prevGuard.displayName,
+          email: rtdbUser.email || prevGuard.email,
+          phone: rtdbUser.phone || rtdbUser.recoveryPhone || prevGuard.phone,
+        }));
+      }
+
+      if (rtdbUser.phone || rtdbUser.recoveryEmail || rtdbUser.recoveryPhone || rtdbUser.email) {
+        setSystemSettings((prevSettings) => ({
+          ...prevSettings,
+          accountRecoveryEmail:
+            rtdbUser.recoveryEmail || rtdbUser.email || prevSettings.accountRecoveryEmail,
+          accountRecoveryPhone:
+            rtdbUser.recoveryPhone || rtdbUser.phone || prevSettings.accountRecoveryPhone,
+        }));
+      }
+    };
+
     const unsubRtdb = subscribeRealtimeUserAccount(uid, (rtdbUser) => {
-      if (!rtdbUser) return;
+      if (!rtdbUser || cancelled) return;
 
-      setAuthenticatedSession((prev) => {
-        const outcome = applyRealtimeUserToSession(prev, rtdbUser);
-        if (outcome.suspended) {
-          void signOutFirebase();
-          clearStoredPortalSession();
-          setAuthStatus('unauthenticated');
-          setAuthError(
-            b(
-              'আপনার অ্যাকাউন্টটি অ্যাডমিন দ্বারা স্থগিত (Suspended) করা হয়েছে।',
-              'Your account has been suspended by an administrator.',
-              lang
-            )
-          );
-          return null;
-        }
-        if (!outcome.changed || !outcome.nextSession) {
-          return prev;
-        }
+      const outcome = applyRealtimeUserToSession(authenticatedSession, rtdbUser);
+      if (outcome.suspended) {
+        void signOutFirebase();
+        clearStoredPortalSession();
+        setAuthenticatedSession(null);
+        setAuthStatus('unauthenticated');
+        setAuthError(
+          b(
+            'আপনার অ্যাকাউন্টটি অ্যাডমিন দ্বারা স্থগিত (Suspended) করা হয়েছে।',
+            'Your account has been suspended by an administrator.',
+            lang
+          )
+        );
+        return;
+      }
 
+      if (outcome.changed && outcome.nextSession) {
         const updated = outcome.nextSession;
         persistPortalSession(updated);
+        setAuthenticatedSession(updated);
 
         if (updated.role !== role) {
           setRole(updated.role);
@@ -1114,39 +1193,80 @@ export default function App() {
         if (updated.role === 'guardian' && updated.studentId) {
           setSelectedChildId(updated.studentId);
         }
-        if (updated.role === 'central_admin') {
-          setAdminAccounts((prevAdmins) =>
-            prevAdmins.map((adm) =>
-              adm.email === updated.email || adm.id === activeCentralAdmin?.id
-                ? {
-                    ...adm,
-                    name: updated.displayName,
-                    email: updated.email ?? adm.email,
-                    mobile: rtdbUser.phone || adm.mobile,
-                  }
-                : adm
-            )
-          );
-        }
-        if (rtdbUser.phone || rtdbUser.recoveryEmail || rtdbUser.recoveryPhone) {
-          setSystemSettings((prevSettings) => ({
-            ...prevSettings,
-            accountRecoveryEmail:
-              rtdbUser.recoveryEmail || rtdbUser.email || prevSettings.accountRecoveryEmail,
-            accountRecoveryPhone:
-              rtdbUser.recoveryPhone || rtdbUser.phone || prevSettings.accountRecoveryPhone,
-          }));
-        }
+      }
 
-        return updated;
-      });
+      applyRtdbDomainUpdates(rtdbUser);
+      triggerRtdbSyncPulse('synced');
     });
+
+    const targetSchoolId = authenticatedSession.schoolId;
+    const unsubSchoolScope = targetSchoolId
+      ? subscribeRtdbSchoolScope(targetSchoolId, {
+          onProfile: (patch) => {
+            if (cancelled) return;
+            setSchools((prevSchools) =>
+              prevSchools.map((sc) =>
+                sc.id === patch.schoolId
+                  ? {
+                      ...sc,
+                      nameBn: patch.nameBn || sc.nameBn,
+                      nameEn: patch.nameEn || sc.nameEn,
+                      headTeacher: patch.headTeacher || sc.headTeacher,
+                      email: patch.email || sc.email,
+                      mobile: patch.mobile || sc.mobile,
+                      eiin: patch.eiin || sc.eiin,
+                      fullAddress: patch.fullAddress || sc.fullAddress,
+                    }
+                  : sc
+              )
+            );
+            triggerRtdbSyncPulse('synced');
+          },
+          onTeachers: (list) => {
+            if (cancelled || list.length === 0) return;
+            const byId = new Map(list.map((item) => [item.teacherId, item]));
+            setTeachers((prevTeachers) =>
+              prevTeachers.map((t) => {
+                const match = byId.get(t.id);
+                if (!match) return t;
+                return {
+                  ...t,
+                  nameBn: match.nameBn || t.nameBn,
+                  nameEn: match.nameEn || t.nameEn,
+                  email: match.email || t.email,
+                  mobile: match.mobile || t.mobile,
+                  designation: match.designation || t.designation,
+                };
+              })
+            );
+            triggerRtdbSyncPulse('synced');
+          },
+          onStudents: (list) => {
+            if (cancelled || list.length === 0) return;
+            const byId = new Map(list.map((item) => [item.studentId, item]));
+            setStudents((prevStudents) =>
+              prevStudents.map((st) => {
+                const match = byId.get(st.id);
+                if (!match) return st;
+                return {
+                  ...st,
+                  nameBn: match.nameBn || st.nameBn,
+                  nameEn: match.nameEn || st.nameEn,
+                  guardianMobile: match.guardianMobile || st.guardianMobile,
+                };
+              })
+            );
+            triggerRtdbSyncPulse('synced');
+          },
+        })
+      : () => {};
 
     return () => {
       cancelled = true;
       unsubRtdb();
+      unsubSchoolScope();
     };
-  }, [authStatus, authenticatedSession?.uid, authenticatedSession?.provider, lang, role, activeCentralAdmin?.id]);
+  }, [authStatus, authenticatedSession?.uid, authenticatedSession?.provider, authenticatedSession?.schoolId, lang, role, activeCentralAdmin?.id, triggerRtdbSyncPulse]);
 
   useEffect(() => {
     if (
@@ -5727,7 +5847,9 @@ export default function App() {
     if (res.status === 'recorded' && res.scanEvent && res.historyEntry && res.guardianNotification) {
       setKioskScans((prev) => [res.scanEvent!, ...prev]);
       setAttendanceHistory((prev) => [res.historyEntry!, ...prev]);
-      if (auth.currentUser?.emailVerified) {
+      if (isOffline || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+        setPendingSyncCount((c) => c + 1);
+      } else if (auth.currentUser?.emailVerified) {
         void syncAttendanceToFirestore(res.historyEntry);
       }
       setNotifications((prev) => [
@@ -6130,13 +6252,14 @@ export default function App() {
         }
         setSchools((prev) => prev.map((s) => (s.id === schoolId ? { ...s, ...patch } : s)));
       }}
-      onUpdateActorProfile={(patch) => {
+      onUpdateActorProfile={(patch, options) => {
         setAuthenticatedSession((prev) => {
           if (!prev) return prev;
           const nextSession: AuthenticatedSession = {
             ...prev,
             displayName: patch.displayName,
             email: patch.email,
+            phone: patch.phone,
           };
           persistPortalSession(nextSession);
           return nextSession;
@@ -6197,15 +6320,22 @@ export default function App() {
             phone: patch.phone,
           }));
         }
-        if (auth.currentUser?.emailVerified) {
+        if (auth.currentUser?.emailVerified && !options?.skipCloudUserSync) {
+          setRtdbSyncStatus('syncing');
+          setRtdbSyncTick((v) => v + 1);
           void syncOwnFirebaseProfile({
             displayName: patch.displayName,
             phone: patch.phone,
-          });
+          })
+            .then(() => triggerRtdbSyncPulse('synced'))
+            .catch(() => triggerRtdbSyncPulse('error'));
+        } else if (!options?.skipCloudUserSync) {
+          triggerRtdbSyncPulse('synced');
         }
       }}
       onOpenCoverGallery={() => setCoverGalleryOpen(true)}
       onOpenBannerCrop={() => openBannerCropEditor(schoolAdminOwnSchool)}
+      onOpenAppDownloadAndShare={() => setAppDownloadShareModalOpen(true)}
     />
   );
 
@@ -6234,44 +6364,7 @@ export default function App() {
         routeDecision.allowProtectedRender &&
         protectedRole ? (
         <>
-          {!isProductionEnvironment && showDevPreviewControls && (
-            <DevicePreviewBar
-              viewMode={effectiveDeviceViewMode}
-              onChangeViewMode={setDeviceViewMode}
-              orientation={deviceOrientation}
-              onChangeOrientation={setDeviceOrientation}
-              platform={previewPlatform}
-              onChangePlatform={setPreviewPlatform}
-              lang={lang}
-              theme={theme}
-              role={protectedRole}
-              activeTab={protectedTab}
-            />
-          )}
-
-          {!isProductionEnvironment && showDevPreviewControls && effectiveDeviceViewMode !== 'auto' ? (
-            <DevicePreviewFrameStage
-              viewMode={effectiveDeviceViewMode}
-              orientation={deviceOrientation}
-              platform={previewPlatform}
-              lang={lang}
-              theme={theme}
-              role={protectedRole}
-              activeTab={protectedTab}
-              onExitToAuto={() => setDeviceViewMode('auto')}
-              onSyncFromEmbed={(patch) => {
-                if (patch.role && canAccessRoleDashboard(authenticatedSession, patch.role)) {
-                  setRole(patch.role);
-                }
-                if (typeof patch.tab === 'string' && patch.tab.length > 0) setActiveTab(patch.tab);
-                if (patch.lang) setLang(patch.lang);
-                if (patch.theme) setTheme(patch.theme);
-                if (patch.platform) setPreviewPlatform(patch.platform);
-              }}
-            />
-          ) : (
-            <>
-              <TopHeader
+          <TopHeader
                 role={protectedRole}
                 onRoleChange={handleRoleChange}
                 roleSwitchLocked={true}
@@ -6325,6 +6418,7 @@ export default function App() {
                   showToast(b('স্কুল লগইন লক আনলক করা হয়েছে।', 'School login isolation lock released.', lang));
                 }}
                 platform={previewPlatform}
+                rtdbSyncStatus={rtdbSyncStatus}
               />
 
               <div className="flex flex-1 min-h-0">
@@ -6345,9 +6439,8 @@ export default function App() {
                   activeGuardianChild={activeGuardianChild}
                   activeTeacher={activeTeacherRecord}
                   onOpenContactAdmin={() => setContactAdminModalOpen(true)}
-                  onOpenAppDownloadAndShare={() => setAppDownloadShareModalOpen(true)}
                   onOpenPhotoEditor={() => openProfilePhotoEditorForRole(protectedRole)}
-                  previewViewMode={effectiveDeviceViewMode}
+                  previewViewMode="auto"
                 />
 
                 <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-7 pb-20 md:pb-8 max-w-[1600px] mx-auto w-full">
@@ -6500,6 +6593,71 @@ export default function App() {
               onEditTeacherPhoto={openTeacherPhotoEditor}
               onEditSchoolCover={openBannerCropEditor}
               settingsCenterElement={settingsCenterElement}
+              onRtdbUserUpdated={(rtdbUser) => {
+                if (rtdbUser.role === 'central_admin') {
+                  setAdminAccounts((prev) =>
+                    prev.map((adm) =>
+                      adm.email === rtdbUser.email || adm.id === activeCentralAdmin?.id
+                        ? {
+                            ...adm,
+                            name: rtdbUser.displayName || adm.name,
+                            email: rtdbUser.email || adm.email,
+                            mobile: rtdbUser.phone || adm.mobile,
+                          }
+                        : adm
+                    )
+                  );
+                } else if (rtdbUser.role === 'school_admin' && rtdbUser.schoolId) {
+                  setSchools((prev) =>
+                    prev.map((sc) =>
+                      sc.id === rtdbUser.schoolId
+                        ? {
+                            ...sc,
+                            headTeacher: rtdbUser.displayName || sc.headTeacher,
+                            email: rtdbUser.email || sc.email,
+                            mobile: rtdbUser.phone || sc.mobile,
+                          }
+                        : sc
+                    )
+                  );
+                } else if (rtdbUser.role === 'teacher') {
+                  setTeachers((prev) =>
+                    prev.map((t) =>
+                      (rtdbUser.teacherId && t.id === rtdbUser.teacherId) ||
+                      (rtdbUser.email && (t.email ?? '').toLowerCase() === rtdbUser.email.toLowerCase())
+                        ? {
+                            ...t,
+                            nameBn: rtdbUser.displayName || t.nameBn,
+                            nameEn: rtdbUser.displayName || t.nameEn,
+                            email: rtdbUser.email || t.email,
+                            mobile: rtdbUser.phone || t.mobile,
+                          }
+                        : t
+                    )
+                  );
+                } else if (rtdbUser.role === 'student' && rtdbUser.studentId) {
+                  setStudents((prev) =>
+                    prev.map((st) =>
+                      st.id === rtdbUser.studentId
+                        ? {
+                            ...st,
+                            nameBn: rtdbUser.displayName || st.nameBn,
+                            nameEn: rtdbUser.displayName || st.nameEn,
+                            guardianMobile: rtdbUser.phone || st.guardianMobile,
+                          }
+                        : st
+                    )
+                  );
+                } else if (rtdbUser.role === 'guardian') {
+                  setGuardianProfile((prev) => ({
+                    ...prev,
+                    displayName: rtdbUser.displayName || prev.displayName,
+                    email: rtdbUser.email || prev.email,
+                    phone: rtdbUser.phone || prev.phone,
+                  }));
+                }
+                triggerRtdbSyncPulse('synced');
+              }}
             />
           )}
 
@@ -6666,6 +6824,7 @@ export default function App() {
               maxNoticeImages={maxNoticeImages}
               onUpdateMaxNoticeImages={setMaxNoticeImages}
               onUpdateNoticeImages={handleUpdateNoticeImages}
+              rtdbSyncTick={rtdbSyncTick}
               settingsCenterElement={settingsCenterElement}
             />
           )}
@@ -6772,6 +6931,7 @@ export default function App() {
               maxNoticeImages={maxNoticeImages}
               onUpdateNoticeImages={handleUpdateNoticeImages}
               onOpenPhotoEditor={() => openProfilePhotoEditorForRole('teacher')}
+              rtdbSyncTick={rtdbSyncTick}
               settingsCenterElement={settingsCenterElement}
             />
           )}
@@ -6845,6 +7005,7 @@ export default function App() {
               teachers={teachers}
               guardianPhotoUrl={guardianPhotoUrl ?? DEFAULT_PROFILE_AVATARS.guardian}
               onOpenPhotoEditor={() => openProfilePhotoEditorForRole('guardian')}
+              rtdbSyncTick={rtdbSyncTick}
               settingsCenterElement={settingsCenterElement}
             />
           )}
@@ -6885,14 +7046,8 @@ export default function App() {
               documentTemplates={documentTemplates}
               teachers={teachers}
               onOpenPhotoEditor={() => openProfilePhotoEditorForRole('student')}
+              rtdbSyncTick={rtdbSyncTick}
               settingsCenterElement={settingsCenterElement}
-            />
-          )}
-
-          {protectedTab === 'dashboard' && (
-            <DashboardAppQuickAccessCard
-              lang={lang}
-              onOpenShareModal={() => setAppDownloadShareModalOpen(true)}
             />
           )}
         </main>
@@ -6902,9 +7057,7 @@ export default function App() {
       <nav
         aria-label={b('মোবাইল কুইক মেনু', 'Mobile role navigation', lang)}
         data-testid="mobile-role-bottom-nav"
-        className={`${
-          effectiveDeviceViewMode === 'mobile' ? 'grid' : 'md:hidden grid'
-        } fixed bottom-0 inset-x-0 h-12 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 grid-cols-5 z-20 no-print`}
+        className="md:hidden grid fixed bottom-0 inset-x-0 h-12 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 grid-cols-4 z-20 no-print"
       >
         <button
           type="button"
@@ -6950,14 +7103,6 @@ export default function App() {
         </button>
         <button
           type="button"
-          onClick={() => setAppDownloadShareModalOpen(true)}
-          className="flex flex-col items-center justify-center text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 cursor-pointer"
-        >
-          <Share2 className="w-4 h-4" />
-          <span>{b('অ্যাপস', 'Apps', lang)}</span>
-        </button>
-        <button
-          type="button"
           onClick={() => setActiveTab('settings')}
           className={`flex flex-col items-center justify-center text-[10px] font-semibold cursor-pointer ${
             protectedTab === 'settings' ? 'text-emerald-700 dark:text-emerald-400' : 'text-slate-500'
@@ -6967,8 +7112,6 @@ export default function App() {
           <span>{b('সেটিংস', 'Settings', lang)}</span>
         </button>
       </nav>
-            </>
-          )}
         </>
       ) : (
         <PortalLandingHub
@@ -7367,7 +7510,11 @@ export default function App() {
           <span>{toastMsg}</span>
         </div>
       )}
-      <OfflineIndicator lang={lang} />
+      <OfflineIndicator
+        lang={lang}
+        isOffline={isOffline}
+        pendingUploadsCount={pendingSyncCount}
+      />
     </div>
   );
 }

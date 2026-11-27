@@ -751,12 +751,52 @@ export { ErrorOverlay, createHotContext, injectQuery, removeStyle, updateStyle }
     app.use(vite.middlewares);
   } else {
     const distDir = path.resolve(process.cwd(), 'dist');
-    app.use(express.static(distDir));
+    const noCachePaths = new Set([
+      '/',
+      '/index.html',
+      '/sw.js',
+      '/registerSW.js',
+      '/manifest.webmanifest',
+    ]);
+    const applyNoStoreHeaders = (res: express.Response) => {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    };
+
+    app.use((req, res, next) => {
+      if (noCachePaths.has(req.path) || /^\/workbox-[^/]+\.js$/i.test(req.path)) {
+        applyNoStoreHeaders(res);
+      }
+      next();
+    });
+
+    app.use(
+      express.static(distDir, {
+        index: false,
+        setHeaders: (res, filePath) => {
+          const base = path.basename(filePath);
+          if (
+            base === 'index.html' ||
+            base === 'sw.js' ||
+            base === 'registerSW.js' ||
+            base === 'manifest.webmanifest' ||
+            /^workbox-.*\.js$/i.test(base)
+          ) {
+            applyNoStoreHeaders(res);
+          } else if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+          }
+        },
+      })
+    );
+
     app.get('*', (req, res) => {
       if (req.path.startsWith('/api/')) {
         res.status(404).json({ error: 'API route not found' });
         return;
       }
+      applyNoStoreHeaders(res);
       res.sendFile(path.join(distDir, 'index.html'));
     });
   }

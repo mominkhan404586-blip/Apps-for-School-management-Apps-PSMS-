@@ -41,7 +41,7 @@
       ".read": "(auth != null && auth.token.email_verified == true && (auth.token.email == 'mominkhan404586@gmail.com' || root.child('admins').child(auth.uid).child('accessLevel').val() == 'Super Central Admin')) || (auth != null && auth.token.email_verified == true && root.child('admins').child(auth.uid).exists())",
       "$uid": {
         ".read": "(auth != null && auth.token.email_verified == true && (auth.token.email == 'mominkhan404586@gmail.com' || root.child('admins').child(auth.uid).child('accessLevel').val() == 'Super Central Admin')) || (auth != null && auth.token.email_verified == true && root.child('admins').child(auth.uid).exists()) || (auth != null && auth.token.email_verified == true && auth.uid == $uid) || ((auth != null && auth.token.email_verified == true && root.child('users').child(auth.uid).child('status').val() == 'active' && root.child('users').child(auth.uid).child('isActive').val() != false) && root.child('users').child(auth.uid).child('role').val() == 'school_admin' && data.child('schoolId').val() == root.child('users').child(auth.uid).child('schoolId').val())",
-        ".write": "(auth != null && auth.token.email_verified == true && (auth.token.email == 'mominkhan404586@gmail.com' || root.child('admins').child(auth.uid).child('accessLevel').val() == 'Super Central Admin')) || ((auth != null && auth.token.email_verified == true && root.child('users').child(auth.uid).child('status').val() == 'active' && root.child('users').child(auth.uid).child('isActive').val() != false) && root.child('users').child(auth.uid).child('role').val() == 'school_admin' && newData.exists() && newData.child('schoolId').val() == root.child('users').child(auth.uid).child('schoolId').val() && (newData.child('role').val() == 'teacher' || newData.child('role').val() == 'student' || newData.child('role').val() == 'guardian')) || (auth != null && auth.token.email_verified == true && auth.uid == $uid && newData.exists() && ((!data.exists() && newData.child('role').val() == 'pending' && newData.child('status').val() == 'pending') || (data.exists() && newData.child('role').val() == data.child('role').val() && newData.child('status').val() == data.child('status').val() && newData.child('schoolId').val() == data.child('schoolId').val())))",
+        ".write": "(auth != null && auth.token.email_verified == true && (auth.token.email == 'mominkhan404586@gmail.com' || root.child('admins').child(auth.uid).child('accessLevel').val() == 'Super Central Admin')) || ((auth != null && auth.token.email_verified == true && root.child('users').child(auth.uid).child('status').val() == 'active' && root.child('users').child(auth.uid).child('isActive').val() != false) && root.child('users').child(auth.uid).child('role').val() == 'school_admin' && newData.exists() && (!data.exists() || data.child('schoolId').val() == root.child('users').child(auth.uid).child('schoolId').val()) && newData.child('schoolId').val() == root.child('users').child(auth.uid).child('schoolId').val() && (newData.child('role').val() == 'teacher' || newData.child('role').val() == 'student' || newData.child('role').val() == 'guardian')) || (auth != null && auth.token.email_verified == true && auth.uid == $uid && newData.exists() && ((!data.exists() && newData.child('role').val() == 'pending' && newData.child('status').val() == 'pending') || (data.exists() && newData.child('role').val() == data.child('role').val() && newData.child('status').val() == data.child('status').val() && ((!data.child('schoolId').exists() && (!newData.child('schoolId').exists() || newData.child('schoolId').val() == '')) || (data.child('schoolId').exists() && newData.child('schoolId').val() == data.child('schoolId').val())) && ((!data.child('teacherId').exists() && (!newData.child('teacherId').exists() || newData.child('teacherId').val() == '')) || (data.child('teacherId').exists() && newData.child('teacherId').val() == data.child('teacherId').val())) && ((!data.child('studentId').exists() && (!newData.child('studentId').exists() || newData.child('studentId').val() == '')) || (data.child('studentId').exists() && newData.child('studentId').val() == data.child('studentId').val())))))",
         ".validate": "newData.hasChildren(['uid', 'email', 'displayName', 'role', 'status', 'updatedAt'])",
         "uid": {
           ".validate": "newData.isString() && newData.val() == $uid"
@@ -53,13 +53,13 @@
           ".validate": "newData.isString() && newData.val().length >= 2 && newData.val().length <= 120"
         },
         "phone": {
-          ".validate": "newData.isString() && (newData.val().length == 0 || (newData.val().length >= 6 && newData.val().length <= 24 && newData.val().matches(/^[+0-9\\-\\s]{6,24}$/)))"
+          ".validate": "newData.isString() && (newData.val().length == 0 || (newData.val().length >= 6 && newData.val().length <= 24 && newData.val().matches(/^[+0-9()\\-\\s]{6,24}$/)))"
         },
         "recoveryEmail": {
           ".validate": "newData.isString() && (newData.val().length == 0 || (newData.val().length >= 3 && newData.val().length <= 254 && newData.val().matches(/^[A-Za-z0-9._%+\\-]+@[A-Za-z0-9.\\-]+\\.[A-Za-z]{2,}$/)))"
         },
         "recoveryPhone": {
-          ".validate": "newData.isString() && (newData.val().length == 0 || (newData.val().length >= 6 && newData.val().length <= 24 && newData.val().matches(/^[+0-9\\-\\s]{6,24}$/)))"
+          ".validate": "newData.isString() && (newData.val().length == 0 || (newData.val().length >= 6 && newData.val().length <= 24 && newData.val().matches(/^[+0-9()\\-\\s]{6,24}$/)))"
         },
         "role": {
           ".validate": "newData.isString() && (newData.val() == 'central_admin' || newData.val() == 'school_admin' || newData.val() == 'teacher' || newData.val() == 'guardian' || newData.val() == 'student' || newData.val() == 'pending')"
@@ -96,6 +96,7 @@
     "schools": {
       ".read": "(auth != null && auth.token.email_verified == true && (auth.token.email == 'mominkhan404586@gmail.com' || root.child('admins').child(auth.uid).child('accessLevel').val() == 'Super Central Admin')) || (auth != null && auth.token.email_verified == true && root.child('admins').child(auth.uid).exists())",
       "$schoolId": {
+        ".read": "(auth != null && auth.token.email_verified == true && (auth.token.email == 'mominkhan404586@gmail.com' || root.child('admins').child(auth.uid).child('accessLevel').val() == 'Super Central Admin')) || (auth != null && auth.token.email_verified == true && root.child('admins').child(auth.uid).exists()) || ((auth != null && auth.token.email_verified == true && root.child('users').child(auth.uid).child('status').val() == 'active' && root.child('users').child(auth.uid).child('isActive').val() != false) && root.child('users').child(auth.uid).child('schoolId').val() == $schoolId)",
         "profile": {
           ".read": "(auth != null && auth.token.email_verified == true && (auth.token.email == 'mominkhan404586@gmail.com' || root.child('admins').child(auth.uid).child('accessLevel').val() == 'Super Central Admin')) || (auth != null && auth.token.email_verified == true && root.child('admins').child(auth.uid).exists()) || ((auth != null && auth.token.email_verified == true && root.child('users').child(auth.uid).child('status').val() == 'active' && root.child('users').child(auth.uid).child('isActive').val() != false) && root.child('users').child(auth.uid).child('schoolId').val() == $schoolId)",
           ".write": "(auth != null && auth.token.email_verified == true && (auth.token.email == 'mominkhan404586@gmail.com' || root.child('admins').child(auth.uid).child('accessLevel').val() == 'Super Central Admin')) || ((auth != null && auth.token.email_verified == true && root.child('users').child(auth.uid).child('status').val() == 'active' && root.child('users').child(auth.uid).child('isActive').val() != false) && root.child('users').child(auth.uid).child('role').val() == 'school_admin' && root.child('users').child(auth.uid).child('schoolId').val() == $schoolId)",
@@ -108,6 +109,21 @@
           },
           "nameEn": {
             ".validate": "newData.isString() && newData.val().length <= 200"
+          },
+          "headTeacher": {
+            ".validate": "newData.isString() && newData.val().length <= 120"
+          },
+          "email": {
+            ".validate": "newData.isString() && newData.val().length <= 254"
+          },
+          "mobile": {
+            ".validate": "newData.isString() && newData.val().length <= 24"
+          },
+          "eiin": {
+            ".validate": "newData.isString() && newData.val().length <= 32"
+          },
+          "fullAddress": {
+            ".validate": "newData.isString() && newData.val().length <= 300"
           },
           "status": {
             ".validate": "newData.isString() && (newData.val() == 'active' || newData.val() == 'pending' || newData.val() == 'under_review' || newData.val() == 'suspended' || newData.val() == 'deactivated')"
@@ -137,11 +153,23 @@
             "nameBn": {
               ".validate": "newData.isString() && newData.val().length >= 2 && newData.val().length <= 120"
             },
+            "nameEn": {
+              ".validate": "newData.isString() && newData.val().length <= 120"
+            },
+            "email": {
+              ".validate": "newData.isString() && newData.val().length <= 254"
+            },
             "mobile": {
               ".validate": "newData.isString() && newData.val().length <= 24"
             },
+            "designation": {
+              ".validate": "newData.isString() && newData.val().length <= 120"
+            },
             "status": {
               ".validate": "newData.isString() && (newData.val() == 'active' || newData.val() == 'pending' || newData.val() == 'suspended')"
+            },
+            "updatedByUid": {
+              ".validate": "newData.isString() && newData.val().length <= 128"
             },
             "updatedAt": {
               ".validate": "newData.isNumber() || newData.isString()"
@@ -166,11 +194,26 @@
             "nameBn": {
               ".validate": "newData.isString() && newData.val().length >= 2 && newData.val().length <= 120"
             },
+            "nameEn": {
+              ".validate": "newData.isString() && newData.val().length <= 120"
+            },
+            "className": {
+              ".validate": "newData.isString() && newData.val().length <= 64"
+            },
+            "section": {
+              ".validate": "newData.isString() && newData.val().length <= 64"
+            },
+            "roll": {
+              ".validate": "newData.isNumber() || newData.isString()"
+            },
             "guardianMobile": {
               ".validate": "newData.isString() && newData.val().length <= 24"
             },
             "status": {
               ".validate": "newData.isString() && (newData.val() == 'active' || newData.val() == 'pending' || newData.val() == 'suspended')"
+            },
+            "updatedByUid": {
+              ".validate": "newData.isString() && newData.val().length <= 128"
             },
             "updatedAt": {
               ".validate": "newData.isNumber() || newData.isString()"
@@ -244,7 +287,7 @@
         ],
         ".read": "(auth != null && auth.token.email_verified == true && (auth.token.email == 'mominkhan404586@gmail.com' || root.child('admins').child(auth.uid).child('accessLevel').val() == 'Super Central Admin')) || (auth != null && auth.token.email_verified == true && root.child('admins').child(auth.uid).exists()) || (auth != null && auth.token.email_verified == true && auth.uid == $uid)",
         "$logId": {
-          ".write": "(auth != null && auth.token.email_verified == true && (auth.token.email == 'mominkhan404586@gmail.com' || root.child('admins').child(auth.uid).child('accessLevel').val() == 'Super Central Admin')) || (auth != null && auth.token.email_verified == true && auth.uid == $uid && newData.exists() && newData.child('changedByUid').val() == auth.uid)",
+          ".write": "(auth != null && auth.token.email_verified == true && (auth.token.email == 'mominkhan404586@gmail.com' || root.child('admins').child(auth.uid).child('accessLevel').val() == 'Super Central Admin')) || ((auth != null && auth.token.email_verified == true && root.child('users').child(auth.uid).child('status').val() == 'active' && root.child('users').child(auth.uid).child('isActive').val() != false) && root.child('users').child(auth.uid).child('role').val() == 'school_admin' && root.child('users').child($uid).child('schoolId').val() == root.child('users').child(auth.uid).child('schoolId').val() && newData.exists() && newData.child('changedByUid').val() == auth.uid) || (auth != null && auth.token.email_verified == true && auth.uid == $uid && newData.exists() && newData.child('changedByUid').val() == auth.uid)",
           ".validate": "newData.hasChildren(['uid', 'changedByUid', 'field', 'oldValue', 'newValue', 'validationStatus', 'updatedAt'])",
           "uid": {
             ".validate": "newData.isString() && newData.val() == $uid"

@@ -73,6 +73,7 @@ import { RoutineManagementSystem } from './RoutineManagementSystem';
 import { ExamRoutineSystem } from './ExamRoutineSystem';
 import { OfficialDocumentSystem } from './OfficialDocumentSystem';
 import { SchoolCoverBanner } from './SchoolCoverBanner';
+import { useSyncEffect } from '../hooks/useSyncEffect';
 
 interface TeacherPortalViewProps {
   activeTab: string;
@@ -473,6 +474,7 @@ interface StudentPortalViewProps {
     }
   ) => void;
   onOpenPhotoEditor?: () => void;
+  rtdbSyncTick?: number;
   settingsCenterElement?: React.ReactNode;
 }
 
@@ -511,6 +513,7 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
   onUpdateAllowedSelfProfile,
   onSubmitImportantChangeRequest,
   onOpenPhotoEditor,
+  rtdbSyncTick = 0,
   settingsCenterElement,
 }) => {
   const [changeModalOpen, setChangeModalOpen] = useState(false);
@@ -521,6 +524,18 @@ export const StudentPortalView: React.FC<StudentPortalViewProps> = ({
     student.emergencyContact ?? student.guardianMobile
   );
   const [addressDraft, setAddressDraft] = useState(student.address ?? '');
+
+  useSyncEffect({
+    syncTick: rtdbSyncTick,
+    rtdbPath: student?.schoolId && student?.id ? `schools/${student.schoolId}/students/${student.id}` : undefined,
+    onSync: () => {
+      if (!editingAllowed) {
+        setMobileDraft(student.guardianMobile);
+        setEmergencyDraft(student.emergencyContact ?? student.guardianMobile);
+        setAddressDraft(student.address ?? '');
+      }
+    },
+  });
 
   const myAssignments = assignments.filter((a) => a.studentId === student.id);
   const myClassworks = classworks.filter((cw) => cw.className === student.className);

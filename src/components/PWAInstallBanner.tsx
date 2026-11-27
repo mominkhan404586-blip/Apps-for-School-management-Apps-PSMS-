@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Download, ExternalLink, Smartphone, WifiOff, X } from 'lucide-react';
+import { Download, ExternalLink, Smartphone, UploadCloud, Wifi, WifiOff, X } from 'lucide-react';
 import { useOnlineStatus, usePWAInstall } from '../hooks/usePWAInstall';
 import type { Language } from '../types';
 import { b } from '../i18n/translations';
@@ -289,20 +289,99 @@ export const PWAInstallBanner: React.FC<{ lang?: Language }> = ({ lang = 'bn' })
   );
 };
 
-export const OfflineIndicator: React.FC<{ lang?: Language }> = ({ lang = 'bn' }) => {
-  const isOnline = useOnlineStatus();
-  if (isOnline) return null;
+export interface OfflineIndicatorProps {
+  lang?: Language;
+  variant?: 'floating' | 'header';
+  isOffline?: boolean;
+  pendingUploadsCount?: number;
+  onClickSync?: () => void;
+}
+
+export const OfflineIndicator: React.FC<OfflineIndicatorProps> = ({
+  lang = 'bn',
+  variant = 'floating',
+  isOffline = false,
+  pendingUploadsCount = 0,
+  onClickSync,
+}) => {
+  const browserOnline = useOnlineStatus();
+  const effectiveOffline = isOffline || !browserOnline;
+
+  if (variant === 'header') {
+    const hasPending = pendingUploadsCount > 0;
+    return (
+      <button
+        type="button"
+        onClick={onClickSync}
+        data-testid="offline-indicator-header"
+        title={
+          effectiveOffline
+            ? b(
+                `অফলাইন মোড — ${pendingUploadsCount} pending uploads অপেক্ষমাণ`,
+                `Offline Mode — ${pendingUploadsCount} pending uploads queued`,
+                lang
+              )
+            : hasPending
+              ? b(
+                  `${pendingUploadsCount}টি পরিবর্তন ক্লাউডে আপলোডের অপেক্ষায় — সিঙ্ক করতে ক্লিক করুন`,
+                  `${pendingUploadsCount} pending uploads waiting to sync — click to sync`,
+                  lang
+                )
+              : b('অনলাইন সিঙ্ক সক্রিয় (অফলাইন টেস্ট করতে ক্লিক করুন)', 'Online Mode (click to toggle offline queue)', lang)
+        }
+        className={`inline-flex items-center gap-1.5 h-8 sm:h-9 px-2 lg:px-2.5 rounded-lg text-xs font-semibold border transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+          effectiveOffline
+            ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-700'
+            : hasPending
+              ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-800 dark:text-blue-200 border-blue-300 dark:border-blue-700'
+              : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+        }`}
+      >
+        {effectiveOffline ? (
+          <WifiOff className="w-3.5 h-3.5 shrink-0" />
+        ) : (
+          <Wifi className="w-3.5 h-3.5 shrink-0" />
+        )}
+        <span className="hidden lg:inline">
+          {effectiveOffline
+            ? b('অফলাইন', 'Offline', lang)
+            : b('অনলাইন', 'Online', lang)}
+        </span>
+        {(hasPending || effectiveOffline) && (
+          <span
+            data-testid="header-pending-uploads-badge"
+            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-bold tabular-nums ${
+              hasPending
+                ? 'bg-amber-600 text-white'
+                : 'bg-amber-200/80 dark:bg-amber-900/70 text-amber-900 dark:text-amber-200'
+            }`}
+          >
+            <UploadCloud className="w-3 h-3 shrink-0" />
+            <span>{pendingUploadsCount} pending uploads</span>
+          </span>
+        )}
+      </button>
+    );
+  }
+
+  if (!effectiveOffline) return null;
 
   return (
     <div
       role="status"
       aria-live="polite"
+      data-testid="offline-indicator-floating"
       className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-4 py-2 rounded-full bg-amber-900 text-amber-100 text-xs font-semibold shadow-lg border border-amber-500/40"
     >
       <WifiOff className="w-4 h-4 shrink-0" />
       <span>
         {b('আপনি অফলাইনে আছেন — সংরক্ষিত ডাটা দেখা যাচ্ছে', 'You are offline — cached workspace active', lang)}
       </span>
+      {pendingUploadsCount > 0 && (
+        <span className="px-2 py-0.5 rounded-full bg-amber-600 text-white text-[11px] font-bold tabular-nums">
+          {pendingUploadsCount} pending uploads
+        </span>
+      )}
     </div>
   );
 };

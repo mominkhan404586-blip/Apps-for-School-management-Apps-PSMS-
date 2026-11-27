@@ -67,7 +67,7 @@ if (!self.define) {
     });
   };
 }
-define(['./workbox-d488705a'], (function (workbox) { 'use strict';
+define(['./workbox-563ce610'], (function (workbox) { 'use strict';
 
   self.skipWaiting();
   workbox.clientsClaim();
@@ -77,43 +77,40 @@ define(['./workbox-d488705a'], (function (workbox) { 'use strict';
    * See https://goo.gl/S9QRab
    */
   workbox.precacheAndRoute([{
-    "url": "registerSW.js",
-    "revision": "1872c500de691dce40960bb85481de07"
-  }, {
     "url": "pwa-maskable-512x512.png",
-    "revision": "0b565bdf7817b8381bea6bb4e4f78569"
+    "revision": "3938fe5a56a889eb54feecb5c48f2952"
   }, {
     "url": "pwa-512x512.png",
-    "revision": "a2fbe03caac9257068e95a84a241802d"
+    "revision": "59cc861c092310aed5d86d0c35d8027e"
   }, {
     "url": "pwa-192x192.png",
-    "revision": "db1773045b03b44b0589e963300673cd"
+    "revision": "69b64acc2a962dfd37d58dde6b5e9e9d"
   }, {
     "url": "official-app-icon.png",
-    "revision": "a2fbe03caac9257068e95a84a241802d"
-  }, {
-    "url": "index.html",
-    "revision": "73729512bfc09ac33484d8a4922f163a"
+    "revision": "59cc861c092310aed5d86d0c35d8027e"
   }, {
     "url": "icon.svg",
-    "revision": "1371b06582439a93d094b93acd717323"
+    "revision": "e558c623ef3a1c86f9bc54e5c2141119"
   }, {
     "url": "favicon.png",
-    "revision": "cb2d0633aa559602eb3e348397d32f40"
+    "revision": "c6292a3e4346fab2fe2e5dc8ceab07c6"
   }, {
     "url": "favicon.ico",
-    "revision": "03bd3e9019661692e84df7e5c6e69720"
+    "revision": "0c9cfa0db3609aea04ab34eeed2bb2d6"
   }, {
     "url": "favicon-32x32.png",
-    "revision": "0d9a4c169f3cfb7b055b2d3c3d1a125a"
+    "revision": "752c1cdc465d92ea3644d501f5d7dbd8"
   }, {
     "url": "apple-touch-icon.png",
-    "revision": "dc637e742e7341db7f4943311e408c52"
+    "revision": "5c8a875e607b527bb2205c530042976f"
   }, {
-    "url": "assets/index-CHbDRIG1.js",
+    "url": "assets/workbox-window.prod.es5-Bd17z0YL.js",
     "revision": null
   }, {
-    "url": "assets/index-CAb-b_Lj.css",
+    "url": "assets/index-uBs_nMyw.css",
+    "revision": null
+  }, {
+    "url": "assets/index-BU-wETkE.js",
     "revision": null
   }, {
     "url": "assets/aistudio/teacher_reg_modal_47340f4f.png",
@@ -162,33 +159,43 @@ define(['./workbox-d488705a'], (function (workbox) { 'use strict';
     "revision": null
   }, {
     "url": "apple-touch-icon.png",
-    "revision": "dc637e742e7341db7f4943311e408c52"
+    "revision": "5c8a875e607b527bb2205c530042976f"
   }, {
     "url": "favicon-32x32.png",
-    "revision": "0d9a4c169f3cfb7b055b2d3c3d1a125a"
+    "revision": "752c1cdc465d92ea3644d501f5d7dbd8"
+  }, {
+    "url": "favicon.ico",
+    "revision": "0c9cfa0db3609aea04ab34eeed2bb2d6"
   }, {
     "url": "favicon.png",
-    "revision": "cb2d0633aa559602eb3e348397d32f40"
+    "revision": "c6292a3e4346fab2fe2e5dc8ceab07c6"
   }, {
     "url": "official-app-icon.png",
-    "revision": "a2fbe03caac9257068e95a84a241802d"
+    "revision": "59cc861c092310aed5d86d0c35d8027e"
   }, {
     "url": "pwa-192x192.png",
-    "revision": "db1773045b03b44b0589e963300673cd"
+    "revision": "69b64acc2a962dfd37d58dde6b5e9e9d"
   }, {
     "url": "pwa-512x512.png",
-    "revision": "a2fbe03caac9257068e95a84a241802d"
+    "revision": "59cc861c092310aed5d86d0c35d8027e"
   }, {
     "url": "pwa-maskable-512x512.png",
-    "revision": "0b565bdf7817b8381bea6bb4e4f78569"
+    "revision": "3938fe5a56a889eb54feecb5c48f2952"
   }, {
     "url": "manifest.webmanifest",
-    "revision": "03362492758a354fd98f48270401cda2"
+    "revision": "ec29c7936afcdc1767e4c395b9bf8557"
   }], {});
   workbox.cleanupOutdatedCaches();
-  workbox.registerRoute(new workbox.NavigationRoute(workbox.createHandlerBoundToURL("/index.html"), {
-    denylist: [/^\/api\//]
-  }));
+  workbox.registerRoute(({
+    request
+  }) => request.mode === "navigate", new workbox.NetworkFirst({
+    "cacheName": "psms-html-nav-cache",
+    "networkTimeoutSeconds": 4,
+    plugins: [new workbox.ExpirationPlugin({
+      maxEntries: 10,
+      maxAgeSeconds: 3600
+    })]
+  }), 'GET');
   workbox.registerRoute(({
     url
   }) => url.pathname.startsWith("/api/"), new workbox.NetworkFirst({

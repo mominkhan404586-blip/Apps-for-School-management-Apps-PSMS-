@@ -9,6 +9,7 @@ import {
   normalizeRtdbUserRecord,
   validateRealtimeUserAccountUpdate,
 } from './realtimeDatabaseSync';
+import { shouldTriggerSyncCallback } from '../hooks/useSyncEffect';
 import type { AuthenticatedSession } from './authGuard';
 
 test('validateRealtimeUserAccountUpdate detects valid changes and produces accurate old-vs-new diffs', () => {
@@ -70,12 +71,13 @@ test('validateRealtimeUserAccountUpdate highlights exact invalid fields vs valid
   assert.ok(result.errors.status);
 });
 
-test('applyRealtimeUserToSession auto-updates authenticatedSession on profile changes and blocks suspended accounts', () => {
+test('applyRealtimeUserToSession auto-updates authenticatedSession on profile & phone changes and blocks suspended accounts', () => {
   const baseSession: AuthenticatedSession = {
     uid: 'uid-teacher-1',
     role: 'teacher',
     displayName: 'Old Name',
     email: 'old@school.edu.bd',
+    phone: '01711000000',
     provider: 'firebase_email',
     schoolId: 'SCH-1',
     teacherId: 'TCH-1',
@@ -86,6 +88,7 @@ test('applyRealtimeUserToSession auto-updates authenticatedSession on profile ch
     uid: 'uid-teacher-1',
     displayName: 'Old Name',
     email: 'old@school.edu.bd',
+    phone: '01711000000',
     role: 'teacher',
     status: 'active',
     schoolId: 'SCH-1',
@@ -94,6 +97,20 @@ test('applyRealtimeUserToSession auto-updates authenticatedSession on profile ch
   });
   assert.equal(noChange.changed, false);
   assert.equal(noChange.suspended, false);
+
+  const phoneOnlyUpdate = applyRealtimeUserToSession(baseSession, {
+    uid: 'uid-teacher-1',
+    displayName: 'Old Name',
+    email: 'old@school.edu.bd',
+    phone: '01888776655',
+    role: 'teacher',
+    status: 'active',
+    schoolId: 'SCH-1',
+    teacherId: 'TCH-1',
+    updatedAt: 1732500001000,
+  });
+  assert.equal(phoneOnlyUpdate.changed, true);
+  assert.equal(phoneOnlyUpdate.nextSession?.phone, '01888776655');
 
   const updated = applyRealtimeUserToSession(baseSession, {
     uid: 'uid-teacher-1',
@@ -123,6 +140,13 @@ test('applyRealtimeUserToSession auto-updates authenticatedSession on profile ch
   assert.equal(suspended.changed, true);
   assert.equal(suspended.suspended, true);
   assert.equal(suspended.nextSession, null);
+});
+
+test('shouldTriggerSyncCallback fires only when syncTick advances past 0', () => {
+  assert.equal(shouldTriggerSyncCallback(0, 0), false);
+  assert.equal(shouldTriggerSyncCallback(0, 1), true);
+  assert.equal(shouldTriggerSyncCallback(1, 1), false);
+  assert.equal(shouldTriggerSyncCallback(1, 2), true);
 });
 
 test('normalizeRtdbUserRecord safely normalizes valid records and rejects invalid payloads', () => {

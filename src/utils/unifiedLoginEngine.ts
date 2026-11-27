@@ -395,6 +395,114 @@ export function validatePasswordChangeInput(params: {
   return { ok: true };
 }
 
+export const REMEMBERED_LOGIN_IDENTIFIER_KEY = 'psms_remembered_login_identifier_v1';
+
+export function loadRememberedLoginIdentifier(): string {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return '';
+    return window.localStorage.getItem(REMEMBERED_LOGIN_IDENTIFIER_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+export function saveRememberedLoginIdentifier(identifier: string, remember: boolean): void {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    const clean = identifier.trim();
+    if (remember && clean) {
+      window.localStorage.setItem(REMEMBERED_LOGIN_IDENTIFIER_KEY, clean);
+    } else {
+      window.localStorage.removeItem(REMEMBERED_LOGIN_IDENTIFIER_KEY);
+    }
+  } catch {
+    // Ignore storage quota / privacy mode issues
+  }
+}
+
+export interface LoginIdentifierValidationResult {
+  valid: boolean;
+  kind:
+    | 'empty'
+    | 'email'
+    | 'phone'
+    | 'code_or_username'
+    | 'invalid_email'
+    | 'invalid_phone'
+    | 'too_short';
+  messageBn: string;
+  messageEn: string;
+}
+
+export function validateLoginIdentifierRealtime(
+  rawIdentifier: string
+): LoginIdentifierValidationResult {
+  const val = rawIdentifier.trim();
+  if (!val) {
+    return {
+      valid: false,
+      kind: 'empty',
+      messageBn: 'ইউজারনেম, ১১ ডিজিটের মোবাইল নম্বর বা ইমেইল লিখুন।',
+      messageEn: 'Enter a username, 11-digit mobile number, or email address.',
+    };
+  }
+
+  if (val.includes('@')) {
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+    if (!emailPattern.test(val)) {
+      return {
+        valid: false,
+        kind: 'invalid_email',
+        messageBn: 'সঠিক ইমেইল ফরম্যাট দিন (যেমন: name@domain.com)।',
+        messageEn: 'Enter a valid email address (e.g. name@domain.com).',
+      };
+    }
+    return {
+      valid: true,
+      kind: 'email',
+      messageBn: 'সঠিক ইমেইল ফরম্যাট',
+      messageEn: 'Valid email format',
+    };
+  }
+
+  if (/^[+\d\s\-()]+$/.test(val)) {
+    const digits = val.replace(/\D/g, '');
+    const validBd = digits.startsWith('01')
+      ? /^01[3-9]\d{8}$/.test(digits)
+      : digits.length >= 10 && digits.length <= 15;
+    if (!validBd) {
+      return {
+        valid: false,
+        kind: 'invalid_phone',
+        messageBn: 'সঠিক মোবাইল নম্বর দিন (যেমন: 01712345678, ১১ ডিজিট)।',
+        messageEn: 'Enter a valid mobile number (e.g. 01712345678, 11 digits).',
+      };
+    }
+    return {
+      valid: true,
+      kind: 'phone',
+      messageBn: 'সঠিক মোবাইল নম্বর',
+      messageEn: 'Valid mobile number',
+    };
+  }
+
+  if (val.length < 3 || /\s/.test(val)) {
+    return {
+      valid: false,
+      kind: 'too_short',
+      messageBn: 'আইডি বা ইউজারনেম কমপক্ষে ৩ অক্ষরের হতে হবে (ফাঁকা স্থান ছাড়া)।',
+      messageEn: 'Username or ID must be at least 3 characters with no spaces.',
+    };
+  }
+
+  return {
+    valid: true,
+    kind: 'code_or_username',
+    messageBn: 'সঠিক আইডি / ইউজারনেম ফরম্যাট',
+    messageEn: 'Valid ID / username format',
+  };
+}
+
 export type ApprovalCheckCategory = 'school' | 'teacher' | 'student';
 
 export interface RegistrationApprovalStatusResult {

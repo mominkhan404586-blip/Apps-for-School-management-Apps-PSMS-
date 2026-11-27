@@ -5,12 +5,14 @@ import {
   Calendar,
   CheckCircle2,
   ClipboardEdit,
+  FileDown,
   Globe,
   Lock,
   Plus,
   ShieldCheck,
   Unlock,
 } from 'lucide-react';
+import { ExamPdfReportModal } from './ExamPdfReportModal';
 import type {
   ExamCategoryType,
   ExamRecord,
@@ -75,6 +77,7 @@ export const ExaminationManagementPanel: React.FC<ExaminationManagementPanelProp
   const canCreateLocalExam = role === 'school_admin' || role === 'teacher';
   const [createOpen, setCreateOpen] = useState(false);
   const [activeExamForMarksId, setActiveExamForMarksId] = useState<string | null>(null);
+  const [pdfReportExamId, setPdfReportExamId] = useState<string | null>(null);
   const [schoolFilter, setSchoolFilter] = useState<string>('all');
 
   // Create Local Exam form state
@@ -119,6 +122,12 @@ export const ExaminationManagementPanel: React.FC<ExaminationManagementPanelProp
   );
 
   const activeExamForMarks = visibleExams.find((e) => e.id === activeExamForMarksId);
+  const primaryExamForPdf =
+    visibleExams.find((e) => e.id === pdfReportExamId) ??
+    visibleExams.find((e) => e.status === 'published') ??
+    visibleExams[0] ??
+    null;
+  const pdfReportExam = pdfReportExamId ? visibleExams.find((e) => e.id === pdfReportExamId) ?? primaryExamForPdf : null;
 
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -196,6 +205,18 @@ export const ExaminationManagementPanel: React.FC<ExaminationManagementPanelProp
                   </option>
                 ))}
             </select>
+          )}
+
+          {visibleExams.length > 0 && (
+            <button
+              type="button"
+              data-testid="generate-pdf-report-btn"
+              onClick={() => setPdfReportExamId(primaryExamForPdf?.id ?? visibleExams[0]?.id ?? null)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-800 dark:text-blue-200 font-semibold cursor-pointer"
+            >
+              <FileDown className="w-4 h-4" />
+              {b('Generate PDF Report', 'Generate PDF Report', lang)}
+            </button>
           )}
 
           {canCreateLocalExam && (
@@ -482,18 +503,29 @@ export const ExaminationManagementPanel: React.FC<ExaminationManagementPanelProp
                       </button>
                     )}
 
-                    {canEdit && (
+                    <div className="flex flex-wrap items-center gap-2 ml-auto">
                       <button
                         type="button"
-                        onClick={() =>
-                          setActiveExamForMarksId((prev) => (prev === ex.id ? null : ex.id))
-                        }
-                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold cursor-pointer"
+                        onClick={() => setPdfReportExamId(ex.id)}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/30 font-semibold cursor-pointer"
                       >
-                        <ClipboardEdit className="w-3.5 h-3.5" />
-                        {b('নম্বর দেখুন / আপডেট', 'Marks & Results', lang)}
+                        <FileDown className="w-3.5 h-3.5" />
+                        {b('PDF রিপোর্ট', 'PDF Report', lang)}
                       </button>
-                    )}
+
+                      {canEdit && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setActiveExamForMarksId((prev) => (prev === ex.id ? null : ex.id))
+                          }
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 font-semibold cursor-pointer"
+                        >
+                          <ClipboardEdit className="w-3.5 h-3.5" />
+                          {b('নম্বর দেখুন / আপডেট', 'Marks & Results', lang)}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
@@ -663,6 +695,16 @@ export const ExaminationManagementPanel: React.FC<ExaminationManagementPanelProp
           </div>
         </div>
       )}
+
+      <ExamPdfReportModal
+        open={Boolean(pdfReportExam)}
+        onClose={() => setPdfReportExamId(null)}
+        lang={lang}
+        exam={pdfReportExam}
+        school={schools.find((s) => s.id === (pdfReportExam?.schoolId ?? schoolId))}
+        students={students}
+        lockedStudentId={role === 'student' || role === 'guardian' ? studentId : undefined}
+      />
     </div>
   );
 };
