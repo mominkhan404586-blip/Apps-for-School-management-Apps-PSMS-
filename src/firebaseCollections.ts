@@ -101,19 +101,14 @@ async function upsertFirestoreDocStrict(
   const safeId = sanitizeFirestoreId(docId, 'doc');
   const docRef = doc(db, collectionName, safeId);
   try {
-    const snap = await getDoc(docRef);
-    if (snap.exists()) {
-      await updateDoc(docRef, {
+    await setDoc(
+      docRef,
+      {
         ...payload,
         updatedAt: serverTimestamp(),
-      });
-    } else {
-      await setDoc(docRef, {
-        ...payload,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-    }
+      },
+      { merge: true }
+    );
   } catch {
     // Non-blocking in portal/preview mode so UI remains responsive
   }
@@ -543,8 +538,8 @@ export function subscribeFirestoreSchools(
   if (!user || !user.emailVerified) return () => {};
 
   const constraints: QueryConstraint[] = isVerifiedBootAdmin()
-    ? [limit(50)]
-    : [where('ownerUid', '==', user.uid), limit(25)];
+    ? [limit(30)]
+    : [where('ownerUid', '==', user.uid), limit(20)];
 
   return onSnapshot(
     query(collection(db, 'schools'), ...constraints),
@@ -566,8 +561,8 @@ export function subscribeFirestoreNotices(
   if (!user || !user.emailVerified) return () => {};
 
   const constraints: QueryConstraint[] = isVerifiedBootAdmin()
-    ? [limit(30)]
-    : [where('audience', '==', 'all'), limit(20)];
+    ? [limit(20)]
+    : [where('audience', '==', 'all'), limit(15)];
 
   return onSnapshot(
     query(collection(db, 'notices'), ...constraints),
@@ -589,8 +584,8 @@ export function subscribeFirestoreTeachers(
   if (!user || !user.emailVerified) return () => {};
 
   const constraints: QueryConstraint[] = isVerifiedBootAdmin()
-    ? [limit(100)]
-    : [where('ownerUid', '==', user.uid), limit(50)];
+    ? [limit(60)]
+    : [where('ownerUid', '==', user.uid), limit(35)];
 
   return onSnapshot(
     query(collection(db, 'teachers'), ...constraints),
@@ -612,8 +607,8 @@ export function subscribeFirestoreStudents(
   if (!user || !user.emailVerified) return () => {};
 
   const constraints: QueryConstraint[] = isVerifiedBootAdmin()
-    ? [limit(150)]
-    : [where('ownerUid', '==', user.uid), limit(75)];
+    ? [limit(100)]
+    : [where('ownerUid', '==', user.uid), limit(50)];
 
   return onSnapshot(
     query(collection(db, 'students'), ...constraints),
@@ -646,8 +641,8 @@ export function subscribeFirestoreMediaAssets(
   if (!user || !user.emailVerified) return () => {};
 
   const constraints: QueryConstraint[] = isVerifiedBootAdmin()
-    ? [limit(50)]
-    : [where('ownerUid', '==', user.uid), limit(30)];
+    ? [limit(15)]
+    : [where('ownerUid', '==', user.uid), limit(10)];
 
   return onSnapshot(
     query(collection(db, 'media_assets'), ...constraints),

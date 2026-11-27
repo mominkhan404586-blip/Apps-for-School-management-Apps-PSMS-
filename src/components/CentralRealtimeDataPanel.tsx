@@ -8,6 +8,7 @@ import {
   Cloud,
   Copy,
   Database,
+  Download,
   ExternalLink,
   FileUp,
   Flame,
@@ -505,6 +506,18 @@ export const CentralRealtimeDataPanel: React.FC<CentralRealtimeDataPanelProps> =
     } catch {
       setCopiedRules(false);
     }
+  };
+
+  const handleDownloadRules = () => {
+    const blob = new Blob([REALTIME_DATABASE_RULES_JSON + '\n'], {
+      type: 'application/json;charset=utf-8',
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'database.rules.json';
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const latencyMs =
@@ -1493,16 +1506,33 @@ export const CentralRealtimeDataPanel: React.FC<CentralRealtimeDataPanelProps> =
 
         {showRules && (
           <div className="rounded-xl bg-slate-900 text-slate-100 p-3 space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-bold text-emerald-300">database.rules.json</span>
-              <button
-                type="button"
-                onClick={() => void handleCopyRules()}
-                className="h-7 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer"
-              >
-                {copiedRules ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                <span>{copiedRules ? b('কপি হয়েছে!', 'Copied!', lang) : b('Rules কপি করুন', 'Copy Rules', lang)}</span>
-              </button>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-emerald-300">database.rules.json</span>
+                <span className="px-2 py-0.5 rounded bg-slate-800 text-[10px] font-mono text-emerald-300 border border-slate-700">
+                  {(REALTIME_DATABASE_RULES_JSON.length / 1024).toFixed(1)} KB
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  data-testid="central-rtdb-download-rules-btn"
+                  onClick={handleDownloadRules}
+                  className="h-7 px-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer"
+                >
+                  <Download className="w-3 h-3" />
+                  <span>{b('ডাউনলোড database.rules.json', 'Download database.rules.json', lang)}</span>
+                </button>
+                <button
+                  type="button"
+                  data-testid="central-rtdb-copy-rules-btn"
+                  onClick={() => void handleCopyRules()}
+                  className="h-7 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer"
+                >
+                  {copiedRules ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                  <span>{copiedRules ? b('কপি হয়েছে!', 'Copied!', lang) : b('Rules কপি করুন', 'Copy Rules', lang)}</span>
+                </button>
+              </div>
             </div>
             <pre className="text-[11px] font-mono overflow-x-auto max-h-72 text-slate-200 leading-relaxed">
               {REALTIME_DATABASE_RULES_JSON}

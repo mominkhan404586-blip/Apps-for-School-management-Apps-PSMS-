@@ -524,8 +524,8 @@ export function mapFirebaseAuthErrorMessage(error: unknown, lang: 'bn' | 'en'): 
   }
   if (haystack.includes('auth/user-not-found')) {
     return lang === 'bn'
-      ? 'এই ইমেইলে কোনো Firebase অ্যাকাউন্ট পাওয়া যায়নি। নতুন অ্যাকাউন্ট তৈরি করুন।'
-      : 'No Firebase account found for this email. Please create a new account first.';
+      ? 'এই ইমেইলে কোনো অ্যাকাউন্ট পাওয়া যায়নি। অনুগ্রহ করে নতুন অ্যাকাউন্ট তৈরি করুন।'
+      : 'No account found for this email. Please create a new account first.';
   }
   if (haystack.includes('auth/email-already-in-use')) {
     return lang === 'bn'
@@ -544,13 +544,13 @@ export function mapFirebaseAuthErrorMessage(error: unknown, lang: 'bn' | 'en'): 
   }
   if (haystack.includes('auth/operation-not-allowed')) {
     return lang === 'bn'
-      ? 'Firebase Console -> Authentication -> Sign-in method এ গিয়ে Email/Password বা Google চালু (Enable) করুন।'
-      : 'Enable Email/Password or Google sign-in in Firebase Console -> Authentication -> Sign-in method.';
+      ? 'ইমেইল (Email/Password) বা Google লগইন পদ্ধতি বর্তমানে সক্রিয় নেই। অ্যাডমিনের সাথে যোগাযোগ করুন।'
+      : 'Email/Password or Google sign-in method is currently unavailable.';
   }
   if (haystack.includes('auth/unauthorized-domain')) {
     return lang === 'bn'
-      ? 'এই ওয়েব ডোমেইনটি Firebase Console -> Authentication -> Authorized domains এ যোগ করা নেই।'
-      : 'This web domain is not listed under Firebase Console -> Authentication -> Authorized domains.';
+      ? 'এই ওয়েব ডোমেইনটি অনুমোদিত ডোমেইন তালিকায় যুক্ত নেই।'
+      : 'This web domain is not authorized for direct sign-in yet.';
   }
   if (haystack.includes('auth/too-many-requests')) {
     return lang === 'bn'
@@ -564,12 +564,12 @@ export function mapFirebaseAuthErrorMessage(error: unknown, lang: 'bn' | 'en'): 
   }
   if (haystack.includes('auth/network-request-failed')) {
     return lang === 'bn'
-      ? 'ইন্টারনেট বা Firebase সার্ভারের সাথে সংযোগ পাওয়া যাচ্ছে না।'
-      : 'Network error communicating with Firebase Authentication.';
+      ? 'ইন্টারনেট বা সার্ভারের সাথে সংযোগ পাওয়া যাচ্ছে না।'
+      : 'Network error communicating with authentication server.';
   }
   return lang === 'bn'
-    ? `Firebase যাচাইকরণ ত্রুটি: ${rawMessage || 'অনুগ্রহ করে পুনরায় চেষ্টা করুন।'}`
-    : `Firebase authentication error: ${rawMessage || 'Please try again.'}`;
+    ? `অ্যাকাউন্ট যাচাইকরণ ত্রুটি: ${rawMessage || 'অনুগ্রহ করে পুনরায় চেষ্টা করুন।'}`
+    : `Account verification error: ${rawMessage || 'Please try again.'}`;
 }
 
 export interface CloudBackupSnapshotInput {

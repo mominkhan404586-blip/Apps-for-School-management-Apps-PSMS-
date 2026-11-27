@@ -96,7 +96,7 @@ export const INITIAL_ADMIN_ACCOUNTS: AdminAccount[] = [
     isMainOwner: true,
     permissions: ['*', 'schools', 'teachers', 'students', 'verification', 'approval', 'notices', 'exams', 'documents', 'reports', 'security'],
     status: 'active',
-    lastLogin: 'Firebase Auth Verified',
+    lastLogin: 'Verified Portal Session',
     twoFactorEnabled: true,
     photoUrl: AVATARS.centralAdmin,
   },

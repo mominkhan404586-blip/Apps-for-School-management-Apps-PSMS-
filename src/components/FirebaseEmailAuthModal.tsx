@@ -13,7 +13,6 @@ import {
 import type { Language } from '../types';
 import { b, tr } from '../i18n/translations';
 import {
-  getActiveFirebaseProjectInfo,
   registerWithFirebaseEmail,
   reloadCurrentFirebaseUser,
   resendFirebaseVerificationEmail,
@@ -53,8 +52,6 @@ export const FirebaseEmailAuthModal: React.FC<FirebaseEmailAuthModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [awaitingVerificationEmail, setAwaitingVerificationEmail] = useState<string | null>(null);
-
-  const projectInfo = getActiveFirebaseProjectInfo();
 
   useEffect(() => {
     if (open) {
@@ -251,10 +248,10 @@ export const FirebaseEmailAuthModal: React.FC<FirebaseEmailAuthModalProps> = ({
         <div className="space-y-1 pr-6">
           <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-[11px] font-bold text-emerald-700 dark:text-emerald-300">
             <ShieldCheck className="w-3.5 h-3.5" />
-            <span>Firebase · {projectInfo.projectId}</span>
+            <span>{b('সুরক্ষিত ইমেইল অ্যাকাউন্ট · PSMS', 'Verified Email Portal · PSMS', lang)}</span>
           </div>
           <h3 id="firebase-email-auth-title" className="text-lg font-extrabold">
-            {b('Firebase ইমেইল, ভেরিফিকেশন ও পুনরুদ্ধার', 'Firebase Email, Verification & Recovery', lang)}
+            {b('ইমেইল লগইন, ভেরিফিকেশন ও পুনরুদ্ধার', 'Email Sign-In, Verification & Recovery', lang)}
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400">
             {b(
@@ -403,7 +400,7 @@ export const FirebaseEmailAuthModal: React.FC<FirebaseEmailAuthModalProps> = ({
               className="w-full h-10 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
             >
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
-              <span>{b('Firebase দিয়ে লগইন করুন', 'Sign In with Firebase', lang)}</span>
+              <span>{b('ইমেইল দিয়ে লগইন করুন', 'Sign In with Email', lang)}</span>
             </button>
           </form>
         )}
@@ -472,8 +469,8 @@ export const FirebaseEmailAuthModal: React.FC<FirebaseEmailAuthModalProps> = ({
           <form onSubmit={(e) => void handlePasswordReset(e)} className="space-y-3 text-xs">
             <div className="rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-3 text-amber-900 dark:text-amber-200 leading-relaxed">
               {b(
-                'পাসওয়ার্ড ভুলে গেলে নিচে আপনার নিবন্ধিত ইমেইল লিখুন। Firebase আপনার ইমেইলে নিরাপদ পাসওয়ার্ড রিসেট ও অ্যাকাউন্ট পুনরুদ্ধার লিংক পাঠাবে।',
-                'Enter your registered email below. Firebase will send a secure password reset and account recovery link to your inbox.',
+                'পাসওয়ার্ড ভুলে গেলে নিচে আপনার নিবন্ধিত ইমেইল লিখুন। আপনার ইমেইলে নিরাপদ পাসওয়ার্ড রিসেট ও অ্যাকাউন্ট পুনরুদ্ধার লিংক পাঠানো হবে।',
+                'Enter your registered email below. A secure password reset and account recovery link will be sent to your inbox.',
                 lang
               )}
             </div>

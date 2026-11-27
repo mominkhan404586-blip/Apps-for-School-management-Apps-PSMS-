@@ -67,7 +67,7 @@ if (!self.define) {
     });
   };
 }
-define(['./workbox-563ce610'], (function (workbox) { 'use strict';
+define(['./workbox-8abc6ea3'], (function (workbox) { 'use strict';
 
   self.skipWaiting();
   workbox.clientsClaim();
@@ -107,55 +107,10 @@ define(['./workbox-563ce610'], (function (workbox) { 'use strict';
     "url": "assets/workbox-window.prod.es5-Bd17z0YL.js",
     "revision": null
   }, {
-    "url": "assets/index-uBs_nMyw.css",
+    "url": "assets/index-RPrx9Nys.css",
     "revision": null
   }, {
-    "url": "assets/index-BU-wETkE.js",
-    "revision": null
-  }, {
-    "url": "assets/aistudio/teacher_reg_modal_47340f4f.png",
-    "revision": null
-  }, {
-    "url": "assets/aistudio/teacher_login_modal_d73d5b0d.png",
-    "revision": null
-  }, {
-    "url": "assets/aistudio/subject_module_f75e7faf.png",
-    "revision": null
-  }, {
-    "url": "assets/aistudio/student_login_modal_8a914aa8.png",
-    "revision": null
-  }, {
-    "url": "assets/aistudio/school_reg_modal_90ea8002.png",
-    "revision": null
-  }, {
-    "url": "assets/aistudio/landing_full_dd58bfc5.png",
-    "revision": null
-  }, {
-    "url": "assets/aistudio/landing_final_0610aecf.png",
-    "revision": null
-  }, {
-    "url": "assets/aistudio/file_00000000bf648211a0baf5a214c4e65b_f7a3fc4c.png",
-    "revision": null
-  }, {
-    "url": "assets/aistudio/file_00000000ad1c8206bad874d395b56178_a84f96ce.png",
-    "revision": null
-  }, {
-    "url": "assets/aistudio/file_00000000ac208211a729d9e76594b6af_496ede27.png",
-    "revision": null
-  }, {
-    "url": "assets/aistudio/file_000000009b88821196aebffdc7e342a1_6653c69f.png",
-    "revision": null
-  }, {
-    "url": "assets/aistudio/file_0000000026e48211ba35f004a02825d3_21c92757.png",
-    "revision": null
-  }, {
-    "url": "assets/aistudio/file_000000001cb0820b9dfa02c4d2acd18e_e623fb05.png",
-    "revision": null
-  }, {
-    "url": "assets/aistudio/file_000000001104820bb454f5fa8a59d93d_c507fb60.png",
-    "revision": null
-  }, {
-    "url": "assets/aistudio/admin_hidden_route_54142317.png",
+    "url": "assets/index-BJuE2gb6.js",
     "revision": null
   }, {
     "url": "apple-touch-icon.png",
@@ -188,14 +143,7 @@ define(['./workbox-563ce610'], (function (workbox) { 'use strict';
   workbox.cleanupOutdatedCaches();
   workbox.registerRoute(({
     request
-  }) => request.mode === "navigate", new workbox.NetworkFirst({
-    "cacheName": "psms-html-nav-cache",
-    "networkTimeoutSeconds": 4,
-    plugins: [new workbox.ExpirationPlugin({
-      maxEntries: 10,
-      maxAgeSeconds: 3600
-    })]
-  }), 'GET');
+  }) => request.mode === "navigate" || request.destination === "document", new workbox.NetworkOnly(), 'GET');
   workbox.registerRoute(({
     url
   }) => url.pathname.startsWith("/api/"), new workbox.NetworkFirst({

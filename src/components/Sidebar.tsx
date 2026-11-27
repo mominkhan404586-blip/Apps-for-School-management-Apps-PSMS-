@@ -61,7 +61,7 @@ export const CENTRAL_ADMIN_NAV: NavItem[] = [
   { id: 'notices', labelBn: 'নোটিশ ও যোগাযোগ', labelEn: 'Notices & Messaging', icon: Megaphone, section: 'main' },
   { id: 'reports', labelBn: 'রিপোর্ট ও মনিটরিং', labelEn: 'Reports & Monitoring', icon: BarChart3, section: 'main' },
   { id: 'security', labelBn: 'Security & Account', labelEn: 'Security & Account', icon: Shield, section: 'main' },
-  { id: 'realtime_db', labelBn: 'Firebase ডেটা ও RTDB সিঙ্ক', labelEn: 'Firebase Data & RTDB Sync', icon: Database, section: 'main' },
+  { id: 'realtime_db', labelBn: 'লাইভ ডেটা ও সিঙ্ক ব্যবস্থাপনা', labelEn: 'Live Data & Sync Hub', icon: Database, section: 'main' },
   { id: 'permissions', labelBn: 'Permission System', labelEn: 'Permission System', icon: KeyRound, section: 'main' },
   { id: 'architecture', labelBn: 'সিস্টেম আর্কিটেকচার', labelEn: 'System Blueprint', icon: Layers, section: 'main' },
   { id: 'archive', labelBn: 'Delete / Archive', labelEn: 'Delete / Archive', icon: Archive, section: 'main' },

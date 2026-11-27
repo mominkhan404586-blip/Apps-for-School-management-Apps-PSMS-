@@ -296,6 +296,8 @@ export async function signOutFirebase(): Promise<void> {
   }
 }
 
+const rtdbSyncedSignatures = new Map<string, string>();
+
 export async function resolveAndSyncFirebaseUser(
   firebaseUser: User
 ): Promise<{
@@ -443,37 +445,62 @@ export async function resolveAndSyncFirebaseUser(
   }
 
   if (isAdminEmail && firebaseUser.email) {
-    try {
-      await rtdbUpdate(rtdbRef(rtdb, `admins/${firebaseUser.uid}`), {
-        uid: firebaseUser.uid,
-        email: firebaseUser.email,
-        displayName: firebaseUser.displayName?.trim() || 'Super Central Admin',
-        accessLevel: 'Super Central Admin',
-        createdAt: rtdbServerTimestamp(),
-        updatedAt: rtdbServerTimestamp(),
-      });
-    } catch {
-      // Realtime Database rules may not yet be applied in Firebase Console; non-blocking on sign-in
+    const adminDisplayName = firebaseUser.displayName?.trim() || 'Super Central Admin';
+    const adminSig = JSON.stringify([firebaseUser.uid, firebaseUser.email, adminDisplayName]);
+    if (rtdbSyncedSignatures.get(`admin:${firebaseUser.uid}`) !== adminSig) {
+      try {
+        await rtdbUpdate(rtdbRef(rtdb, `admins/${firebaseUser.uid}`), {
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+          displayName: adminDisplayName,
+          accessLevel: 'Super Central Admin',
+          createdAt: rtdbServerTimestamp(),
+          updatedAt: rtdbServerTimestamp(),
+        });
+        rtdbSyncedSignatures.set(`admin:${firebaseUser.uid}`, adminSig);
+      } catch {
+        // Realtime Database rules may not yet be applied in Firebase Console; non-blocking on sign-in
+      }
     }
   }
 
   if (resolvedRole && existingData?.status !== 'suspended' && firebaseUser.email) {
-    try {
-      await rtdbUpdate(rtdbRef(rtdb, `users/${firebaseUser.uid}`), {
-        uid: firebaseUser.uid,
-        email: firebaseUser.email,
-        displayName: existingData?.displayName || firebaseUser.displayName?.trim() || 'PSMS User',
-        role: resolvedRole,
-        status: existingData?.status ?? 'active',
-        isActive: existingData ? existingData.isActive !== false && existingData.status === 'active' : true,
-        ...(existingData?.schoolId ? { schoolId: existingData.schoolId } : {}),
-        ...(existingData?.teacherId ? { teacherId: existingData.teacherId } : {}),
-        ...(existingData?.studentId ? { studentId: existingData.studentId } : {}),
-        updatedByUid: firebaseUser.uid,
-        updatedAt: rtdbServerTimestamp(),
-      });
-    } catch {
-      // Non-blocking if RTDB rules are not yet pasted in Firebase Console
+    const resolvedDisplayName =
+      existingData?.displayName || firebaseUser.displayName?.trim() || 'PSMS User';
+    const resolvedStatus = existingData?.status ?? 'active';
+    const resolvedActive = existingData
+      ? existingData.isActive !== false && existingData.status === 'active'
+      : true;
+    const userSig = JSON.stringify([
+      firebaseUser.uid,
+      firebaseUser.email,
+      resolvedDisplayName,
+      resolvedRole,
+      resolvedStatus,
+      resolvedActive,
+      existingData?.schoolId ?? '',
+      existingData?.teacherId ?? '',
+      existingData?.studentId ?? '',
+    ]);
+    if (rtdbSyncedSignatures.get(`user:${firebaseUser.uid}`) !== userSig) {
+      try {
+        await rtdbUpdate(rtdbRef(rtdb, `users/${firebaseUser.uid}`), {
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+          displayName: resolvedDisplayName,
+          role: resolvedRole,
+          status: resolvedStatus,
+          isActive: resolvedActive,
+          ...(existingData?.schoolId ? { schoolId: existingData.schoolId } : {}),
+          ...(existingData?.teacherId ? { teacherId: existingData.teacherId } : {}),
+          ...(existingData?.studentId ? { studentId: existingData.studentId } : {}),
+          updatedByUid: firebaseUser.uid,
+          updatedAt: rtdbServerTimestamp(),
+        });
+        rtdbSyncedSignatures.set(`user:${firebaseUser.uid}`, userSig);
+      } catch {
+        // Non-blocking if RTDB rules are not yet pasted in Firebase Console
+      }
     }
   }
 

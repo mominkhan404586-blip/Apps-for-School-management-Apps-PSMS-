@@ -1238,10 +1238,10 @@ export const LoginModal: React.FC<{
         setError(
           b(
             emailCheck.valid
-              ? 'অনুগ্রহ করে Super Central Admin Gmail এবং Firebase পাসওয়ার্ড লিখুন।'
+              ? 'অনুগ্রহ করে Super Central Admin Gmail এবং পাসওয়ার্ড লিখুন।'
               : emailCheck.messageBn,
             emailCheck.valid
-              ? 'Please enter your Super Central Admin Gmail and Firebase password.'
+              ? 'Please enter your Super Central Admin Gmail and password.'
               : emailCheck.messageEn,
             lang
           )
@@ -1251,8 +1251,8 @@ export const LoginModal: React.FC<{
       if (!onSuperAdminFirebaseSignIn) {
         setError(
           b(
-            'Firebase Authentication হ্যান্ডলার প্রস্তুত নয়। অনুগ্রহ করে পেজ রিলোড করুন।',
-            'Firebase Authentication handler is unavailable.',
+            'নিরাপদ প্রবেশ সিস্টেম এখনো প্রস্তুত নয়। অনুগ্রহ করে পেজ রিলোড করুন।',
+            'Secure sign-in handler is unavailable.',
             lang
           )
         );
@@ -1283,8 +1283,8 @@ export const LoginModal: React.FC<{
           setError(
             res.message ??
               b(
-                'সুপার অ্যাডমিন Firebase ইমেইল বা পাসওয়ার্ড সঠিক নয়।',
-                'Invalid Super Admin Firebase email or password.',
+                'সুপার অ্যাডমিন ইমেইল বা পাসওয়ার্ড সঠিক নয়।',
+                'Invalid Super Admin email or password.',
                 lang
               )
           );
@@ -1440,15 +1440,15 @@ export const LoginModal: React.FC<{
               className="mx-auto shadow-md"
             />
             <div className="inline-block px-3 py-0.5 rounded-full bg-violet-950/70 border border-violet-500/40 text-[11px] font-semibold text-violet-300">
-              {b('Firebase Auth · সংরক্ষিত কেন্দ্রীয় পোর্টাল', 'Firebase Auth · Protected Central Portal', lang)}
+              {b('সুরক্ষিত কেন্দ্রীয় পোর্টাল · PSMS', 'Protected Central Portal · PSMS', lang)}
             </div>
             <h3 id="super-admin-modal-title" className="text-xl font-extrabold text-white">
               {b('সুপার অ্যাডমিন সিকিউর অ্যাক্সেস', 'Super Admin Secure Access', lang)}
             </h3>
             <p className="text-xs text-slate-400 leading-relaxed">
               {b(
-                'শুধুমাত্র অনুমোদিত Super Central Admin Gmail এবং Firebase Authentication পাসওয়ার্ড অথবা Google Sign-In দিয়ে প্রবেশ করুন।',
-                'Sign in using your authorized Super Central Admin Gmail and Firebase password or verified Google account.',
+                'শুধুমাত্র অনুমোদিত Super Central Admin Gmail ও পাসওয়ার্ড অথবা Google Sign-In দিয়ে প্রবেশ করুন।',
+                'Sign in using your authorized Super Central Admin Gmail and password or verified Google account.',
                 lang
               )}
             </p>
@@ -1487,7 +1487,7 @@ export const LoginModal: React.FC<{
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="font-semibold text-slate-300">
-                  {b('Firebase অ্যাকাউন্ট পাসওয়ার্ড *', 'Firebase Account Password *', lang)}
+                  {b('অ্যাডমিন পাসওয়ার্ড *', 'Admin Account Password *', lang)}
                 </label>
                 {onOpenFirebaseRecovery && (
                   <button
@@ -1512,7 +1512,7 @@ export const LoginModal: React.FC<{
                     setAdminPassword(e.target.value);
                     setError('');
                   }}
-                  placeholder={b('Firebase-এ সেট করা পাসওয়ার্ড লিখুন', 'Enter your Firebase Auth password', lang)}
+                  placeholder={b('আপনার অ্যাকাউন্টের পাসওয়ার্ড লিখুন', 'Enter your account password', lang)}
                   className="w-full h-10 pl-3.5 pr-10 rounded-xl border border-slate-700 bg-slate-900/90 text-white placeholder:text-slate-500 outline-none focus:border-violet-500"
                 />
                 <button
@@ -1606,12 +1606,12 @@ export const LoginModal: React.FC<{
             <div className="rounded-xl bg-slate-900/70 border border-slate-700/80 p-3.5 space-y-1 text-[11px] text-slate-400">
               <div className="font-semibold text-violet-300 flex items-center gap-1.5">
                 <KeyRound className="w-3.5 h-3.5" />
-                {b('নিরাপত্তা নীতি ও Firebase যাচাইকরণ:', 'Firebase Zero-Trust Security Notice:', lang)}
+                {b('নিরাপত্তা ও যাচাইকরণ নীতি:', 'Account Verification Notice:', lang)}
               </div>
               <p className="leading-relaxed">
                 {b(
-                  'পুরানো স্ট্যাটিক অ্যাডমিন পাসওয়ার্ড বাতিল করা হয়েছে। শুধুমাত্র Firebase Authentication-এ নিবন্ধিত নির্ধারিত Super Central Admin Gmail ও পাসওয়ার্ড দিয়েই প্রবেশ করা যাবে।',
-                  'Legacy static admin credentials have been permanently removed. Access requires verified Firebase Authentication.',
+                  'শুধুমাত্র অনুমোদিত Super Central Admin Gmail ও নির্ধারিত পাসওয়ার্ড দিয়েই কেন্দ্রীয় পোর্টালে প্রবেশ করা যাবে।',
+                  'Central portal access requires an authorized Super Central Admin email and verified credentials.',
                   lang
                 )}
               </p>
@@ -1639,7 +1639,7 @@ export const LoginModal: React.FC<{
                 className="h-10 px-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 text-white font-bold flex items-center justify-center gap-1.5 shadow-lg shadow-violet-950/60 cursor-pointer disabled:opacity-60"
               >
                 {superAdminLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
-                {b('Firebase নিরাপদ প্রবেশ', 'Firebase Secure Enter', lang)}
+                {b('নিরাপদ প্রবেশ', 'Secure Sign In', lang)}
               </button>
             </div>
 
@@ -1652,7 +1652,7 @@ export const LoginModal: React.FC<{
                 className="w-full h-10 rounded-xl bg-white text-slate-900 font-bold text-xs flex items-center justify-center gap-2 hover:bg-slate-100 cursor-pointer disabled:opacity-60"
               >
                 <ShieldCheck className="w-4 h-4 text-emerald-700" />
-                <span>{b('Google দিয়ে লগইন (Firebase)', 'Continue with Google (Firebase)', lang)}</span>
+                <span>{b('Google দিয়ে লগইন করুন', 'Continue with Google', lang)}</span>
               </button>
             )}
 
@@ -2348,7 +2348,7 @@ export const LoginModal: React.FC<{
                     }}
                     className="px-2.5 py-1 rounded-lg bg-violet-100 dark:bg-violet-950 text-violet-800 dark:text-violet-200 font-medium cursor-pointer"
                   >
-                    Super Admin (Firebase Auth)
+                    {b('সুপার অ্যাডমিন', 'Super Admin', lang)}
                   </button>
                 </div>
               </div>
@@ -2378,7 +2378,7 @@ export const LoginModal: React.FC<{
                   className="w-full h-10 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 font-bold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
                 >
                   <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                  <span>{b('Google দিয়ে লগইন (Firebase Auth)', 'Continue with Google (Firebase Auth)', lang)}</span>
+                  <span>{b('Google দিয়ে সরাসরি লগইন করুন', 'Continue with Google', lang)}</span>
                 </button>
               )}
 

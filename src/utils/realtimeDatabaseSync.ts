@@ -437,240 +437,186 @@ export function applyRealtimeUserToSession(
   };
 }
 
-const IS_VERIFIED_AUTH = 'auth != null && auth.token.email_verified == true';
-const IS_SUPER_ADMIN = `(${IS_VERIFIED_AUTH} && (auth.token.email == '${BOOT_ADMIN_EMAIL}' || root.child('admins').child(auth.uid).child('accessLevel').val() == 'Super Central Admin'))`;
-const IS_ACTIVE_REVIEW_ADMIN = `(${IS_VERIFIED_AUTH} && root.child('admins').child(auth.uid).exists())`;
-const USER_NODE = `root.child('users').child(auth.uid)`;
-const IS_ACTIVE_USER = `(${IS_VERIFIED_AUTH} && ${USER_NODE}.child('status').val() == 'active' && ${USER_NODE}.child('isActive').val() != false)`;
-const IS_SCHOOL_ADMIN_OF = `(${IS_ACTIVE_USER} && ${USER_NODE}.child('role').val() == 'school_admin' && ${USER_NODE}.child('schoolId').val() == $schoolId)`;
-const IS_TEACHER_OF = `(${IS_ACTIVE_USER} && ${USER_NODE}.child('role').val() == 'teacher' && ${USER_NODE}.child('schoolId').val() == $schoolId)`;
-const IS_STUDENT_OF = `(${IS_ACTIVE_USER} && ${USER_NODE}.child('role').val() == 'student' && ${USER_NODE}.child('schoolId').val() == $schoolId)`;
-const IS_GUARDIAN_OF = `(${IS_ACTIVE_USER} && ${USER_NODE}.child('role').val() == 'guardian' && ${USER_NODE}.child('schoolId').val() == $schoolId)`;
-const BELONGS_TO_SCHOOL = `(${IS_ACTIVE_USER} && ${USER_NODE}.child('schoolId').val() == $schoolId)`;
-const SAME_SCHOOL_ID = `((!data.child('schoolId').exists() && (!newData.child('schoolId').exists() || newData.child('schoolId').val() == '')) || (data.child('schoolId').exists() && newData.child('schoolId').val() == data.child('schoolId').val()))`;
-const SAME_TEACHER_ID = `((!data.child('teacherId').exists() && (!newData.child('teacherId').exists() || newData.child('teacherId').val() == '')) || (data.child('teacherId').exists() && newData.child('teacherId').val() == data.child('teacherId').val()))`;
-const SAME_STUDENT_ID = `((!data.child('studentId').exists() && (!newData.child('studentId').exists() || newData.child('studentId').val() == '')) || (data.child('studentId').exists() && newData.child('studentId').val() == data.child('studentId').val()))`;
+const V = 'auth!=null&&auth.token.email_verified==true';
+const SA = `(auth.token.email=='${BOOT_ADMIN_EMAIL}'||root.child('admins').child(auth.uid).child('accessLevel').val()=='Super Central Admin')`;
+const RA = `root.child('admins').child(auth.uid).exists()`;
+const U = `root.child('users').child(auth.uid)`;
+const ACT = `${U}.child('status').val()=='active'`;
+const UR = `${U}.child('role').val()`;
+const US = `${U}.child('schoolId').val()`;
+const S_MEM = `${ACT}&&${US}==$schoolId`;
+const S_STAFF = `(${UR}=='school_admin'||${UR}=='teacher')`;
+const S_FAM = `(${UR}=='student'||${UR}=='guardian')`;
+const KEEP_SCH = `data.child('schoolId').val()==newData.child('schoolId').val()`;
+const KEEP_TCH = `data.child('teacherId').val()==newData.child('teacherId').val()`;
+const KEEP_STU = `data.child('studentId').val()==newData.child('studentId').val()`;
+const v = (expr: string) => `${V}&&(${expr})`;
+const EMAIL_RX = '/^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/';
+const PHONE_RX = '/^[+0-9()\\-\\s]{6,24}$/';
 
 export const REALTIME_DATABASE_RULES_OBJECT = {
   rules: {
     '.read': false,
     '.write': false,
     admins: {
-      '.read': IS_SUPER_ADMIN,
+      '.read': v(SA),
+      '.write': v(SA),
       $uid: {
-        '.read': `${IS_SUPER_ADMIN} || (${IS_VERIFIED_AUTH} && auth.uid == $uid)`,
-        '.write': IS_SUPER_ADMIN,
-        '.validate': "newData.hasChildren(['uid', 'email', 'displayName', 'accessLevel', 'updatedAt'])",
-        uid: { '.validate': 'newData.isString() && newData.val() == $uid' },
-        email: {
-          '.validate':
-            'newData.isString() && newData.val().length >= 3 && newData.val().length <= 254 && newData.val().matches(/^[A-Za-z0-9._%+\\-]+@[A-Za-z0-9.\\-]+\\.[A-Za-z]{2,}$/)',
-        },
-        displayName: { '.validate': 'newData.isString() && newData.val().length >= 2 && newData.val().length <= 120' },
+        '.read': v('auth.uid==$uid'),
+        '.validate': "newData.hasChildren(['uid','email','displayName','accessLevel','updatedAt'])",
+        uid: { '.validate': 'newData.isString()&&newData.val()==$uid' },
+        email: { '.validate': `newData.isString()&&newData.val().length<=254&&newData.val().matches(${EMAIL_RX})` },
+        displayName: { '.validate': 'newData.isString()&&newData.val().length>=2&&newData.val().length<=120' },
         accessLevel: {
-          '.validate':
-            "newData.isString() && (newData.val() == 'Super Central Admin' || newData.val() == 'Audit Officer' || newData.val() == 'Regional Reviewer')",
+          '.validate': "newData.val()=='Super Central Admin'||newData.val()=='Audit Officer'||newData.val()=='Regional Reviewer'",
         },
-        createdAt: { '.validate': 'newData.isNumber() || newData.isString()' },
-        updatedAt: { '.validate': 'newData.isNumber() || newData.isString()' },
+        createdAt: { '.validate': 'newData.isNumber()||newData.isString()' },
+        updatedAt: { '.validate': 'newData.isNumber()||newData.isString()' },
         $other: { '.validate': false },
       },
     },
     users: {
       '.indexOn': ['role', 'status', 'schoolId', 'email'],
-      '.read': `${IS_SUPER_ADMIN} || ${IS_ACTIVE_REVIEW_ADMIN}`,
+      '.read': v(`${SA}||${RA}`),
       $uid: {
-        '.read': `${IS_SUPER_ADMIN} || ${IS_ACTIVE_REVIEW_ADMIN} || (${IS_VERIFIED_AUTH} && auth.uid == $uid) || (${IS_ACTIVE_USER} && ${USER_NODE}.child('role').val() == 'school_admin' && data.child('schoolId').val() == ${USER_NODE}.child('schoolId').val())`,
-        '.write': `${IS_SUPER_ADMIN} || (${IS_ACTIVE_USER} && ${USER_NODE}.child('role').val() == 'school_admin' && newData.exists() && (!data.exists() || data.child('schoolId').val() == ${USER_NODE}.child('schoolId').val()) && newData.child('schoolId').val() == ${USER_NODE}.child('schoolId').val() && (newData.child('role').val() == 'teacher' || newData.child('role').val() == 'student' || newData.child('role').val() == 'guardian')) || (${IS_VERIFIED_AUTH} && auth.uid == $uid && newData.exists() && ((!data.exists() && newData.child('role').val() == 'pending' && newData.child('status').val() == 'pending') || (data.exists() && newData.child('role').val() == data.child('role').val() && newData.child('status').val() == data.child('status').val() && ${SAME_SCHOOL_ID} && ${SAME_TEACHER_ID} && ${SAME_STUDENT_ID})))`,
-        '.validate': "newData.hasChildren(['uid', 'email', 'displayName', 'role', 'status', 'updatedAt'])",
-        uid: { '.validate': 'newData.isString() && newData.val() == $uid' },
-        email: {
-          '.validate':
-            'newData.isString() && newData.val().length >= 3 && newData.val().length <= 254 && newData.val().matches(/^[A-Za-z0-9._%+\\-]+@[A-Za-z0-9.\\-]+\\.[A-Za-z]{2,}$/)',
-        },
-        displayName: { '.validate': 'newData.isString() && newData.val().length >= 2 && newData.val().length <= 120' },
-        phone: {
-          '.validate':
-            'newData.isString() && (newData.val().length == 0 || (newData.val().length >= 6 && newData.val().length <= 24 && newData.val().matches(/^[+0-9()\\-\\s]{6,24}$/)))',
-        },
-        recoveryEmail: {
-          '.validate':
-            'newData.isString() && (newData.val().length == 0 || (newData.val().length >= 3 && newData.val().length <= 254 && newData.val().matches(/^[A-Za-z0-9._%+\\-]+@[A-Za-z0-9.\\-]+\\.[A-Za-z]{2,}$/)))',
-        },
-        recoveryPhone: {
-          '.validate':
-            'newData.isString() && (newData.val().length == 0 || (newData.val().length >= 6 && newData.val().length <= 24 && newData.val().matches(/^[+0-9()\\-\\s]{6,24}$/)))',
-        },
+        '.read': v(`auth.uid==$uid||(${ACT}&&${UR}=='school_admin'&&data.child('schoolId').val()==${US})`),
+        '.write': v(
+          `${SA}||(newData.exists()&&((${ACT}&&${UR}=='school_admin'&&(!data.exists()||data.child('schoolId').val()==${US})&&newData.child('schoolId').val()==${US}&&(newData.child('role').val()=='teacher'||newData.child('role').val()=='student'||newData.child('role').val()=='guardian'))||(auth.uid==$uid&&((!data.exists()&&newData.child('role').val()=='pending'&&newData.child('status').val()=='pending')||(data.exists()&&newData.child('role').val()==data.child('role').val()&&newData.child('status').val()==data.child('status').val()&&${KEEP_SCH}&&${KEEP_TCH}&&${KEEP_STU})))))`
+        ),
+        '.validate': "newData.hasChildren(['uid','email','displayName','role','status','updatedAt'])",
+        uid: { '.validate': 'newData.isString()&&newData.val()==$uid' },
+        email: { '.validate': `newData.isString()&&newData.val().length<=254&&newData.val().matches(${EMAIL_RX})` },
+        displayName: { '.validate': 'newData.isString()&&newData.val().length>=2&&newData.val().length<=120' },
+        phone: { '.validate': `newData.isString()&&(newData.val()==''||newData.val().matches(${PHONE_RX}))` },
+        recoveryEmail: { '.validate': `newData.isString()&&(newData.val()==''||(newData.val().length<=254&&newData.val().matches(${EMAIL_RX})))` },
+        recoveryPhone: { '.validate': `newData.isString()&&(newData.val()==''||newData.val().matches(${PHONE_RX}))` },
         role: {
-          '.validate':
-            "newData.isString() && (newData.val() == 'central_admin' || newData.val() == 'school_admin' || newData.val() == 'teacher' || newData.val() == 'guardian' || newData.val() == 'student' || newData.val() == 'pending')",
+          '.validate': "newData.val()=='central_admin'||newData.val()=='school_admin'||newData.val()=='teacher'||newData.val()=='guardian'||newData.val()=='student'||newData.val()=='pending'",
         },
         status: {
-          '.validate':
-            "newData.isString() && (newData.val() == 'active' || newData.val() == 'pending' || newData.val() == 'suspended' || newData.val() == 'rejected' || newData.val() == 'deactivated')",
+          '.validate': "newData.val()=='active'||newData.val()=='pending'||newData.val()=='suspended'||newData.val()=='rejected'||newData.val()=='deactivated'",
         },
         isActive: { '.validate': 'newData.isBoolean()' },
-        schoolId: { '.validate': 'newData.isString() && newData.val().length <= 64' },
-        teacherId: { '.validate': 'newData.isString() && newData.val().length <= 64' },
-        studentId: { '.validate': 'newData.isString() && newData.val().length <= 64' },
-        updatedByUid: { '.validate': 'newData.isString() && newData.val().length >= 1 && newData.val().length <= 128' },
-        createdAt: { '.validate': 'newData.isNumber() || newData.isString()' },
-        updatedAt: { '.validate': 'newData.isNumber() || newData.isString()' },
+        schoolId: { '.validate': 'newData.isString()&&newData.val().length<=64' },
+        teacherId: { '.validate': 'newData.isString()&&newData.val().length<=64' },
+        studentId: { '.validate': 'newData.isString()&&newData.val().length<=64' },
+        updatedByUid: { '.validate': 'newData.isString()&&newData.val().length<=128' },
+        createdAt: { '.validate': 'newData.isNumber()||newData.isString()' },
+        updatedAt: { '.validate': 'newData.isNumber()||newData.isString()' },
         $other: { '.validate': false },
       },
     },
     schools: {
-      '.read': `${IS_SUPER_ADMIN} || ${IS_ACTIVE_REVIEW_ADMIN}`,
+      '.read': v(`${SA}||${RA}`),
+      '.write': v(SA),
       $schoolId: {
-        '.read': `${IS_SUPER_ADMIN} || ${IS_ACTIVE_REVIEW_ADMIN} || ${BELONGS_TO_SCHOOL}`,
         profile: {
-          '.read': `${IS_SUPER_ADMIN} || ${IS_ACTIVE_REVIEW_ADMIN} || ${BELONGS_TO_SCHOOL}`,
-          '.write': `${IS_SUPER_ADMIN} || ${IS_SCHOOL_ADMIN_OF}`,
-          '.validate': "newData.hasChildren(['schoolId', 'nameBn', 'status', 'updatedAt'])",
-          schoolId: { '.validate': 'newData.isString() && newData.val() == $schoolId' },
-          nameBn: { '.validate': 'newData.isString() && newData.val().length >= 2 && newData.val().length <= 200' },
-          nameEn: { '.validate': 'newData.isString() && newData.val().length <= 200' },
-          headTeacher: { '.validate': 'newData.isString() && newData.val().length <= 120' },
-          email: { '.validate': 'newData.isString() && newData.val().length <= 254' },
-          mobile: { '.validate': 'newData.isString() && newData.val().length <= 24' },
-          eiin: { '.validate': 'newData.isString() && newData.val().length <= 32' },
-          fullAddress: { '.validate': 'newData.isString() && newData.val().length <= 300' },
+          '.read': v(S_MEM),
+          '.write': v(`${S_MEM}&&${UR}=='school_admin'`),
+          '.validate': "newData.hasChildren(['schoolId','nameBn','status','updatedAt'])",
+          schoolId: { '.validate': 'newData.val()==$schoolId' },
+          nameBn: { '.validate': 'newData.isString()&&newData.val().length<=200' },
           status: {
-            '.validate':
-              "newData.isString() && (newData.val() == 'active' || newData.val() == 'pending' || newData.val() == 'under_review' || newData.val() == 'suspended' || newData.val() == 'deactivated')",
+            '.validate': "newData.val()=='active'||newData.val()=='pending'||newData.val()=='under_review'||newData.val()=='suspended'||newData.val()=='deactivated'",
           },
-          updatedByUid: { '.validate': 'newData.isString() && newData.val().length <= 128' },
-          updatedAt: { '.validate': 'newData.isNumber() || newData.isString()' },
-          $other: { '.validate': false },
+          updatedAt: { '.validate': 'newData.isNumber()||newData.isString()' },
         },
         teachers: {
-          '.read': `${IS_SUPER_ADMIN} || ${IS_SCHOOL_ADMIN_OF} || ${IS_TEACHER_OF}`,
+          '.read': v(S_MEM),
           $teacherId: {
-            '.read': `${IS_SUPER_ADMIN} || ${BELONGS_TO_SCHOOL}`,
-            '.write': `${IS_SUPER_ADMIN} || ${IS_SCHOOL_ADMIN_OF} || (${IS_TEACHER_OF} && ${USER_NODE}.child('teacherId').val() == $teacherId)`,
-            '.validate': "newData.hasChildren(['teacherId', 'schoolId', 'nameBn', 'status', 'updatedAt'])",
-            teacherId: { '.validate': 'newData.isString() && newData.val() == $teacherId' },
-            schoolId: { '.validate': 'newData.isString() && newData.val() == $schoolId' },
-            nameBn: { '.validate': 'newData.isString() && newData.val().length >= 2 && newData.val().length <= 120' },
-            nameEn: { '.validate': 'newData.isString() && newData.val().length <= 120' },
-            email: { '.validate': 'newData.isString() && newData.val().length <= 254' },
-            mobile: { '.validate': 'newData.isString() && newData.val().length <= 24' },
-            designation: { '.validate': 'newData.isString() && newData.val().length <= 120' },
-            status: {
-              '.validate': "newData.isString() && (newData.val() == 'active' || newData.val() == 'pending' || newData.val() == 'suspended')",
-            },
-            updatedByUid: { '.validate': 'newData.isString() && newData.val().length <= 128' },
-            updatedAt: { '.validate': 'newData.isNumber() || newData.isString()' },
-            $other: { '.validate': false },
+            '.write': v(`${S_MEM}&&(${UR}=='school_admin'||(${UR}=='teacher'&&${U}.child('teacherId').val()==$teacherId))`),
+            '.validate': "newData.hasChildren(['teacherId','schoolId','nameBn','status','updatedAt'])",
+            teacherId: { '.validate': 'newData.val()==$teacherId' },
+            schoolId: { '.validate': 'newData.val()==$schoolId' },
+            nameBn: { '.validate': 'newData.isString()&&newData.val().length<=120' },
+            status: { '.validate': "newData.val()=='active'||newData.val()=='pending'||newData.val()=='suspended'" },
+            updatedAt: { '.validate': 'newData.isNumber()||newData.isString()' },
           },
         },
         students: {
-          '.read': `${IS_SUPER_ADMIN} || ${IS_SCHOOL_ADMIN_OF} || ${IS_TEACHER_OF}`,
+          '.read': v(`${S_MEM}&&${S_STAFF}`),
           $studentId: {
-            '.read': `${IS_SUPER_ADMIN} || ${IS_SCHOOL_ADMIN_OF} || ${IS_TEACHER_OF} || ((${IS_STUDENT_OF} || ${IS_GUARDIAN_OF}) && ${USER_NODE}.child('studentId').val() == $studentId)`,
-            '.write': `${IS_SUPER_ADMIN} || ${IS_SCHOOL_ADMIN_OF} || ${IS_TEACHER_OF} || ((${IS_STUDENT_OF} || ${IS_GUARDIAN_OF}) && ${USER_NODE}.child('studentId').val() == $studentId && data.exists() && newData.child('status').val() == data.child('status').val() && newData.child('schoolId').val() == data.child('schoolId').val())`,
-            '.validate': "newData.hasChildren(['studentId', 'schoolId', 'nameBn', 'status', 'updatedAt'])",
-            studentId: { '.validate': 'newData.isString() && newData.val() == $studentId' },
-            schoolId: { '.validate': 'newData.isString() && newData.val() == $schoolId' },
-            nameBn: { '.validate': 'newData.isString() && newData.val().length >= 2 && newData.val().length <= 120' },
-            nameEn: { '.validate': 'newData.isString() && newData.val().length <= 120' },
-            className: { '.validate': 'newData.isString() && newData.val().length <= 64' },
-            section: { '.validate': 'newData.isString() && newData.val().length <= 64' },
-            roll: { '.validate': 'newData.isNumber() || newData.isString()' },
-            guardianMobile: { '.validate': 'newData.isString() && newData.val().length <= 24' },
-            status: {
-              '.validate': "newData.isString() && (newData.val() == 'active' || newData.val() == 'pending' || newData.val() == 'suspended')",
-            },
-            updatedByUid: { '.validate': 'newData.isString() && newData.val().length <= 128' },
-            updatedAt: { '.validate': 'newData.isNumber() || newData.isString()' },
-            $other: { '.validate': false },
+            '.read': v(`${S_MEM}&&${S_FAM}&&${U}.child('studentId').val()==$studentId`),
+            '.write': v(`${S_MEM}&&(${S_STAFF}||(${S_FAM}&&${U}.child('studentId').val()==$studentId&&data.exists()&&newData.child('status').val()==data.child('status').val()))`),
+            '.validate': "newData.hasChildren(['studentId','schoolId','nameBn','status','updatedAt'])",
+            studentId: { '.validate': 'newData.val()==$studentId' },
+            schoolId: { '.validate': 'newData.val()==$schoolId' },
+            nameBn: { '.validate': 'newData.isString()&&newData.val().length<=120' },
+            status: { '.validate': "newData.val()=='active'||newData.val()=='pending'||newData.val()=='suspended'" },
+            updatedAt: { '.validate': 'newData.isNumber()||newData.isString()' },
           },
         },
         attendance: {
-          '.read': `${IS_SUPER_ADMIN} || ${IS_SCHOOL_ADMIN_OF} || ${IS_TEACHER_OF}`,
+          '.read': v(`${S_MEM}&&${S_STAFF}`),
           $recordId: {
-            '.read': `${IS_SUPER_ADMIN} || ${IS_SCHOOL_ADMIN_OF} || ${IS_TEACHER_OF} || ((${IS_STUDENT_OF} || ${IS_GUARDIAN_OF}) && data.child('studentId').val() == ${USER_NODE}.child('studentId').val())`,
-            '.write': `${IS_SUPER_ADMIN} || ${IS_SCHOOL_ADMIN_OF} || ${IS_TEACHER_OF}`,
+            '.read': v(`${S_MEM}&&${S_FAM}&&data.child('studentId').val()==${U}.child('studentId').val()`),
+            '.write': v(`${S_MEM}&&${S_STAFF}`),
           },
         },
         notices: {
-          '.read': `${IS_SUPER_ADMIN} || ${BELONGS_TO_SCHOOL}`,
-          '.write': `${IS_SUPER_ADMIN} || ${IS_SCHOOL_ADMIN_OF}`,
+          '.read': v(S_MEM),
+          '.write': v(`${S_MEM}&&${UR}=='school_admin'`),
         },
         results: {
-          '.read': `${IS_SUPER_ADMIN} || ${IS_SCHOOL_ADMIN_OF} || ${IS_TEACHER_OF}`,
+          '.read': v(`${S_MEM}&&${S_STAFF}`),
           $recordId: {
-            '.read': `${IS_SUPER_ADMIN} || ${IS_SCHOOL_ADMIN_OF} || ${IS_TEACHER_OF} || ((${IS_STUDENT_OF} || ${IS_GUARDIAN_OF}) && data.child('studentId').val() == ${USER_NODE}.child('studentId').val())`,
-            '.write': `${IS_SUPER_ADMIN} || ${IS_SCHOOL_ADMIN_OF} || ${IS_TEACHER_OF}`,
+            '.read': v(`${S_MEM}&&${S_FAM}&&data.child('studentId').val()==${U}.child('studentId').val()`),
+            '.write': v(`${S_MEM}&&${S_STAFF}`),
           },
         },
       },
     },
     account_snapshots: {
+      '.read': v(SA),
+      '.write': v(SA),
       $uid: {
-        '.read': `${IS_SUPER_ADMIN} || (${IS_VERIFIED_AUTH} && auth.uid == $uid)`,
-        '.write': `${IS_SUPER_ADMIN} || (${IS_VERIFIED_AUTH} && auth.uid == $uid && newData.exists())`,
-        '.validate': "newData.hasChildren(['uid', 'role', 'displayName', 'updatedAt'])",
-        uid: { '.validate': 'newData.isString() && newData.val() == $uid' },
-        role: { '.validate': 'newData.isString() && newData.val().length <= 32' },
-        displayName: { '.validate': 'newData.isString() && newData.val().length >= 1 && newData.val().length <= 120' },
-        email: { '.validate': 'newData.isString() && newData.val().length <= 254' },
-        schoolId: { '.validate': 'newData.isString() && newData.val().length <= 64' },
-        language: { '.validate': "newData.isString() && (newData.val() == 'bn' || newData.val() == 'en')" },
-        themePreference: { '.validate': "newData.isString() && (newData.val() == 'light' || newData.val() == 'dark' || newData.val() == 'system')" },
-        settingsJson: { '.validate': 'newData.isString() && newData.val().length <= 20000' },
-        updatedAt: { '.validate': 'newData.isNumber() || newData.isString()' },
-        $other: { '.validate': false },
+        '.read': v('auth.uid==$uid'),
+        '.write': v('auth.uid==$uid&&newData.exists()'),
+        '.validate': "newData.hasChildren(['uid','role','displayName','updatedAt'])",
+        uid: { '.validate': 'newData.val()==$uid' },
+        settingsJson: { '.validate': 'newData.isString()&&newData.val().length<=20000' },
+        updatedAt: { '.validate': 'newData.isNumber()||newData.isString()' },
       },
     },
     user_change_logs: {
+      '.read': v(`${SA}||${RA}`),
+      '.write': v(SA),
       $uid: {
         '.indexOn': ['updatedAt'],
-        '.read': `${IS_SUPER_ADMIN} || ${IS_ACTIVE_REVIEW_ADMIN} || (${IS_VERIFIED_AUTH} && auth.uid == $uid)`,
+        '.read': v('auth.uid==$uid'),
         $logId: {
-          '.write': `${IS_SUPER_ADMIN} || (${IS_ACTIVE_USER} && ${USER_NODE}.child('role').val() == 'school_admin' && root.child('users').child($uid).child('schoolId').val() == ${USER_NODE}.child('schoolId').val() && newData.exists() && newData.child('changedByUid').val() == auth.uid) || (${IS_VERIFIED_AUTH} && auth.uid == $uid && newData.exists() && newData.child('changedByUid').val() == auth.uid)`,
-          '.validate':
-            "newData.hasChildren(['uid', 'changedByUid', 'field', 'oldValue', 'newValue', 'validationStatus', 'updatedAt'])",
-          uid: { '.validate': 'newData.isString() && newData.val() == $uid' },
-          changedByUid: { '.validate': 'newData.isString() && newData.val().length >= 1 && newData.val().length <= 128' },
-          field: { '.validate': 'newData.isString() && newData.val().length >= 1 && newData.val().length <= 64' },
-          oldValue: { '.validate': 'newData.isString() && newData.val().length <= 300' },
-          newValue: { '.validate': 'newData.isString() && newData.val().length <= 300' },
-          validationStatus: {
-            '.validate': "newData.isString() && (newData.val() == 'valid' || newData.val() == 'invalid')",
-          },
-          updatedAt: { '.validate': 'newData.isNumber() || newData.isString()' },
-          $other: { '.validate': false },
+          '.write': v(`newData.exists()&&newData.child('changedByUid').val()==auth.uid&&(auth.uid==$uid||(${ACT}&&${UR}=='school_admin'&&root.child('users').child($uid).child('schoolId').val()==${US}))`),
+          '.validate': "newData.hasChildren(['uid','changedByUid','field','oldValue','newValue','validationStatus','updatedAt'])",
+          uid: { '.validate': 'newData.val()==$uid' },
+          validationStatus: { '.validate': "newData.val()=='valid'||newData.val()=='invalid'" },
+          updatedAt: { '.validate': 'newData.isNumber()||newData.isString()' },
         },
       },
     },
     rtdb_sync_tests: {
-      '.read': IS_SUPER_ADMIN,
+      '.read': v(SA),
+      '.write': v(SA),
       $uid: {
-        '.read': `${IS_SUPER_ADMIN} || (${IS_VERIFIED_AUTH} && auth.uid == $uid)`,
-        '.write': `${IS_SUPER_ADMIN} || (${IS_VERIFIED_AUTH} && auth.uid == $uid && newData.exists())`,
-        '.validate': "newData.hasChildren(['probeId', 'actorUid', 'message', 'clientSentAtMs', 'serverAckAt'])",
-        probeId: { '.validate': 'newData.isString() && newData.val().length >= 3 && newData.val().length <= 64' },
-        actorUid: { '.validate': 'newData.isString() && newData.val() == $uid' },
-        actorEmail: { '.validate': 'newData.isString() && newData.val().length <= 254' },
-        message: { '.validate': 'newData.isString() && newData.val().length >= 1 && newData.val().length <= 240' },
-        clientSentAtMs: { '.validate': 'newData.isNumber()' },
-        serverAckAt: { '.validate': 'newData.isNumber() || newData.isString()' },
-        $other: { '.validate': false },
+        '.read': v('auth.uid==$uid'),
+        '.write': v('auth.uid==$uid&&newData.exists()'),
+        '.validate': "newData.hasChildren(['probeId','actorUid','message','clientSentAtMs','serverAckAt'])",
+        actorUid: { '.validate': 'newData.val()==$uid' },
+        message: { '.validate': 'newData.isString()&&newData.val().length<=240' },
       },
     },
     presence: {
+      '.read': v(`${SA}||${RA}`),
+      '.write': v(SA),
       $uid: {
-        '.read': `${IS_SUPER_ADMIN} || ${IS_ACTIVE_REVIEW_ADMIN} || (${IS_VERIFIED_AUTH} && auth.uid == $uid)`,
-        '.write': `${IS_SUPER_ADMIN} || (${IS_VERIFIED_AUTH} && auth.uid == $uid)`,
-        '.validate': "newData.hasChildren(['online', 'lastSeen'])",
+        '.read': v('auth.uid==$uid'),
+        '.write': v('auth.uid==$uid'),
+        '.validate': "newData.hasChildren(['online','lastSeen'])",
         online: { '.validate': 'newData.isBoolean()' },
-        lastSeen: { '.validate': 'newData.isNumber() || newData.isString()' },
-        role: { '.validate': 'newData.isString() && newData.val().length <= 32' },
-        $other: { '.validate': false },
+        lastSeen: { '.validate': 'newData.isNumber()||newData.isString()' },
       },
     },
   },
 };
 
-export const REALTIME_DATABASE_RULES_JSON = JSON.stringify(REALTIME_DATABASE_RULES_OBJECT, null, 2);
+export const REALTIME_DATABASE_RULES_JSON = JSON.stringify(REALTIME_DATABASE_RULES_OBJECT);
+

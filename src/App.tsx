@@ -1335,7 +1335,7 @@ export default function App() {
                   : 'all',
               date: new Date().toISOString().slice(0, 10),
               schoolId: rn.schoolId,
-              author: 'Firebase Cloud Sync',
+              author: 'ক্লাউড নোটিশ সিঙ্ক',
               isEmergency: rn.priority === 'urgent',
               status: rn.status === 'archived' ? 'Expired' : 'Published',
             });
@@ -1493,7 +1493,7 @@ export default function App() {
           targetName: session.email || session.displayName,
           schoolId: session.schoolId,
         });
-        showToast(b('Google অ্যাকাউন্ট দিয়ে নিরাপদে প্রবেশ সম্পন্ন হয়েছে।', 'Signed in via Google Firebase Auth.', lang));
+        showToast(b('Google অ্যাকাউন্ট দিয়ে নিরাপদে প্রবেশ সম্পন্ন হয়েছে।', 'Signed in securely via Google.', lang));
       } else if (pendingRoleSelection) {
         setLoginModalOpen(false);
         setAuthStatus('unauthenticated');
@@ -1572,8 +1572,8 @@ export default function App() {
         return {
           ok: false,
           message: b(
-            `এই Firebase অ্যাকাউন্ট (${user.email ?? email}) Super Central Admin হিসেবে অনুমোদিত নয়। অনুগ্রহ করে ${BOOT_ADMIN_EMAIL} দিয়ে লগইন করুন।`,
-            `This Firebase account (${user.email ?? email}) is not authorized as Super Central Admin. Use ${BOOT_ADMIN_EMAIL}.`,
+            `এই অ্যাকাউন্টটি (${user.email ?? email}) Super Central Admin হিসেবে অনুমোদিত নয়। অনুগ্রহ করে ${BOOT_ADMIN_EMAIL} দিয়ে লগইন করুন।`,
+            `This account (${user.email ?? email}) is not authorized as Super Central Admin. Use ${BOOT_ADMIN_EMAIL}.`,
             lang
           ),
         };
@@ -1583,13 +1583,13 @@ export default function App() {
       applyVerifiedSession(resolved.session);
       void recordFirebaseAuditEvent({
         role: 'central_admin',
-        what: 'Super Central Admin Firebase Sign-In Verified',
+        what: 'Super Central Admin Sign-In Verified',
         targetName: resolved.session.email || resolved.session.displayName,
       });
       showToast(
         b(
-          'Super Central Admin হিসেবে Firebase Authentication যাচাই সফল হয়েছে।',
-          'Signed in as Super Central Admin via Firebase Authentication.',
+          'Super Central Admin হিসেবে নিরাপদ যাচাই সফল হয়েছে।',
+          'Signed in securely as Super Central Admin.',
           lang
         )
       );
@@ -1797,8 +1797,8 @@ export default function App() {
           return {
             ok: false,
             message: b(
-              'এই Firebase অ্যাকাউন্টের জন্য এখনো পোর্টাল রোল সক্রিয় হয়নি।',
-              'No portal role assigned yet for this Firebase account.',
+              'এই অ্যাকাউন্টের জন্য এখনো পোর্টাল রোল সক্রিয় হয়নি।',
+              'No portal role assigned yet for this account.',
               lang
             ),
           };
@@ -1880,8 +1880,8 @@ export default function App() {
         return {
           ok: true,
           message: b(
-            'Firebase অ্যাকাউন্টের পাসওয়ার্ড সফলভাবে পরিবর্তন হয়েছে! এখন নতুন পাসওয়ার্ড দিয়ে লগইন করুন।',
-            'Firebase password updated! Sign in with your new password.',
+            'অ্যাকাউন্টের পাসওয়ার্ড সফলভাবে পরিবর্তন হয়েছে! এখন নতুন পাসওয়ার্ড দিয়ে লগইন করুন।',
+            'Account password updated! Sign in with your new password.',
             lang
           ),
         };
@@ -7165,8 +7165,8 @@ export default function App() {
           });
           showToast(
             b(
-              'ভেরিফায়েড Firebase অ্যাকাউন্ট দিয়ে নিরাপদ লগইন সম্পন্ন হয়েছে।',
-              'Signed in via verified Firebase account.',
+              'ভেরিফায়েড অ্যাকাউন্ট দিয়ে নিরাপদ লগইন সম্পন্ন হয়েছে।',
+              'Signed in via verified account.',
               lang
             )
           );

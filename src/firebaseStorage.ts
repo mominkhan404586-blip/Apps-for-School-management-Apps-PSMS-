@@ -224,8 +224,8 @@ async function persistSparkMediaAsset(params: {
   if (params.sizeBytes > MAX_SPARK_INLINE_BYTES || params.dataUrl.length > MAX_SPARK_DATAURL_CHARS) {
     return {
       ok: false,
-      errorBn: 'ফ্রি Firebase Spark প্ল্যান সীমা (৪৫০ KB) অতিক্রম করেছে। ছোট ফাইল নির্বাচন করুন।',
-      errorEn: 'File exceeds Free Spark Plan inline document limit (450 KB). Choose a smaller file.',
+      errorBn: 'ফাইলের আকার সর্বোচ্চ ৪৫০ KB সীমা অতিক্রম করেছে। ছোট ফাইল নির্বাচন করুন।',
+      errorEn: 'File exceeds the 450 KB limit. Choose a smaller file.',
     };
   }
 
@@ -278,8 +278,8 @@ async function persistSparkMediaAsset(params: {
         contentType: params.mimeType,
         sizeBytes: params.sizeBytes,
         storedIn: 'local_spark_cache',
-        errorBn: `লোকাল ক্যাশে সংরক্ষিত (Firestore সতর্কতা: ${msg})`,
-        errorEn: `Saved locally (Firestore fallback note: ${msg})`,
+        errorBn: `ডিভাইস ক্যাশে সংরক্ষিত হয়েছে (ক্লাউড সিঙ্ক অপেক্ষমাণ: ${msg})`,
+        errorEn: `Saved locally on device (cloud sync pending: ${msg})`,
       };
     }
   }
@@ -344,8 +344,8 @@ export async function uploadFileToStorage(params: {
     const msg = error instanceof Error ? error.message : String(error);
     return {
       ok: false,
-      errorBn: `ফ্রি Spark মিডিয়া সংরক্ষণ ব্যর্থ হয়েছে: ${msg}`,
-      errorEn: `Free Spark media save failed: ${msg}`,
+      errorBn: `মিডিয়া সংরক্ষণ ব্যর্থ হয়েছে: ${msg}`,
+      errorEn: `Media save failed: ${msg}`,
     };
   }
 }

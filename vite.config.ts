@@ -62,19 +62,13 @@ export default defineConfig(() => {
           clientsClaim: true,
           maximumFileSizeToCacheInBytes: 12 * 1024 * 1024,
           globPatterns: ['**/*.{js,css,ico,png,svg,woff2}'],
+          globIgnores: ['**/index.html', '**/*.html', 'assets/aistudio/**'],
           navigateFallback: null,
           runtimeCaching: [
             {
-              urlPattern: ({request}) => request.mode === 'navigate',
-              handler: 'NetworkFirst',
-              options: {
-                cacheName: 'psms-html-nav-cache',
-                networkTimeoutSeconds: 4,
-                expiration: {
-                  maxEntries: 10,
-                  maxAgeSeconds: 60 * 60,
-                },
-              },
+              urlPattern: ({request}) =>
+                request.mode === 'navigate' || request.destination === 'document',
+              handler: 'NetworkOnly',
             },
             {
               urlPattern: ({url}) => url.pathname.startsWith('/api/'),
@@ -105,9 +99,7 @@ export default defineConfig(() => {
           enabled: false,
         },
       }),
-      // Copies src/assets into dist/ so root-relative URLs like
-      // "/src/assets/images/..." (e.g. generate_image output) still resolve
-      // in production builds. Do not remove.
+      // Copies src/assets into dist/ and strips chat upload screenshots so dist/ and APK stay lean.
       {
         name: 'copy-unbundled-src-assets',
         apply: 'build',
@@ -120,6 +112,10 @@ export default defineConfig(() => {
           const distAssets = path.resolve(distDir, 'src/assets');
           if (fs.existsSync(distDir) && fs.existsSync(srcAssets)) {
             fs.cpSync(srcAssets, distAssets, {recursive: true, force: true});
+          }
+          const distAistudioAssets = path.resolve(distDir, 'assets/aistudio');
+          if (fs.existsSync(distAistudioAssets)) {
+            fs.rmSync(distAistudioAssets, {recursive: true, force: true});
           }
         },
       },

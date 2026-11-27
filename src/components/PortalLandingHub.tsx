@@ -781,8 +781,8 @@ export const PortalLandingHub: React.FC<PortalLandingHubProps> = ({
                       </div>
                       <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
                         {b(
-                          'আপনার নিবন্ধিত ইমেইল দিলে Firebase রিসেট লিংক পাঠানো হবে। স্কুল বা শিক্ষক আইডি দিলে প্রধান শিক্ষক/অ্যাডমিন সহায়তার নির্দেশনা পাবেন।',
-                          'Enter your registered email for a Firebase reset link, or enter your School/Teacher/Student ID for recovery guidance.',
+                          'আপনার নিবন্ধিত ইমেইল দিলে পাসওয়ার্ড রিসেট লিংক পাঠানো হবে। স্কুল বা শিক্ষক আইডি দিলে প্রধান শিক্ষক/অ্যাডমিন সহায়তার নির্দেশনা পাবেন।',
+                          'Enter your registered email for a password reset link, or enter your School/Teacher/Student ID for recovery guidance.',
                           lang
                         )}
                       </p>
@@ -1181,10 +1181,10 @@ export const PortalLandingHub: React.FC<PortalLandingHubProps> = ({
                     <Mail className="w-4 h-4 text-emerald-600 shrink-0" />
                     <div>
                       <div className="font-bold text-slate-900 dark:text-white">
-                        {b('Firebase ইমেইল ভেরিফিকেশন ও রিকভারি', 'Firebase Email Verification & Recovery', lang)}
+                        {b('ইমেইল ভেরিফিকেশন ও অ্যাকাউন্ট রিকভারি', 'Email Verification & Account Recovery', lang)}
                       </div>
                       <div className="text-[11px] text-slate-500">
-                        {b('নতুন ইমেইল সাইনআপ, ভেরিফিকেশন লিংক ও পাসওয়ার্ড রিসেট', 'Verify email inbox or reset Firebase password', lang)}
+                        {b('নতুন ইমেইল সাইনআপ, ভেরিফিকেশন লিংক ও পাসওয়ার্ড রিসেট', 'Verify email inbox or reset account password', lang)}
                       </div>
                     </div>
                   </div>

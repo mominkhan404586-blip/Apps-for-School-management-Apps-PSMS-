@@ -470,12 +470,12 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
               aria-live="polite"
               title={
                 rtdbSyncStatus === 'syncing'
-                  ? b('Firebase Realtime Database সিঙ্ক হচ্ছে...', 'Syncing live changes with Firebase Realtime Database...', lang)
+                  ? b('লাইভ ক্লাউড সিঙ্ক হচ্ছে...', 'Syncing live updates...', lang)
                   : rtdbSyncStatus === 'error'
                     ? b('সিঙ্ক ত্রুটি — পুনরায় চেষ্টা করা হচ্ছে', 'Sync error — retrying...', lang)
                     : hasOfflineQueue
                       ? b('অফলাইন কিউ সক্রিয় — অনলাইনে ফিরলে সিঙ্ক হবে', 'Offline queue active — will sync when online', lang)
-                      : b('Firebase Realtime Database সরাসরি সিঙ্কড', 'Live changes synced with Firebase Realtime Database', lang)
+                      : b('তাৎক্ষণিক ক্লাউড সিঙ্ক সক্রিয়', 'Live updates synced', lang)
               }
               className={`inline-flex items-center gap-1.5 h-8 sm:h-9 px-2 lg:px-2.5 rounded-lg text-[11px] font-bold border whitespace-nowrap shrink-0 transition-colors ${badgeTone}`}
             >

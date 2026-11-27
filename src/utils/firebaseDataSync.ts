@@ -465,15 +465,15 @@ export function validateStorageUploadCandidate(
       return {
         valid: false,
         maxBytes,
-        errorBn: 'ফ্রি Firebase Spark প্ল্যানে PDF ফাইলের আকার সর্বোচ্চ ৪৫০ KB হতে পারবে।',
-        errorEn: 'On Free Spark Plan, PDF documents must be 450 KB or smaller.',
+        errorBn: 'PDF ফাইলের আকার সর্বোচ্চ ৪৫০ KB হতে পারবে।',
+        errorEn: 'PDF documents must be 450 KB or smaller.',
       };
     }
     return {
       valid: false,
       maxBytes,
       errorBn: 'ছবির আকার ১ বাইট থেকে ১০ MB-এর মধ্যে হতে হবে (স্বয়ংক্রিয়ভাবে কম্প্রেস হবে)।',
-      errorEn: 'Image file must be between 1 byte and 10 MB (auto-compressed for free Spark storage).',
+      errorEn: 'Image file must be between 1 byte and 10 MB (auto-compressed automatically).',
     };
   }
   return { valid: true, maxBytes };

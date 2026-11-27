@@ -16,7 +16,6 @@ import type { Language, Role } from '../types';
 import { b } from '../i18n/translations';
 import {
   auth,
-  getActiveFirebaseProjectInfo,
   subscribeRealtimeAllUsers,
   subscribeRealtimeUserAccount,
   subscribeRealtimeUserChangeLogs,
@@ -62,7 +61,6 @@ export const RealtimeAccountSyncPanel: React.FC<RealtimeAccountSyncPanelProps> =
   onSyncLocalProfile,
   showRulesBoxByDefault = false,
 }) => {
-  const projectInfo = getActiveFirebaseProjectInfo();
   const firebaseUser = auth.currentUser;
   const activeUid = firebaseUser?.uid || actorId;
 
@@ -197,8 +195,8 @@ export const RealtimeAccountSyncPanel: React.FC<RealtimeAccountSyncPanelProps> =
       });
       setRtdbError(
         b(
-          'সকল তথ্য ফরম্যাট সঠিক আছে (লোকাল প্রোফাইল আপডেট হয়েছে)। Realtime Database-এ সরাসরি পুশ করতে Verified Google বা Firebase Email অ্যাকাউন্ট দিয়ে লগইন করুন।',
-          'All fields are valid (local profile updated). Sign in with verified Firebase Auth to push live to Realtime Database.',
+          'সকল তথ্য ফরম্যাট সঠিক আছে (লোকাল প্রোফাইল আপডেট হয়েছে)। ক্লাউডে সরাসরি সিঙ্ক করতে ভেরিফায়েড Google বা ইমেইল অ্যাকাউন্ট দিয়ে লগইন করুন।',
+          'All fields are valid (local profile updated). Sign in with a verified Google or Email account to push live updates.',
           lang
         )
       );
@@ -226,16 +224,16 @@ export const RealtimeAccountSyncPanel: React.FC<RealtimeAccountSyncPanelProps> =
         );
         setSyncMessage(
           b(
-            'Firebase Realtime Database-এ অ্যাকাউন্ট সাথে সাথে আপডেট ও সিঙ্ক হয়েছে!',
-            'Account updated and synced live to Firebase Realtime Database!',
+            'অ্যাকাউন্ট তথ্য ক্লাউডে সাথে সাথে আপডেট ও সিঙ্ক হয়েছে!',
+            'Account updated and synced to cloud immediately!',
             lang
           )
         );
       } else if (res.errorCode === 'PERMISSION_DENIED') {
         setRtdbError(
           b(
-            'Realtime Database Rules এখনো অনুমোদন দেয়নি (PERMISSION_DENIED)। নিচের Rules কপি করে Firebase Console > Realtime Database > Rules-এ Publish করুন।',
-            'Realtime Database rejected the write (PERMISSION_DENIED). Publish the Rules below in Firebase Console > Realtime Database > Rules.',
+            'ক্লাউড সিঙ্ক অনুমোদন পাওয়া যায়নি; লোকাল প্রোফাইল আপডেট সংরক্ষিত রয়েছে।',
+            'Cloud sync permission is pending; profile changes are saved locally.',
             lang
           )
         );
@@ -265,8 +263,8 @@ export const RealtimeAccountSyncPanel: React.FC<RealtimeAccountSyncPanelProps> =
       if (res.ok) {
         setSyncMessage(
           b(
-            `${targetUser.displayName}-এর অ্যাকাউন্ট RTDB-তে তাৎক্ষণিক আপডেট হয়েছে।`,
-            `${targetUser.displayName} updated live in RTDB.`,
+            `${targetUser.displayName}-এর অ্যাকাউন্ট ক্লাউডে তাৎক্ষণিক আপডেট হয়েছে।`,
+            `${targetUser.displayName} updated live.`,
             lang
           )
         );
@@ -274,8 +272,8 @@ export const RealtimeAccountSyncPanel: React.FC<RealtimeAccountSyncPanelProps> =
         setRtdbError(
           res.errorCode === 'PERMISSION_DENIED'
             ? b(
-                'PERMISSION_DENIED: অনুগ্রহ করে নিচের database.rules.json Firebase Console-এ Publish করুন।',
-                'PERMISSION_DENIED: Please publish database.rules.json in Firebase Console.',
+                'ক্লাউড অনুমতি অপেক্ষমাণ; কিছুক্ষণের মধ্যে আবার চেষ্টা করুন।',
+                'Cloud permission pending; please retry shortly.',
                 lang
               )
             : res.errorMessage || 'Update failed'
@@ -298,15 +296,12 @@ export const RealtimeAccountSyncPanel: React.FC<RealtimeAccountSyncPanelProps> =
             <Database className="w-4 h-4 text-emerald-600 shrink-0" />
             <span>
               {b(
-                'Firebase Realtime Database লাইভ অ্যাকাউন্ট সিঙ্ক',
-                'Firebase Realtime Database Live Account Sync',
+                'লাইভ অ্যাকাউন্ট সিঙ্ক ও তথ্য যাচাই',
+                'Live Account Sync & Validation',
                 lang
               )}
             </span>
           </div>
-          <p className="text-[11px] font-mono text-slate-600 dark:text-slate-400 break-all mt-0.5">
-            {projectInfo.databaseURL}
-          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -321,8 +316,8 @@ export const RealtimeAccountSyncPanel: React.FC<RealtimeAccountSyncPanelProps> =
             {rtdbConnected ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
             <span>
               {rtdbConnected
-                ? b('RTDB সংযুক্ত (Live)', 'RTDB Connected (Live)', lang)
-                : b('RTDB সংযোগ অপেক্ষমাণ', 'RTDB Connecting', lang)}
+                ? b('লাইভ সংযুক্ত', 'Live Connected', lang)
+                : b('সংযোগ অপেক্ষমাণ', 'Connecting', lang)}
             </span>
           </span>
         </div>
@@ -424,8 +419,8 @@ export const RealtimeAccountSyncPanel: React.FC<RealtimeAccountSyncPanelProps> =
           <RefreshCw className={`w-3.5 h-3.5 ${syncBusy ? 'animate-spin' : ''}`} />
           <span>
             {b(
-              'সাথে সাথে Realtime Database-এ আপডেট করুন',
-              'Update Live to Realtime Database',
+              'সাথে সাথে ক্লাউডে আপডেট করুন',
+              'Update Account Live',
               lang
             )}
           </span>
@@ -438,8 +433,8 @@ export const RealtimeAccountSyncPanel: React.FC<RealtimeAccountSyncPanelProps> =
           className="h-9 px-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
         >
           {rulesVisible
-            ? b('RTDB Rules লুকান', 'Hide RTDB Rules', lang)
-            : b('Realtime Database Rules দেখুন / কপি করুন', 'View / Copy Realtime Database Rules', lang)}
+            ? b('নিরাপত্তা কনফিগারেশন লুকান', 'Hide Security Config', lang)
+            : b('নিরাপত্তা কনফিগারেশন দেখুন', 'View Security Config', lang)}
         </button>
       </div>
 
@@ -467,7 +462,7 @@ export const RealtimeAccountSyncPanel: React.FC<RealtimeAccountSyncPanelProps> =
       {role === 'central_admin' && liveAllUsers.length > 0 && (
         <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
           <div className="px-3.5 py-2 bg-slate-50 dark:bg-slate-800/70 border-b border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-900 dark:text-white">
-            {b('RTDB লাইভ ইউজার তালিকা (সাথে সাথে পরিবর্তন)', 'RTDB Live Users (Instant Updates)', lang)} ({liveAllUsers.length})
+            {b('লাইভ ইউজার তালিকা (সাথে সাথে পরিবর্তন)', 'Live Users (Instant Updates)', lang)} ({liveAllUsers.length})
           </div>
           <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-56 overflow-y-auto">
             {liveAllUsers.map((u) => {
@@ -513,7 +508,7 @@ export const RealtimeAccountSyncPanel: React.FC<RealtimeAccountSyncPanelProps> =
         <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
           <div className="px-3.5 py-2 bg-slate-50 dark:bg-slate-800/70 border-b border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
             <History className="w-3.5 h-3.5 text-blue-600" />
-            <span>{b('RTDB তাৎক্ষণিক পরিবর্তনের লগ', 'RTDB Live Change History', lang)}</span>
+            <span>{b('তাৎক্ষণিক পরিবর্তনের লগ', 'Live Change History', lang)}</span>
           </div>
           <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-40 overflow-y-auto">
             {changeLogs.slice(0, 6).map((log) => (
@@ -532,7 +527,7 @@ export const RealtimeAccountSyncPanel: React.FC<RealtimeAccountSyncPanelProps> =
         </div>
       )}
 
-      {/* Copyable Realtime Database Rules */}
+      {/* Copyable Security Rules */}
       {rulesVisible && (
         <div
           data-testid="rtdb-rules-viewer"
@@ -541,8 +536,8 @@ export const RealtimeAccountSyncPanel: React.FC<RealtimeAccountSyncPanelProps> =
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="text-xs font-bold text-emerald-300">
               {b(
-                'Firebase Console > Realtime Database > Rules-এ পেস্ট করুন (database.rules.json)',
-                'Paste into Firebase Console > Realtime Database > Rules (database.rules.json)',
+                'নিরাপত্তা নীতিমালা কনফিগারেশন (database.rules.json)',
+                'Security Policy Config (database.rules.json)',
                 lang
               )}
             </div>

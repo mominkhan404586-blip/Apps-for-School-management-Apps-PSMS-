@@ -1,27 +1,27 @@
 import React from 'react';
-import { CheckCircle2, LockKeyhole, Loader2, ShieldCheck } from 'lucide-react';
+import { BookOpenCheck, GraduationCap, Loader2, Sparkles } from 'lucide-react';
 import type { Language } from '../types';
 import { b } from '../i18n/translations';
 import { OfficialAppLogo } from './OfficialAppLogo';
 
 export const AuthLoadingScreen: React.FC<{ lang?: Language }> = ({ lang = 'bn' }) => {
-  const steps = [
+  const highlights = [
     {
-      id: 'session',
-      labelBn: 'Firebase Authentication সেশন যাচাই',
-      labelEn: 'Verifying Firebase Authentication session',
+      id: 'welcome',
+      labelBn: 'শিক্ষা প্রতিষ্ঠানের সকল কার্যক্রম প্রস্তুত করা হচ্ছে',
+      labelEn: 'Preparing your school learning workspace',
       active: true,
     },
     {
-      id: 'role',
-      labelBn: 'রোল-ভিত্তিক অনুমতি ও ড্যাশবোর্ড লক',
-      labelEn: 'Resolving strict RBAC role & route lock',
+      id: 'classroom',
+      labelBn: 'শ্রেণি, হাজিরা, পাঠ ও পরীক্ষার তথ্য লোড হচ্ছে',
+      labelEn: 'Loading classes, attendance, lessons & exams',
       active: false,
     },
     {
-      id: 'workspace',
-      labelBn: 'সুরক্ষিত ওয়ার্কস্পেস প্রস্তুত করা হচ্ছে',
-      labelEn: 'Preparing isolated institutional workspace',
+      id: 'portal',
+      labelBn: 'শিক্ষক, শিক্ষার্থী ও অভিভাবক ড্যাশবোর্ড',
+      labelEn: 'Teacher, Student & Guardian experience',
       active: false,
     },
   ];
@@ -31,75 +31,82 @@ export const AuthLoadingScreen: React.FC<{ lang?: Language }> = ({ lang = 'bn' }
       data-testid="auth-loading-screen"
       role="status"
       aria-live="polite"
-      className="min-h-screen bg-[#071526] text-slate-100 flex items-center justify-center p-6 relative overflow-hidden"
+      className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-blue-50 dark:from-slate-950 dark:via-slate-900 dark:to-sky-950 text-slate-900 dark:text-slate-100 flex items-center justify-center p-6 relative overflow-hidden"
     >
       <div
-        className="pointer-events-none absolute inset-0 opacity-30"
+        className="pointer-events-none absolute inset-0 opacity-70"
         style={{
           background:
-            'radial-gradient(circle at 50% 18%, rgba(16,185,129,0.20), transparent 52%), radial-gradient(circle at 80% 82%, rgba(37,99,235,0.16), transparent 46%)',
+            'radial-gradient(circle at 20% 20%, rgba(14,165,233,0.14), transparent 45%), radial-gradient(circle at 80% 80%, rgba(37,99,235,0.12), transparent 48%)',
         }}
         aria-hidden="true"
       />
 
-      <div className="relative max-w-md w-full rounded-2xl bg-[#0d2238] border border-slate-700/80 p-7 space-y-6 shadow-2xl">
-        <div className="flex items-center gap-4 border-b border-slate-700/70 pb-5">
-          <OfficialAppLogo
-            sizeClass="w-14 h-14"
-            roundedClass="rounded-xl"
-            paddingClass="p-1.5"
-            className="shrink-0 ring-1 ring-white/20 shadow-md"
-          />
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-emerald-400">
-              <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-              <span>{b('নিরাপদ প্রবেশ যাচাই', 'Protected Access Gate', lang)}</span>
-            </div>
-            <h1 className="text-lg font-extrabold text-white tracking-tight mt-0.5 truncate">
-              PSMS Bangladesh
+      <div className="relative max-w-md w-full rounded-3xl bg-white/95 dark:bg-slate-900/95 border border-sky-100 dark:border-slate-800 p-7 space-y-6 shadow-xl shadow-sky-900/10">
+        <div className="flex flex-col items-center text-center space-y-3 border-b border-slate-100 dark:border-slate-800 pb-6">
+          <div className="relative">
+            <OfficialAppLogo
+              sizeClass="w-20 h-20"
+              roundedClass="rounded-2xl"
+              paddingClass="p-1.5"
+              className="ring-2 ring-sky-200 dark:ring-sky-800 shadow-lg"
+            />
+            <span
+              className="absolute -bottom-1.5 -right-1.5 w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center shadow-md"
+              aria-hidden="true"
+            >
+              <GraduationCap className="w-4 h-4" />
+            </span>
+          </div>
+
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-50 dark:bg-sky-950/60 border border-sky-200 dark:border-sky-800 text-[11px] font-bold text-sky-700 dark:text-sky-300">
+            <Sparkles className="w-3.5 h-3.5 shrink-0" />
+            <span>{b('স্বাগতম · স্মার্ট শিক্ষা পোর্টাল', 'Welcome · Smart Education Portal', lang)}</span>
+          </div>
+
+          <div className="space-y-1">
+            <h1 className="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+              {b('প্রাথমিক ও মাধ্যমিক স্কুল ম্যানেজমেন্ট', 'PSMS Bangladesh', lang)}
             </h1>
-            <p className="text-xs text-slate-300 mt-0.5">
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
               {b(
-                'অনুগ্রহ করে অপেক্ষা করুন — আপনার সেশন যাচাই হচ্ছে।',
-                'Authenticating session before unlocking any portal view.',
+                'জ্ঞান, শৃঙ্খলা ও ডিজিটাল শিক্ষার সমন্বয়ে আপনার বিদ্যালয় পোর্টাল চালু হচ্ছে।',
+                'Opening your unified school portal for smart teaching, attendance, and learning.',
                 lang
               )}
             </p>
           </div>
         </div>
 
-        <ol className="space-y-3 text-xs">
-          {steps.map((step, index) => (
+        <ol className="space-y-2.5 text-xs">
+          {highlights.map((item) => (
             <li
-              key={step.id}
+              key={item.id}
               className={`flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl border ${
-                step.active
-                  ? 'bg-emerald-950/50 border-emerald-500/40 text-emerald-100'
-                  : 'bg-slate-900/60 border-slate-800 text-slate-400'
+                item.active
+                  ? 'bg-sky-50/90 dark:bg-sky-950/40 border-sky-200 dark:border-sky-800 text-sky-950 dark:text-sky-100'
+                  : 'bg-slate-50/80 dark:bg-slate-800/50 border-slate-200/70 dark:border-slate-800 text-slate-600 dark:text-slate-300'
               }`}
             >
               <div className="flex items-center gap-2.5 min-w-0">
-                <span className="font-mono text-[11px] font-bold text-slate-400 tabular-nums">
-                  0{index + 1}
-                </span>
-                <span className="font-semibold truncate">{b(step.labelBn, step.labelEn, lang)}</span>
+                <BookOpenCheck
+                  className={`w-4 h-4 shrink-0 ${
+                    item.active ? 'text-blue-600 dark:text-sky-400' : 'text-slate-400'
+                  }`}
+                />
+                <span className="font-semibold truncate">{b(item.labelBn, item.labelEn, lang)}</span>
               </div>
-              {step.active ? (
-                <Loader2 className="w-4 h-4 text-emerald-400 animate-spin shrink-0" />
-              ) : (
-                <CheckCircle2 className="w-4 h-4 text-slate-600 shrink-0" />
+              {item.active && (
+                <Loader2 className="w-4 h-4 text-blue-600 dark:text-sky-400 animate-spin shrink-0" />
               )}
             </li>
           ))}
         </ol>
 
-        <div className="flex items-center justify-between pt-2 border-t border-slate-700/70 text-[11px] text-slate-400">
-          <span className="inline-flex items-center gap-1.5">
-            <LockKeyhole className="w-3.5 h-3.5 text-emerald-400" />
-            {b('যাচাই সম্পন্ন না হওয়া পর্যন্ত ড্যাশবোর্ড লক করা আছে', 'Protected routes locked during verification', lang)}
-          </span>
-          <span className="font-mono text-emerald-300 font-semibold">
-            {b('যাচাই চলছে', 'Checking', lang)}
+        <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400">
+          <span>{b('ডিজিটাল শিক্ষা ব্যবস্থাপনা', 'Digital Education Platform', lang)}</span>
+          <span className="font-semibold text-blue-600 dark:text-sky-400">
+            {b('প্রস্তুত হচ্ছে...', 'Loading...', lang)}
           </span>
         </div>
       </div>

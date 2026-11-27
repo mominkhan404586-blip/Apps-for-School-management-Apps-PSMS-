@@ -171,6 +171,10 @@ test('database.rules.json defines role-based & school/profile-ID scoped permissi
   const parsedFromFile = JSON.parse(fs.readFileSync(filePath, 'utf8'));
 
   assert.deepEqual(parsedFromFile, parsedFromExport);
+  assert.ok(
+    Buffer.byteLength(REALTIME_DATABASE_RULES_JSON, 'utf8') < 15360,
+    'database.rules.json must stay compact (<15KB) so mobile browsers never truncate paste'
+  );
   assert.equal(parsedFromFile.rules['.read'], false);
   assert.equal(parsedFromFile.rules['.write'], false);
   assert.ok(String(parsedFromFile.rules.users.$uid['.write']).includes('mominkhan404586@gmail.com'));

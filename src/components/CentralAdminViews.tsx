@@ -2897,12 +2897,12 @@ export const CentralAdminViews: React.FC<CentralAdminViewsProps> = ({
             <Database className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
             <div>
               <div className="font-bold text-slate-900 dark:text-white">
-                {b('Firebase Realtime Database লাইভ ডেটা ও সিঙ্ক টেস্ট', 'Firebase Realtime Database Data & Live Sync Test', lang)}
+                {b('লাইভ ডেটা, সিঙ্ক ও সিস্টেম ডায়াগনস্টিকস', 'Live Data, Sync & System Diagnostics', lang)}
               </div>
               <p className="text-slate-600 dark:text-slate-400">
                 {b(
-                  'RTDB-তে লাইভ টেস্ট পিং পাঠান, ইউজার প্রোফাইল/রোল আপডেট করুন এবং রোল-ভিত্তিক সিকিউরিটি রুলস দেখুন।',
-                  'Send live RTDB test pings, edit user profiles/roles in real time, and review role-scoped RTDB rules.',
+                  'লাইভ সিঙ্ক যাচাই করুন, ইউজার প্রোফাইল/রোল আপডেট করুন এবং রোল-ভিত্তিক সিকিউরিটি কনফিগারেশন দেখুন।',
+                  'Verify live sync, manage user profiles/roles in real time, and review role-scoped rules.',
                   lang
                 )}
               </p>
@@ -2914,7 +2914,7 @@ export const CentralAdminViews: React.FC<CentralAdminViewsProps> = ({
             className="h-9 px-3.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer"
           >
             <Database className="w-3.5 h-3.5" />
-            <span>{b('লাইভ RTDB প্যানেল খুলুন →', 'Open Live RTDB Panel →', lang)}</span>
+            <span>{b('লাইভ সিঙ্ক প্যানেল খুলুন →', 'Open Live Sync Hub →', lang)}</span>
           </button>
         </div>
       </div>

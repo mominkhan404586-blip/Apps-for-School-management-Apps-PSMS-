@@ -84,8 +84,6 @@ import {
 import { PWAInstallButton } from './PWAInstallBanner';
 import {
   auth,
-  getActiveFirebaseProjectInfo,
-  getFirebaseAppCheckStatus,
   loadCloudAppBackup,
   saveCloudAppBackup,
   sendFirebasePasswordReset,
@@ -94,7 +92,6 @@ import {
 import { uploadFileToStorage } from '../firebaseStorage';
 import { mapFirebaseAuthErrorMessage } from '../utils/authGuard';
 import { validateRealtimeUserAccountUpdate } from '../utils/realtimeDatabaseSync';
-import { RealtimeAccountSyncPanel } from './RealtimeAccountSyncPanel';
 
 export interface SettingsCenterViewProps {
   role: Role;
@@ -273,8 +270,6 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
   const [cloudBackupError, setCloudBackupError] = useState<string | null>(null);
   const [storageDocBusy, setStorageDocBusy] = useState(false);
   const [storageDocUrl, setStorageDocUrl] = useState<string | null>(null);
-  const firebaseProjectInfo = getActiveFirebaseProjectInfo();
-  const appCheckStatus = getFirebaseAppCheckStatus();
 
   const handleSaveCloudBackup = async () => {
     setCloudBackupError(null);
@@ -283,8 +278,8 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
     if (!currentUser || !currentUser.emailVerified) {
       setCloudBackupError(
         b(
-          'ক্লাউড ব্যাকআপ নিতে Firebase Google বা Verified ইমেইল অ্যাকাউন্ট দিয়ে লগইন থাকতে হবে।',
-          'Please sign in with a verified Firebase Google or Email account to save Cloud Backup.',
+          'ক্লাউড ব্যাকআপ নিতে ভেরিফায়েড Google বা ইমেইল অ্যাকাউন্ট দিয়ে লগইন থাকতে হবে।',
+          'Please sign in with a verified Google or Email account to save Cloud Backup.',
           lang
         )
       );
@@ -319,12 +314,12 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
       });
       setCloudBackupMessage(
         b(
-          `Firestore (${firebaseProjectInfo.projectId})-এ ক্লাউড ব্যাকআপ সফলভাবে সংরক্ষিত হয়েছে।`,
-          `Cloud Backup saved cleanly to Firestore (${firebaseProjectInfo.projectId}).`,
+          'ক্লাউড ব্যাকআপে আপনার সেটিংস ও পোর্টাল তথ্য সফলভাবে সংরক্ষিত হয়েছে।',
+          'Cloud Backup saved cleanly.',
           lang
         )
       );
-      showToast('Firebase Cloud Backup সম্পন্ন হয়েছে!', 'Firebase Cloud Backup saved!');
+      showToast('ক্লাউড ব্যাকআপ সম্পন্ন হয়েছে!', 'Cloud Backup saved!');
     } catch (err) {
       setCloudBackupError(mapFirebaseAuthErrorMessage(err, lang));
     } finally {
@@ -339,8 +334,8 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
     if (!currentUser || !currentUser.emailVerified) {
       setCloudBackupError(
         b(
-          'ক্লাউড থেকে রিস্টোর করতে Firebase Google বা Verified ইমেইল অ্যাকাউন্ট দিয়ে লগইন করুন।',
-          'Please sign in with your verified Firebase account to restore from Cloud.',
+          'ক্লাউড থেকে রিস্টোর করতে ভেরিফায়েড Google বা ইমেইল অ্যাকাউন্ট দিয়ে লগইন করুন।',
+          'Please sign in with your verified account to restore from Cloud.',
           lang
         )
       );
@@ -387,8 +382,8 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
           who: actorName,
           role,
           when: new Date().toISOString().replace('T', ' ').slice(0, 16),
-          what: 'Restored System Settings from Firebase Cloud Backup',
-          targetName: firebaseProjectInfo.projectId,
+          what: 'Restored System Settings from Cloud Backup',
+          targetName: 'PSMS Cloud Backup',
           requestId: 'CLOUD-RESTORE',
           oldValue: `v${settings.version}`,
           newValue: `v${backup.settingsVersion}`,
@@ -402,7 +397,7 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
           lang
         )
       );
-      showToast('ক্লাউড ব্যাকআপ থেকে সফলভাবে রিস্টোর হয়েছে!', 'Restored from Firebase Cloud Backup!');
+      showToast('ক্লাউড ব্যাকআপ থেকে সফলভাবে রিস্টোর হয়েছে!', 'Restored from Cloud Backup!');
     } catch (err) {
       setCloudBackupError(mapFirebaseAuthErrorMessage(err, lang));
     } finally {
@@ -620,15 +615,15 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
       );
       if (rtdbRes.ok) {
         showToast(
-          'প্রোফাইল এবং Firebase Realtime Database সাথে সাথে আপডেট হয়েছে!',
-          'Profile & Firebase Realtime Database updated immediately!'
+          'প্রোফাইল এবং ক্লাউড তথ্য সাথে সাথে আপডেট হয়েছে!',
+          'Profile & cloud record updated immediately!'
         );
         return;
       }
       if (rtdbRes.errorCode === 'PERMISSION_DENIED') {
         showToast(
-          'প্রোফাইল লোকাল ও ডিসপ্লেতে সেভ হয়েছে, তবে RTDB Rules (database.rules.json) Console-এ Publish করুন।',
-          'Profile updated in UI/local storage, but RTDB returned PERMISSION_DENIED — publish database.rules.json.'
+          'প্রোফাইল আপনার ডিভাইসে সংরক্ষিত হয়েছে; ক্লাউড সিঙ্ক কিছুক্ষণের মধ্যে সম্পন্ন হবে।',
+          'Profile saved on your device; cloud sync will complete shortly.'
         );
         return;
       }
@@ -898,27 +893,6 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
               </div>
             </form>
 
-            {/* Firebase Realtime Database Live Account Sync & Validation Diff */}
-            <RealtimeAccountSyncPanel
-              lang={lang}
-              role={role}
-              actorId={actorId}
-              actorName={actorName}
-              actorEmail={profileEmail || actorEmail}
-              actorPhone={profilePhone || actorPhone}
-              draftName={profileName}
-              draftEmail={recoveryEmail || profileEmail}
-              draftPhone={recoveryPhone || profilePhone}
-              onSyncLocalProfile={(patch, opts) => {
-                setProfileName(patch.displayName);
-                setProfileEmail(patch.email);
-                setRecoveryEmail(patch.email);
-                setProfilePhone(patch.phone);
-                setRecoveryPhone(patch.phone);
-                onUpdateActorProfile?.(patch, opts);
-              }}
-            />
-
             {/* Password & Reset */}
             <form onSubmit={handlePasswordChange} className="grid grid-cols-1 md:grid-cols-3 gap-3 rounded-xl border border-slate-200 dark:border-slate-800 p-4">
               <div className="md:col-span-3 flex flex-wrap items-center justify-between gap-2">
@@ -1071,12 +1045,12 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
               </div>
             </div>
 
-            {/* Firebase Account Recovery Quick Action */}
+            {/* Account Security & Recovery Quick Action */}
             <div className="rounded-xl border border-emerald-200 dark:border-emerald-800/70 p-4 flex flex-wrap items-center justify-between gap-3 bg-emerald-50/50 dark:bg-emerald-950/20">
               <div>
                 <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
                   <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                  <span>{b(`Firebase অ্যাকাউন্ট নিরাপত্তা ও পুনরুদ্ধার (${firebaseProjectInfo.projectId})`, `Firebase Security & Account Recovery (${firebaseProjectInfo.projectId})`, lang)}</span>
+                  <span>{b('অ্যাকাউন্ট নিরাপত্তা ও পুনরুদ্ধার', 'Account Security & Recovery', lang)}</span>
                 </div>
                 <div className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">
                   {auth.currentUser
@@ -1085,7 +1059,7 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
                         `Connected: ${auth.currentUser.email ?? actorEmail} · Verified: ${auth.currentUser.emailVerified ? 'Yes ✓' : 'Pending'}`,
                         lang
                       )
-                    : b('ইমেইলে পাসওয়ার্ড রিসেট / পুনরুদ্ধার লিংক পাঠাতে নিচের বাটনে ক্লিক করুন', 'Send a password reset / account recovery email via Firebase Auth', lang)}
+                    : b('ইমেইলে পাসওয়ার্ড রিসেট / পুনরুদ্ধার লিংক পাঠাতে নিচের বাটনে ক্লিক করুন', 'Send a password reset / account recovery link to your email', lang)}
                 </div>
               </div>
               <button
@@ -2160,27 +2134,13 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
                 })}
               </div>
             </div>
-            {/* Live RTDB Users Sync & Rules Reference */}
-            <RealtimeAccountSyncPanel
-              lang={lang}
-              role={role}
-              actorId={actorId}
-              actorName={actorName}
-              actorEmail={profileEmail || actorEmail}
-              actorPhone={profilePhone || actorPhone}
-              draftName={profileName}
-              draftEmail={recoveryEmail || profileEmail}
-              draftPhone={recoveryPhone || profilePhone}
-              onSyncLocalProfile={onUpdateActorProfile}
-              showRulesBoxByDefault={role === 'central_admin'}
-            />
           </div>
         );
 
       case 'data_backup':
         return (
           <div className="space-y-4">
-            {/* Firebase Firestore Cloud Backup & Account Restore Card */}
+            {/* Cloud Backup & Account Restore Card */}
             <div
               data-testid="firebase-cloud-backup-card"
               className="rounded-xl border border-indigo-500/30 bg-indigo-50/70 dark:bg-indigo-950/25 p-4 space-y-3"
@@ -2189,20 +2149,20 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
                 <div>
                   <div className="text-sm font-extrabold text-indigo-950 dark:text-indigo-100 flex items-center gap-2">
                     <Database className="w-4 h-4 text-indigo-600 dark:text-indigo-300" />
-                    <span>{b('Firebase ক্লাউড ব্যাকআপ ও অ্যাকাউন্ট রিস্টোর', 'Firebase Cloud Backup & Account Restore', lang)}</span>
+                    <span>{b('ক্লাউড ব্যাকআপ ও অ্যাকাউন্ট রিস্টোর', 'Cloud Backup & Account Restore', lang)}</span>
                   </div>
-                  <p className="text-[11px] text-indigo-800/80 dark:text-indigo-200/80 mt-0.5 break-all">
+                  <p className="text-[11px] text-indigo-800/80 dark:text-indigo-200/80 mt-0.5">
                     {b(
-                      `প্রজেক্ট: ${firebaseProjectInfo.projectId} · Firestore: ${firebaseProjectInfo.databaseId} · RTDB: ${firebaseProjectInfo.databaseURL}`,
-                      `Project: ${firebaseProjectInfo.projectId} · Firestore: ${firebaseProjectInfo.databaseId} · RTDB: ${firebaseProjectInfo.databaseURL}`,
+                      'আপনার বিদ্যালয়ের তথ্য ও পোর্টাল সেটিংস নিরাপদ ক্লাউড ব্যাকআপে সংরক্ষণ ও পুনরুদ্ধার করুন।',
+                      'Safely back up and restore your school portal data and preferences.',
                       lang
                     )}
                   </p>
                 </div>
                 <span className="px-2.5 py-1 rounded-lg bg-white/80 dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 text-[11px] font-bold text-indigo-700 dark:text-indigo-300">
                   {auth.currentUser?.emailVerified
-                    ? b(`Firebase ভেরিফায়েড ✓`, `Firebase Verified ✓`, lang)
-                    : b('Firebase সংযুক্ত', 'Firebase Ready', lang)}
+                    ? b('ভেরিফায়েড ক্লাউড সেশন ✓', 'Verified Cloud Session ✓', lang)
+                    : b('ক্লাউড ব্যাকআপ প্রস্তুত', 'Cloud Backup Ready', lang)}
                 </span>
               </div>
 
@@ -2210,34 +2170,28 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
                 <div className="rounded-lg bg-white/80 dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 px-3 py-2 flex items-center justify-between gap-2">
                   <span className="font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
                     <HardDrive className="w-3.5 h-3.5 text-emerald-600" />
-                    Media Vault (Free)
+                    {b('ডকুমেন্ট ভল্ট', 'Document Vault', lang)}
                   </span>
                   <span className="px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold">
-                    Spark $0
+                    {b('সক্রিয়', 'Active', lang)}
                   </span>
                 </div>
                 <div className="rounded-lg bg-white/80 dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 px-3 py-2 flex items-center justify-between gap-2">
                   <span className="font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
                     <ShieldCheck className="w-3.5 h-3.5 text-teal-600" />
-                    App Check
+                    {b('অ্যাকাউন্ট সুরক্ষা', 'Session Protection', lang)}
                   </span>
-                  <span
-                    className={`px-1.5 py-0.5 rounded font-bold ${
-                      appCheckStatus.configured
-                        ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
-                    }`}
-                  >
-                    {appCheckStatus.configured ? appCheckStatus.mode : 'Free Optional'}
+                  <span className="px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold">
+                    {b('এনক্রিপ্টেড', 'Encrypted', lang)}
                   </span>
                 </div>
                 <div className="rounded-lg bg-white/80 dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 px-3 py-2 flex items-center justify-between gap-2">
                   <span className="font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
                     <Cloud className="w-3.5 h-3.5 text-emerald-600" />
-                    Spark Direct Sync
+                    {b('স্বয়ংক্রিয় সিঙ্ক', 'Auto Cloud Sync', lang)}
                   </span>
                   <span className="px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold">
-                    No Billing ($0)
+                    {b('ফ্রি প্ল্যান', 'Standard Free', lang)}
                   </span>
                 </div>
               </div>
@@ -2251,7 +2205,7 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
                   className="h-10 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
                 >
                   <Save className="w-4 h-4" />
-                  <span>{b('ক্লাউডে ব্যাকআপ সংরক্ষণ করুন', 'Save Cloud Backup to Firestore', lang)}</span>
+                  <span>{b('ক্লাউডে ব্যাকআপ সংরক্ষণ করুন', 'Save Cloud Backup', lang)}</span>
                 </button>
                 <button
                   type="button"
@@ -2271,7 +2225,7 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
                   <span>
                     {storageDocBusy
                       ? b('সংরক্ষণ হচ্ছে...', 'Saving...', lang)
-                      : b('ডকুমেন্ট আপলোড (ফ্রি ভল্ট)', 'Upload Doc (Free Vault)', lang)}
+                      : b('ডকুমেন্ট আপলোড করুন', 'Upload Document', lang)}
                   </span>
                   <input
                     type="file"
@@ -2294,8 +2248,8 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
                             setStorageDocUrl(res.url);
                             setCloudBackupMessage(
                               b(
-                                `ফ্রি Firestore ভল্টে ডকুমেন্ট সংরক্ষিত হয়েছে (${res.path})।`,
-                                `Saved to Free Firestore Vault (${res.path}).`,
+                                'ডকুমেন্ট নিরাপদে সংরক্ষিত হয়েছে।',
+                                'Document saved securely.',
                                 lang
                               )
                             );
