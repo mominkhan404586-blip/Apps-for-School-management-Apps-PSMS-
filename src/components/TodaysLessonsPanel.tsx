@@ -76,7 +76,8 @@ export const TodaysLessonsPanel: React.FC<TodaysLessonsPanelProps> = ({
   compactSummaryOnly = false,
   onViewAllClick,
 }) => {
-  const [selectedDate, setSelectedDate] = useState('2026-11-19');
+  const todayIso = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const [selectedDate, setSelectedDate] = useState(todayIso);
   const [classFilter, setClassFilter] = useState('all');
   const [subjectFilter, setSubjectFilter] = useState('all');
   const [teacherFilter, setTeacherFilter] = useState('all');
@@ -95,7 +96,7 @@ export const TodaysLessonsPanel: React.FC<TodaysLessonsPanelProps> = ({
 
   const [draftLessonTitle, setDraftLessonTitle] = useState('');
   const [draftHomeworkText, setDraftHomeworkText] = useState('');
-  const [draftDueDate, setDraftDueDate] = useState('2026-11-20');
+  const [draftDueDate, setDraftDueDate] = useState(todayIso);
   const [draftAttachment, setDraftAttachment] = useState('');
 
   const scopedLessons = useMemo(() => {
@@ -118,7 +119,7 @@ export const TodaysLessonsPanel: React.FC<TodaysLessonsPanelProps> = ({
   }, [dailyLessons, role, schoolId, student, teacher, selectedDate, classFilter, subjectFilter, teacherFilter]);
 
   const studentCounts = useMemo(() => {
-    const targetId = student?.id ?? 'stu-rahim';
+    const targetId = student?.id ?? '';
     let completed = 0;
     let pending = 0;
     let overdue = 0;
@@ -193,8 +194,8 @@ export const TodaysLessonsPanel: React.FC<TodaysLessonsPanelProps> = ({
 
     onPublishDailyLesson({
       schoolId,
-      academicYear: '২০২৬ শিক্ষাবর্ষ',
-      date: '2026-11-19',
+      academicYear: String(new Date().getFullYear()),
+      date: todayIso,
       className: activeDraftAssignment.className,
       section: activeDraftAssignment.section,
       subjectBn: activeDraftAssignment.subjectBn,
@@ -263,7 +264,7 @@ export const TodaysLessonsPanel: React.FC<TodaysLessonsPanelProps> = ({
             >
               {uniqueDates.map((dt) => (
                 <option key={dt} value={dt}>
-                  {dt === '2026-11-19' ? `${dt} (${b('আজ', 'Today', lang)})` : dt}
+                  {dt === todayIso ? `${dt} (${b('আজ', 'Today', lang)})` : dt}
                 </option>
               ))}
               <option value="all">{b('সকল তারিখ (History)', 'All Dates (History)', lang)}</option>
@@ -316,7 +317,7 @@ export const TodaysLessonsPanel: React.FC<TodaysLessonsPanelProps> = ({
             {myAssignments.map((asg) => {
               const published = dailyLessons.some(
                 (l) =>
-                  l.date === '2026-11-19' &&
+                  l.date === todayIso &&
                   l.className === asg.className &&
                   l.subjectEn.toLowerCase() === asg.subjectEn.toLowerCase() &&
                   l.teacherId === teacher.id
@@ -412,8 +413,8 @@ export const TodaysLessonsPanel: React.FC<TodaysLessonsPanelProps> = ({
                 </tr>
               ) : (
                 scopedLessons.map((item, idx) => {
-                  const targetStudentId = student?.id ?? 'stu-rahim';
-                  const st: DailyLessonStatus = item.studentStates[targetStudentId] ?? 'pending';
+                  const targetStudentId = student?.id ?? '';
+                  const st: DailyLessonStatus = targetStudentId ? (item.studentStates[targetStudentId] ?? 'pending') : 'pending';
                   const stMeta = STATUS_LABELS[st];
 
                   // For Teacher/Admin, show class completion count

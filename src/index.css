@@ -51,6 +51,10 @@
 }
 
 @media print {
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
+  }
   .no-print {
     display: none !important;
   }
@@ -79,4 +83,36 @@
   body.printing-exam-pdf-report .exam-pdf-print-portal {
     display: block !important;
   }
+  body.printing-student-id-card,
+  body.printing-attendance-report {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  body.printing-student-id-card #root,
+  body.printing-attendance-report #root {
+    display: none !important;
+  }
+  body.printing-student-id-card .student-id-print-portal,
+  body.printing-attendance-report .attendance-report-print-portal {
+    display: block !important;
+    width: 100% !important;
+    max-width: 190mm !important;
+    margin: 0 auto !important;
+    page-break-inside: avoid !important;
+  }
+  .student-id-print-card {
+    width: 85.6mm !important;
+    min-height: 54mm !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 6px !important;
+    padding: 4mm !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+    break-inside: avoid !important;
+  }
 }
+

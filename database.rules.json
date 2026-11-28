@@ -1,1 +1,254 @@
-{"rules":{".read":false,".write":false,"admins":{".read":"auth!=null&&auth.token.email_verified==true&&((auth.token.email=='mominkhan404586@gmail.com'||root.child('admins').child(auth.uid).child('accessLevel').val()=='Super Central Admin'))",".write":"auth!=null&&auth.token.email_verified==true&&((auth.token.email=='mominkhan404586@gmail.com'||root.child('admins').child(auth.uid).child('accessLevel').val()=='Super Central Admin'))","$uid":{".read":"auth!=null&&auth.token.email_verified==true&&(auth.uid==$uid)",".validate":"newData.hasChildren(['uid','email','displayName','accessLevel','updatedAt'])","uid":{".validate":"newData.isString()&&newData.val()==$uid"},"email":{".validate":"newData.isString()&&newData.val().length<=254&&newData.val().matches(/^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/)"},"displayName":{".validate":"newData.isString()&&newData.val().length>=2&&newData.val().length<=120"},"accessLevel":{".validate":"newData.val()=='Super Central Admin'||newData.val()=='Audit Officer'||newData.val()=='Regional Reviewer'"},"createdAt":{".validate":"newData.isNumber()||newData.isString()"},"updatedAt":{".validate":"newData.isNumber()||newData.isString()"},"$other":{".validate":false}}},"users":{".indexOn":["role","status","schoolId","email"],".read":"auth!=null&&auth.token.email_verified==true&&((auth.token.email=='mominkhan404586@gmail.com'||root.child('admins').child(auth.uid).child('accessLevel').val()=='Super Central Admin')||root.child('admins').child(auth.uid).exists())","$uid":{".read":"auth!=null&&auth.token.email_verified==true&&(auth.uid==$uid||(root.child('users').child(auth.uid).child('status').val()=='active'&&root.child('users').child(auth.uid).child('role').val()=='school_admin'&&data.child('schoolId').val()==root.child('users').child(auth.uid).child('schoolId').val()))",".write":"auth!=null&&auth.token.email_verified==true&&((auth.token.email=='mominkhan404586@gmail.com'||root.child('admins').child(auth.uid).child('accessLevel').val()=='Super Central Admin')||(newData.exists()&&((root.child('users').child(auth.uid).child('status').val()=='active'&&root.child('users').child(auth.uid).child('role').val()=='school_admin'&&(!data.exists()||data.child('schoolId').val()==root.child('users').child(auth.uid).child('schoolId').val())&&newData.child('schoolId').val()==root.child('users').child(auth.uid).child('schoolId').val()&&(newData.child('role').val()=='teacher'||newData.child('role').val()=='student'||newData.child('role').val()=='guardian'))||(auth.uid==$uid&&((!data.exists()&&newData.child('role').val()=='pending'&&newData.child('status').val()=='pending')||(data.exists()&&newData.child('role').val()==data.child('role').val()&&newData.child('status').val()==data.child('status').val()&&data.child('schoolId').val()==newData.child('schoolId').val()&&data.child('teacherId').val()==newData.child('teacherId').val()&&data.child('studentId').val()==newData.child('studentId').val()))))))",".validate":"newData.hasChildren(['uid','email','displayName','role','status','updatedAt'])","uid":{".validate":"newData.isString()&&newData.val()==$uid"},"email":{".validate":"newData.isString()&&newData.val().length<=254&&newData.val().matches(/^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/)"},"displayName":{".validate":"newData.isString()&&newData.val().length>=2&&newData.val().length<=120"},"phone":{".validate":"newData.isString()&&(newData.val()==''||newData.val().matches(/^[+0-9()\\-\\s]{6,24}$/))"},"recoveryEmail":{".validate":"newData.isString()&&(newData.val()==''||(newData.val().length<=254&&newData.val().matches(/^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/)))"},"recoveryPhone":{".validate":"newData.isString()&&(newData.val()==''||newData.val().matches(/^[+0-9()\\-\\s]{6,24}$/))"},"role":{".validate":"newData.val()=='central_admin'||newData.val()=='school_admin'||newData.val()=='teacher'||newData.val()=='guardian'||newData.val()=='student'||newData.val()=='pending'"},"status":{".validate":"newData.val()=='active'||newData.val()=='pending'||newData.val()=='suspended'||newData.val()=='rejected'||newData.val()=='deactivated'"},"isActive":{".validate":"newData.isBoolean()"},"schoolId":{".validate":"newData.isString()&&newData.val().length<=64"},"teacherId":{".validate":"newData.isString()&&newData.val().length<=64"},"studentId":{".validate":"newData.isString()&&newData.val().length<=64"},"updatedByUid":{".validate":"newData.isString()&&newData.val().length<=128"},"createdAt":{".validate":"newData.isNumber()||newData.isString()"},"updatedAt":{".validate":"newData.isNumber()||newData.isString()"},"$other":{".validate":false}}},"schools":{".read":"auth!=null&&auth.token.email_verified==true&&((auth.token.email=='mominkhan404586@gmail.com'||root.child('admins').child(auth.uid).child('accessLevel').val()=='Super Central Admin')||root.child('admins').child(auth.uid).exists())",".write":"auth!=null&&auth.token.email_verified==true&&((auth.token.email=='mominkhan404586@gmail.com'||root.child('admins').child(auth.uid).child('accessLevel').val()=='Super Central Admin'))","$schoolId":{"profile":{".read":"auth!=null&&auth.token.email_verified==true&&(root.child('users').child(auth.uid).child('status').val()=='active'&&root.child('users').child(auth.uid).child('schoolId').val()==$schoolId)",".write":"auth!=null&&auth.token.email_verified==true&&(root.child('users').child(auth.uid).child('status').val()=='active'&&root.child('users').child(auth.uid).child('schoolId').val()==$schoolId&&root.child('users').child(auth.uid).child('role').val()=='school_admin')",".validate":"newData.hasChildren(['schoolId','nameBn','status','updatedAt'])","schoolId":{".validate":"newData.val()==$schoolId"},"nameBn":{".validate":"newData.isString()&&newData.val().length<=200"},"status":{".validate":"newData.val()=='active'||newData.val()=='pending'||newData.val()=='under_review'||newData.val()=='suspended'||newData.val()=='deactivated'"},"updatedAt":{".validate":"newData.isNumber()||newData.isString()"}},"teachers":{".read":"auth!=null&&auth.token.email_verified==true&&(root.child('users').child(auth.uid).child('status').val()=='active'&&root.child('users').child(auth.uid).child('schoolId').val()==$schoolId)","$teacherId":{".write":"auth!=null&&auth.token.email_verified==true&&(root.child('users').child(auth.uid).child('status').val()=='active'&&root.child('users').child(auth.uid).child('schoolId').val()==$schoolId&&(root.child('users').child(auth.uid).child('role').val()=='school_admin'||(root.child('users').child(auth.uid).child('role').val()=='teacher'&&root.child('users').child(auth.uid).child('teacherId').val()==$teacherId)))",".validate":"newData.hasChildren(['teacherId','schoolId','nameBn','status','updatedAt'])","teacherId":{".validate":"newData.val()==$teacherId"},"schoolId":{".validate":"newData.val()==$schoolId"},"nameBn":{".validate":"newData.isString()&&newData.val().length<=120"},"status":{".validate":"newData.val()=='active'||newData.val()=='pending'||newData.val()=='suspended'"},"updatedAt":{".validate":"newData.isNumber()||newData.isString()"}}},"students":{".read":"auth!=null&&auth.token.email_verified==true&&(root.child('users').child(auth.uid).child('status').val()=='active'&&root.child('users').child(auth.uid).child('schoolId').val()==$schoolId&&(root.child('users').child(auth.uid).child('role').val()=='school_admin'||root.child('users').child(auth.uid).child('role').val()=='teacher'))","$studentId":{".read":"auth!=null&&auth.token.email_verified==true&&(root.child('users').child(auth.uid).child('status').val()=='active'&&root.child('users').child(auth.uid).child('schoolId').val()==$schoolId&&(root.child('users').child(auth.uid).child('role').val()=='student'||root.child('users').child(auth.uid).child('role').val()=='guardian')&&root.child('users').child(auth.uid).child('studentId').val()==$studentId)",".write":"auth!=null&&auth.token.email_verified==true&&(root.child('users').child(auth.uid).child('status').val()=='active'&&root.child('users').child(auth.uid).child('schoolId').val()==$schoolId&&((root.child('users').child(auth.uid).child('role').val()=='school_admin'||root.child('users').child(auth.uid).child('role').val()=='teacher')||((root.child('users').child(auth.uid).child('role').val()=='student'||root.child('users').child(auth.uid).child('role').val()=='guardian')&&root.child('users').child(auth.uid).child('studentId').val()==$studentId&&data.exists()&&newData.child('status').val()==data.child('status').val())))",".validate":"newData.hasChildren(['studentId','schoolId','nameBn','status','updatedAt'])","studentId":{".validate":"newData.val()==$studentId"},"schoolId":{".validate":"newData.val()==$schoolId"},"nameBn":{".validate":"newData.isString()&&newData.val().length<=120"},"status":{".validate":"newData.val()=='active'||newData.val()=='pending'||newData.val()=='suspended'"},"updatedAt":{".validate":"newData.isNumber()||newData.isString()"}}},"attendance":{".read":"auth!=null&&auth.token.email_verified==true&&(root.child('users').child(auth.uid).child('status').val()=='active'&&root.child('users').child(auth.uid).child('schoolId').val()==$schoolId&&(root.child('users').child(auth.uid).child('role').val()=='school_admin'||root.child('users').child(auth.uid).child('role').val()=='teacher'))","$recordId":{".read":"auth!=null&&auth.token.email_verified==true&&(root.child('users').child(auth.uid).child('status').val()=='active'&&root.child('users').child(auth.uid).child('schoolId').val()==$schoolId&&(root.child('users').child(auth.uid).child('role').val()=='student'||root.child('users').child(auth.uid).child('role').val()=='guardian')&&data.child('studentId').val()==root.child('users').child(auth.uid).child('studentId').val())",".write":"auth!=null&&auth.token.email_verified==true&&(root.child('users').child(auth.uid).child('status').val()=='active'&&root.child('users').child(auth.uid).child('schoolId').val()==$schoolId&&(root.child('users').child(auth.uid).child('role').val()=='school_admin'||root.child('users').child(auth.uid).child('role').val()=='teacher'))"}},"notices":{".read":"auth!=null&&auth.token.email_verified==true&&(root.child('users').child(auth.uid).child('status').val()=='active'&&root.child('users').child(auth.uid).child('schoolId').val()==$schoolId)",".write":"auth!=null&&auth.token.email_verified==true&&(root.child('users').child(auth.uid).child('status').val()=='active'&&root.child('users').child(auth.uid).child('schoolId').val()==$schoolId&&root.child('users').child(auth.uid).child('role').val()=='school_admin')"},"results":{".read":"auth!=null&&auth.token.email_verified==true&&(root.child('users').child(auth.uid).child('status').val()=='active'&&root.child('users').child(auth.uid).child('schoolId').val()==$schoolId&&(root.child('users').child(auth.uid).child('role').val()=='school_admin'||root.child('users').child(auth.uid).child('role').val()=='teacher'))","$recordId":{".read":"auth!=null&&auth.token.email_verified==true&&(root.child('users').child(auth.uid).child('status').val()=='active'&&root.child('users').child(auth.uid).child('schoolId').val()==$schoolId&&(root.child('users').child(auth.uid).child('role').val()=='student'||root.child('users').child(auth.uid).child('role').val()=='guardian')&&data.child('studentId').val()==root.child('users').child(auth.uid).child('studentId').val())",".write":"auth!=null&&auth.token.email_verified==true&&(root.child('users').child(auth.uid).child('status').val()=='active'&&root.child('users').child(auth.uid).child('schoolId').val()==$schoolId&&(root.child('users').child(auth.uid).child('role').val()=='school_admin'||root.child('users').child(auth.uid).child('role').val()=='teacher'))"}}}},"account_snapshots":{".read":"auth!=null&&auth.token.email_verified==true&&((auth.token.email=='mominkhan404586@gmail.com'||root.child('admins').child(auth.uid).child('accessLevel').val()=='Super Central Admin'))",".write":"auth!=null&&auth.token.email_verified==true&&((auth.token.email=='mominkhan404586@gmail.com'||root.child('admins').child(auth.uid).child('accessLevel').val()=='Super Central Admin'))","$uid":{".read":"auth!=null&&auth.token.email_verified==true&&(auth.uid==$uid)",".write":"auth!=null&&auth.token.email_verified==true&&(auth.uid==$uid&&newData.exists())",".validate":"newData.hasChildren(['uid','role','displayName','updatedAt'])","uid":{".validate":"newData.val()==$uid"},"settingsJson":{".validate":"newData.isString()&&newData.val().length<=20000"},"updatedAt":{".validate":"newData.isNumber()||newData.isString()"}}},"user_change_logs":{".read":"auth!=null&&auth.token.email_verified==true&&((auth.token.email=='mominkhan404586@gmail.com'||root.child('admins').child(auth.uid).child('accessLevel').val()=='Super Central Admin')||root.child('admins').child(auth.uid).exists())",".write":"auth!=null&&auth.token.email_verified==true&&((auth.token.email=='mominkhan404586@gmail.com'||root.child('admins').child(auth.uid).child('accessLevel').val()=='Super Central Admin'))","$uid":{".indexOn":["updatedAt"],".read":"auth!=null&&auth.token.email_verified==true&&(auth.uid==$uid)","$logId":{".write":"auth!=null&&auth.token.email_verified==true&&(newData.exists()&&newData.child('changedByUid').val()==auth.uid&&(auth.uid==$uid||(root.child('users').child(auth.uid).child('status').val()=='active'&&root.child('users').child(auth.uid).child('role').val()=='school_admin'&&root.child('users').child($uid).child('schoolId').val()==root.child('users').child(auth.uid).child('schoolId').val())))",".validate":"newData.hasChildren(['uid','changedByUid','field','oldValue','newValue','validationStatus','updatedAt'])","uid":{".validate":"newData.val()==$uid"},"validationStatus":{".validate":"newData.val()=='valid'||newData.val()=='invalid'"},"updatedAt":{".validate":"newData.isNumber()||newData.isString()"}}}},"rtdb_sync_tests":{".read":"auth!=null&&auth.token.email_verified==true&&((auth.token.email=='mominkhan404586@gmail.com'||root.child('admins').child(auth.uid).child('accessLevel').val()=='Super Central Admin'))",".write":"auth!=null&&auth.token.email_verified==true&&((auth.token.email=='mominkhan404586@gmail.com'||root.child('admins').child(auth.uid).child('accessLevel').val()=='Super Central Admin'))","$uid":{".read":"auth!=null&&auth.token.email_verified==true&&(auth.uid==$uid)",".write":"auth!=null&&auth.token.email_verified==true&&(auth.uid==$uid&&newData.exists())",".validate":"newData.hasChildren(['probeId','actorUid','message','clientSentAtMs','serverAckAt'])","actorUid":{".validate":"newData.val()==$uid"},"message":{".validate":"newData.isString()&&newData.val().length<=240"}}},"presence":{".read":"auth!=null&&auth.token.email_verified==true&&((auth.token.email=='mominkhan404586@gmail.com'||root.child('admins').child(auth.uid).child('accessLevel').val()=='Super Central Admin')||root.child('admins').child(auth.uid).exists())",".write":"auth!=null&&auth.token.email_verified==true&&((auth.token.email=='mominkhan404586@gmail.com'||root.child('admins').child(auth.uid).child('accessLevel').val()=='Super Central Admin'))","$uid":{".read":"auth!=null&&auth.token.email_verified==true&&(auth.uid==$uid)",".write":"auth!=null&&auth.token.email_verified==true&&(auth.uid==$uid)",".validate":"newData.hasChildren(['online','lastSeen'])","online":{".validate":"newData.isBoolean()"},"lastSeen":{".validate":"newData.isNumber()||newData.isString()"}}}}}
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "admins": {
+      ".read": "auth!=null&&auth.token.email_verified==true&&((auth.token.email=='mominkhan404586@gmail.com'||root.child('admins').child(auth.uid).child('accessLevel').val()=='Super Central Admin'))",
+      ".write": "auth!=null&&auth.token.email_verified==true&&((auth.token.email=='mominkhan404586@gmail.com'||root.child('admins').child(auth.uid).child('accessLevel').val()=='Super Central Admin'))",
+      "$uid": {
+        ".read": "auth!=null&&auth.token.email_verified==true&&(auth.uid==$uid)",
+        ".validate": "newData.hasChildren(['uid','email','displayName','accessLevel','updatedAt'])",
+        "uid": {
+          ".validate": "newData.isString()&&newData.val()==$uid"
+        },
+        "email": {
+          ".validate": "newData.isString()&&newData.val().length<=254&&newData.val().matches(/^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/)"
+        },
+        "displayName": {
+          ".validate": "newData.isString()&&newData.val().length>=2&&newData.val().length<=120"
+        },
+        "accessLevel": {
+          ".validate": "newData.val()=='Super Central Admin'||newData.val()=='Audit Officer'||newData.val()=='Regional Reviewer'"
+        },
+        "createdAt": {
+          ".validate": "newData.isNumber()||newData.isString()"
+        },
+        "updatedAt": {
+          ".validate": "newData.isNumber()||newData.isString()"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "users": {
+      ".indexOn": [
+        "role",
+        "status",
+        "schoolId",
+        "email"
+      ],
+      ".read": "auth!=null&&auth.token.email_verified==true&&((auth.token.email=='mominkhan404586@gmail.com'||root.child('admins').child(auth.uid).child('accessLevel').val()=='Super Central Admin')||root.child('admins').child(auth.uid).exists())",
+      "$uid": {
+        ".read": "auth!=null&&auth.token.email_verified==true&&(auth.uid==$uid||(root.child('users').child(auth.uid).child('status').val()=='active'&&root.child('users').child(auth.uid).child('role').val()=='school_admin'&&data.child('schoolId').val()==root.child('users').child(auth.uid).child('schoolId').val()))",
+        ".write": "auth!=null&&auth.token.email_verified==true&&((auth.token.email=='mominkhan404586@gmail.com'||root.child('admins').child(auth.uid).child('accessLevel').val()=='Super Central Admin')||(newData.exists()&&((root.child('users').child(auth.uid).child('status').val()=='active'&&root.child('users').child(auth.uid).child('role').val()=='school_admin'&&(!data.exists()||data.child('schoolId').val()==root.child('users').child(auth.uid).child('schoolId').val())&&newData.child('schoolId').val()==root.child('users').child(auth.uid).child('schoolId').val()&&(newData.child('role').val()=='teacher'||newData.child('role').val()=='student'||newData.child('role').val()=='guardian'))||(auth.uid==$uid&&((!data.exists()&&newData.child('role').val()=='pending'&&newData.child('status').val()=='pending')||(data.exists()&&newData.child('role').val()==data.child('role').val()&&newData.child('status').val()==data.child('status').val()&&data.child('schoolId').val()==newData.child('schoolId').val()&&data.child('teacherId').val()==newData.child('teacherId').val()&&data.child('studentId').val()==newData.child('studentId').val()))))))",
+        ".validate": "newData.hasChildren(['uid','email','displayName','role','status','updatedAt'])",
+        "uid": {
+          ".validate": "newData.isString()&&newData.val()==$uid"
+        },
+        "email": {
+          ".validate": "newData.isString()&&newData.val().length<=254&&newData.val().matches(/^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/)"
+        },
+        "displayName": {
+          ".validate": "newData.isString()&&newData.val().length>=2&&newData.val().length<=120"
+        },
+        "phone": {
+          ".validate": "newData.isString()&&(newData.val()==''||newData.val().matches(/^[+0-9()\\-\\s]{6,24}$/))"
+        },
+        "recoveryEmail": {
+          ".validate": "newData.isString()&&(newData.val()==''||(newData.val().length<=254&&newData.val().matches(/^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/)))"
+        },
+        "recoveryPhone": {
+          ".validate": "newData.isString()&&(newData.val()==''||newData.val().matches(/^[+0-9()\\-\\s]{6,24}$/))"
+        },
+        "role": {
+          ".validate": "newData.val()=='central_admin'||newData.val()=='school_admin'||newData.val()=='teacher'||newData.val()=='guardian'||newData.val()=='student'||newData.val()=='pending'"
+        },
+        "status": {
+          ".validate": "newData.val()=='active'||newData.val()=='pending'||newData.val()=='suspended'||newData.val()=='rejected'||newData.val()=='deactivated'"
+        },
+        "isActive": {
+          ".validate": "newData.isBoolean()"
+        },
+        "schoolId": {
+          ".validate": "newData.isString()&&newData.val().length<=64"
+        },
+        "teacherId": {
+          ".validate": "newData.isString()&&newData.val().length<=64"
+        },
+        "studentId": {
+          ".validate": "newData.isString()&&newData.val().length<=64"
+        },
+        "updatedByUid": {
+          ".validate": "newData.isString()&&newData.val().length<=128"
+        },
+        "createdAt": {
+          ".validate": "newData.isNumber()||newData.isString()"
+        },
+        "updatedAt": {
+          ".validate": "newData.isNumber()||newData.isString()"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "schools": {
+      ".read": "auth!=null&&auth.token.email_verified==true&&((auth.token.email=='mominkhan404586@gmail.com'||root.child('admins').child(auth.uid).child('accessLevel').val()=='Super Central Admin')||root.child('admins').child(auth.uid).exists())",
+      ".write": "auth!=null&&auth.token.email_verified==true&&((auth.token.email=='mominkhan404586@gmail.com'||root.child('admins').child(auth.uid).child('accessLevel').val()=='Super Central Admin'))",
+      "$schoolId": {
+        "profile": {
+          ".read": "auth!=null&&auth.token.email_verified==true&&(root.child('users').child(auth.uid).child('status').val()=='active'&&root.child('users').child(auth.uid).child('schoolId').val()==$schoolId)",
+          ".write": "auth!=null&&auth.token.email_verified==true&&(root.child('users').child(auth.uid).child('status').val()=='active'&&root.child('users').child(auth.uid).child('schoolId').val()==$schoolId&&root.child('users').child(auth.uid).child('role').val()=='school_admin')",
+          ".validate": "newData.hasChildren(['schoolId','nameBn','status','updatedAt'])",
+          "schoolId": {
+            ".validate": "newData.val()==$schoolId"
+          },
+          "nameBn": {
+            ".validate": "newData.isString()&&newData.val().length<=200"
+          },
+          "status": {
+            ".validate": "newData.val()=='active'||newData.val()=='pending'||newData.val()=='under_review'||newData.val()=='suspended'||newData.val()=='deactivated'"
+          },
+          "updatedAt": {
+            ".validate": "newData.isNumber()||newData.isString()"
+          }
+        },
+        "teachers": {
+          ".read": "auth!=null&&auth.token.email_verified==true&&(root.child('users').child(auth.uid).child('status').val()=='active'&&root.child('users').child(auth.uid).child('schoolId').val()==$schoolId)",
+          "$teacherId": {
+            ".write": "auth!=null&&auth.token.email_verified==true&&(root.child('users').child(auth.uid).child('status').val()=='active'&&root.child('users').child(auth.uid).child('schoolId').val()==$schoolId&&(root.child('users').child(auth.uid).child('role').val()=='school_admin'||(root.child('users').child(auth.uid).child('role').val()=='teacher'&&root.child('users').child(auth.uid).child('teacherId').val()==$teacherId)))",
+            ".validate": "newData.hasChildren(['teacherId','schoolId','nameBn','status','updatedAt'])",
+            "teacherId": {
+              ".validate": "newData.val()==$teacherId"
+            },
+            "schoolId": {
+              ".validate": "newData.val()==$schoolId"
+            },
+            "nameBn": {
+              ".validate": "newData.isString()&&newData.val().length<=120"
+            },
+            "status": {
+              ".validate": "newData.val()=='active'||newData.val()=='pending'||newData.val()=='suspended'"
+            },
+            "updatedAt": {
+              ".validate": "newData.isNumber()||newData.isString()"
+            }
+          }
+        },
+        "students": {
+          ".read": "auth!=null&&auth.token.email_verified==true&&(root.child('users').child(auth.uid).child('status').val()=='active'&&root.child('users').child(auth.uid).child('schoolId').val()==$schoolId&&(root.child('users').child(auth.uid).child('role').val()=='school_admin'||root.child('users').child(auth.uid).child('role').val()=='teacher'))",
+          "$studentId": {
+            ".read": "auth!=null&&auth.token.email_verified==true&&(root.child('users').child(auth.uid).child('status').val()=='active'&&root.child('users').child(auth.uid).child('schoolId').val()==$schoolId&&(root.child('users').child(auth.uid).child('role').val()=='student'||root.child('users').child(auth.uid).child('role').val()=='guardian')&&root.child('users').child(auth.uid).child('studentId').val()==$studentId)",
+            ".write": "auth!=null&&auth.token.email_verified==true&&(root.child('users').child(auth.uid).child('status').val()=='active'&&root.child('users').child(auth.uid).child('schoolId').val()==$schoolId&&((root.child('users').child(auth.uid).child('role').val()=='school_admin'||root.child('users').child(auth.uid).child('role').val()=='teacher')||((root.child('users').child(auth.uid).child('role').val()=='student'||root.child('users').child(auth.uid).child('role').val()=='guardian')&&root.child('users').child(auth.uid).child('studentId').val()==$studentId&&data.exists()&&newData.child('status').val()==data.child('status').val())))",
+            ".validate": "newData.hasChildren(['studentId','schoolId','nameBn','status','updatedAt'])",
+            "studentId": {
+              ".validate": "newData.val()==$studentId"
+            },
+            "schoolId": {
+              ".validate": "newData.val()==$schoolId"
+            },
+            "nameBn": {
+              ".validate": "newData.isString()&&newData.val().length<=120"
+            },
+            "status": {
+              ".validate": "newData.val()=='active'||newData.val()=='pending'||newData.val()=='suspended'"
+            },
+            "updatedAt": {
+              ".validate": "newData.isNumber()||newData.isString()"
+            }
+          }
+        },
+        "attendance": {
+          ".read": "auth!=null&&auth.token.email_verified==true&&(root.child('users').child(auth.uid).child('status').val()=='active'&&root.child('users').child(auth.uid).child('schoolId').val()==$schoolId&&(root.child('users').child(auth.uid).child('role').val()=='school_admin'||root.child('users').child(auth.uid).child('role').val()=='teacher'))",
+          "$recordId": {
+            ".read": "auth!=null&&auth.token.email_verified==true&&(root.child('users').child(auth.uid).child('status').val()=='active'&&root.child('users').child(auth.uid).child('schoolId').val()==$schoolId&&(root.child('users').child(auth.uid).child('role').val()=='student'||root.child('users').child(auth.uid).child('role').val()=='guardian')&&data.child('studentId').val()==root.child('users').child(auth.uid).child('studentId').val())",
+            ".write": "auth!=null&&auth.token.email_verified==true&&(root.child('users').child(auth.uid).child('status').val()=='active'&&root.child('users').child(auth.uid).child('schoolId').val()==$schoolId&&(root.child('users').child(auth.uid).child('role').val()=='school_admin'||root.child('users').child(auth.uid).child('role').val()=='teacher'))"
+          }
+        },
+        "notices": {
+          ".read": "auth!=null&&auth.token.email_verified==true&&(root.child('users').child(auth.uid).child('status').val()=='active'&&root.child('users').child(auth.uid).child('schoolId').val()==$schoolId)",
+          ".write": "auth!=null&&auth.token.email_verified==true&&(root.child('users').child(auth.uid).child('status').val()=='active'&&root.child('users').child(auth.uid).child('schoolId').val()==$schoolId&&root.child('users').child(auth.uid).child('role').val()=='school_admin')"
+        },
+        "results": {
+          ".read": "auth!=null&&auth.token.email_verified==true&&(root.child('users').child(auth.uid).child('status').val()=='active'&&root.child('users').child(auth.uid).child('schoolId').val()==$schoolId&&(root.child('users').child(auth.uid).child('role').val()=='school_admin'||root.child('users').child(auth.uid).child('role').val()=='teacher'))",
+          "$recordId": {
+            ".read": "auth!=null&&auth.token.email_verified==true&&(root.child('users').child(auth.uid).child('status').val()=='active'&&root.child('users').child(auth.uid).child('schoolId').val()==$schoolId&&(root.child('users').child(auth.uid).child('role').val()=='student'||root.child('users').child(auth.uid).child('role').val()=='guardian')&&data.child('studentId').val()==root.child('users').child(auth.uid).child('studentId').val())",
+            ".write": "auth!=null&&auth.token.email_verified==true&&(root.child('users').child(auth.uid).child('status').val()=='active'&&root.child('users').child(auth.uid).child('schoolId').val()==$schoolId&&(root.child('users').child(auth.uid).child('role').val()=='school_admin'||root.child('users').child(auth.uid).child('role').val()=='teacher'))"
+          }
+        }
+      }
+    },
+    "account_snapshots": {
+      ".read": "auth!=null&&auth.token.email_verified==true&&((auth.token.email=='mominkhan404586@gmail.com'||root.child('admins').child(auth.uid).child('accessLevel').val()=='Super Central Admin'))",
+      ".write": "auth!=null&&auth.token.email_verified==true&&((auth.token.email=='mominkhan404586@gmail.com'||root.child('admins').child(auth.uid).child('accessLevel').val()=='Super Central Admin'))",
+      "$uid": {
+        ".read": "auth!=null&&auth.token.email_verified==true&&(auth.uid==$uid)",
+        ".write": "auth!=null&&auth.token.email_verified==true&&(auth.uid==$uid&&newData.exists())",
+        ".validate": "newData.hasChildren(['uid','role','displayName','updatedAt'])",
+        "uid": {
+          ".validate": "newData.val()==$uid"
+        },
+        "settingsJson": {
+          ".validate": "newData.isString()&&newData.val().length<=20000"
+        },
+        "updatedAt": {
+          ".validate": "newData.isNumber()||newData.isString()"
+        }
+      }
+    },
+    "user_change_logs": {
+      ".read": "auth!=null&&auth.token.email_verified==true&&((auth.token.email=='mominkhan404586@gmail.com'||root.child('admins').child(auth.uid).child('accessLevel').val()=='Super Central Admin')||root.child('admins').child(auth.uid).exists())",
+      ".write": "auth!=null&&auth.token.email_verified==true&&((auth.token.email=='mominkhan404586@gmail.com'||root.child('admins').child(auth.uid).child('accessLevel').val()=='Super Central Admin'))",
+      "$uid": {
+        ".indexOn": [
+          "updatedAt"
+        ],
+        ".read": "auth!=null&&auth.token.email_verified==true&&(auth.uid==$uid)",
+        "$logId": {
+          ".write": "auth!=null&&auth.token.email_verified==true&&(newData.exists()&&newData.child('changedByUid').val()==auth.uid&&(auth.uid==$uid||(root.child('users').child(auth.uid).child('status').val()=='active'&&root.child('users').child(auth.uid).child('role').val()=='school_admin'&&root.child('users').child($uid).child('schoolId').val()==root.child('users').child(auth.uid).child('schoolId').val())))",
+          ".validate": "newData.hasChildren(['uid','changedByUid','field','oldValue','newValue','validationStatus','updatedAt'])",
+          "uid": {
+            ".validate": "newData.val()==$uid"
+          },
+          "validationStatus": {
+            ".validate": "newData.val()=='valid'||newData.val()=='invalid'"
+          },
+          "updatedAt": {
+            ".validate": "newData.isNumber()||newData.isString()"
+          }
+        }
+      }
+    },
+    "rtdb_sync_tests": {
+      ".read": "auth!=null&&auth.token.email_verified==true&&((auth.token.email=='mominkhan404586@gmail.com'||root.child('admins').child(auth.uid).child('accessLevel').val()=='Super Central Admin'))",
+      ".write": "auth!=null&&auth.token.email_verified==true&&((auth.token.email=='mominkhan404586@gmail.com'||root.child('admins').child(auth.uid).child('accessLevel').val()=='Super Central Admin'))",
+      "$uid": {
+        ".read": "auth!=null&&auth.token.email_verified==true&&(auth.uid==$uid)",
+        ".write": "auth!=null&&auth.token.email_verified==true&&(auth.uid==$uid&&newData.exists())",
+        ".validate": "newData.hasChildren(['probeId','actorUid','message','clientSentAtMs','serverAckAt'])",
+        "actorUid": {
+          ".validate": "newData.val()==$uid"
+        },
+        "message": {
+          ".validate": "newData.isString()&&newData.val().length<=240"
+        }
+      }
+    },
+    "presence": {
+      ".read": "auth!=null&&auth.token.email_verified==true&&((auth.token.email=='mominkhan404586@gmail.com'||root.child('admins').child(auth.uid).child('accessLevel').val()=='Super Central Admin')||root.child('admins').child(auth.uid).exists())",
+      ".write": "auth!=null&&auth.token.email_verified==true&&((auth.token.email=='mominkhan404586@gmail.com'||root.child('admins').child(auth.uid).child('accessLevel').val()=='Super Central Admin'))",
+      "$uid": {
+        ".read": "auth!=null&&auth.token.email_verified==true&&(auth.uid==$uid)",
+        ".write": "auth!=null&&auth.token.email_verified==true&&(auth.uid==$uid)",
+        ".validate": "newData.hasChildren(['online','lastSeen'])",
+        "online": {
+          ".validate": "newData.isBoolean()"
+        },
+        "lastSeen": {
+          ".validate": "newData.isNumber()||newData.isString()"
+        }
+      }
+    }
+  }
+}

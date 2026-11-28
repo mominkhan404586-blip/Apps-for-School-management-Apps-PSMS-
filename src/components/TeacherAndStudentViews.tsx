@@ -291,7 +291,11 @@ export const TeacherPortalView: React.FC<TeacherPortalViewProps> = ({
         </div>
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4">
           <div className="text-xs text-slate-500">{b('সিলেবাস অগ্রগতি', 'Syllabus Progress', lang)}</div>
-          <div className="text-2xl font-bold tabular-nums text-emerald-700 dark:text-emerald-400 mt-1">88%</div>
+          <div className="text-2xl font-bold tabular-nums text-emerald-700 dark:text-emerald-400 mt-1">
+            {routineSlots.length > 0
+              ? `${Math.round((routineSlots.filter((s) => s.status === 'completed').length / routineSlots.length) * 100)}%`
+              : '0%'}
+          </div>
         </div>
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4">
           <div className="text-xs text-slate-500">{b('পারফরম্যান্স', 'Performance', lang)}</div>

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ArrowLeft,
   ArrowRightLeft,
@@ -31,6 +32,7 @@ import type {
   PermissionKey,
   Role,
   SchoolRecord,
+  StudentAttendanceHistoryEntry,
   StudentChangeRequest,
   StudentRecord,
   StudentStatus,
@@ -41,6 +43,7 @@ import { deriveVerificationStatus } from '../utils/governanceAndVerification';
 import { sanitizeActorDisplayForRole } from '../utils/adminAndTeacherIdentityEngine';
 import { b } from '../i18n/translations';
 import { TrendLineChart } from './Charts';
+import { StudentQrIdCardPanel } from './StudentQrIdCardPanel';
 
 export type StudentProfileSubTab =
   | 'overview'
@@ -77,6 +80,7 @@ interface StudentProfileViewProps {
   onOpenStudentReport?: (student: StudentRecord) => void;
   onInspectStudent?: (student: StudentRecord) => void;
   onEditStudentPhoto?: (student: StudentRecord) => void;
+  attendanceHistory?: StudentAttendanceHistoryEntry[];
 }
 
 export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
@@ -102,9 +106,30 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
   onOpenStudentReport,
   onInspectStudent,
   onEditStudentPhoto,
+  attendanceHistory = [],
 }) => {
   const [subTab, setSubTab] = useState<StudentProfileSubTab>(initialSubTab);
   const bmi = calculateBMI(student.heightCm, student.weightKg);
+  const studentAttendanceLogs = attendanceHistory.filter((h) => h.studentId === student.id);
+
+  useEffect(() => {
+    const cleanup = () => {
+      document.body.classList.remove('printing-attendance-report');
+    };
+    window.addEventListener('afterprint', cleanup);
+    return () => {
+      window.removeEventListener('afterprint', cleanup);
+      cleanup();
+    };
+  }, []);
+
+  const handlePrintAttendanceReport = () => {
+    document.body.classList.remove('printing-student-id-card', 'printing-qr-stickers', 'printing-exam-pdf-report');
+    document.body.classList.add('printing-attendance-report');
+    setTimeout(() => {
+      window.print();
+    }, 60);
+  };
 
   const can = (k: PermissionKey) => (hasPermission ? hasPermission(k) : true);
   const verificationStatus = deriveVerificationStatus(student);
@@ -313,11 +338,12 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
             )}
             <button
               type="button"
-              onClick={() => window.print()}
+              data-testid="print-student-attendance-report-btn"
+              onClick={handlePrintAttendanceReport}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap cursor-pointer"
             >
               <Printer className="w-3.5 h-3.5 shrink-0" />
-              {b('QR প্রিন্ট', 'Print QR', lang)}
+              {b('হাজিরা রিপোর্ট প্রিন্ট (A4)', 'Print Attendance (A4)', lang)}
             </button>
           </div>
         </div>
@@ -388,9 +414,10 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
         </div>
       </div>
 
-      {/* Sub-tab 1: All 8 Required Student Profile Sections */}
+      {/* Sub-tab 1: All 8 Required Student Profile Sections + Printable Digital QR ID */}
       {subTab === 'overview' && (
         <div className="space-y-5 text-xs">
+          <StudentQrIdCardPanel lang={lang} student={student} school={school} />
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
             {/* 1. Personal Information */}
             <div className="lg:col-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-3">
@@ -895,6 +922,62 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
           </div>
         </div>
       )}
+
+      {typeof document !== 'undefined' &&
+        createPortal(
+          <div className="hidden attendance-report-print-portal">
+            <div className="p-6 bg-white text-slate-900 space-y-5 text-xs">
+              <div className="border-b border-slate-300 pb-3 flex items-start justify-between">
+                <div>
+                  <h1 className="text-lg font-bold">{school?.nameBn ?? student.schoolNameBn}</h1>
+                  <div className="text-slate-600">{school?.nameEn ?? student.schoolNameEn ?? ''}</div>
+                  <div className="text-[11px] font-mono text-slate-500 mt-0.5">School Code: {school?.code ?? student.schoolId}</div>
+                </div>
+                <div className="text-right">
+                  <div className="font-bold text-sm">STUDENT ATTENDANCE REPORT (A4)</div>
+                  <div className="font-mono text-[11px] text-slate-600">Printed: {new Date().toISOString().slice(0, 10)}</div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 border border-slate-300 rounded-lg p-3">
+                <div><span className="text-slate-500">Student Name:</span> <strong className="block">{student.nameBn}</strong></div>
+                <div><span className="text-slate-500">Unique ID:</span> <strong className="block font-mono">{student.permanentId}</strong></div>
+                <div><span className="text-slate-500">Class / Section:</span> <strong className="block">{student.className} ({student.section}) · Roll #{student.roll}</strong></div>
+                <div><span className="text-slate-500">Attendance Rate:</span> <strong className="block text-emerald-700">{student.attendancePct}%</strong></div>
+              </div>
+
+              <table className="w-full border-collapse border border-slate-300 text-left">
+                <thead>
+                  <tr className="bg-slate-100">
+                    <th className="border border-slate-300 px-3 py-2">Date</th>
+                    <th className="border border-slate-300 px-3 py-2">Status</th>
+                    <th className="border border-slate-300 px-3 py-2">Scan Time</th>
+                    <th className="border border-slate-300 px-3 py-2">Source</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {studentAttendanceLogs.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="border border-slate-300 px-3 py-4 text-center text-slate-500">
+                        No scan history recorded yet. Overall recorded attendance: {student.attendancePct}%.
+                      </td>
+                    </tr>
+                  ) : (
+                    studentAttendanceLogs.map((log) => (
+                      <tr key={log.id}>
+                        <td className="border border-slate-300 px-3 py-1.5 font-mono">{log.dateIso}</td>
+                        <td className="border border-slate-300 px-3 py-1.5 font-semibold uppercase">{log.status}</td>
+                        <td className="border border-slate-300 px-3 py-1.5 font-mono">{log.scanTime ?? '—'}</td>
+                        <td className="border border-slate-300 px-3 py-1.5">{log.source}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 };

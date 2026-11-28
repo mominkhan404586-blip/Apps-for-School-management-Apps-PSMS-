@@ -26,14 +26,21 @@ import {
   X,
   Lock,
 } from 'lucide-react';
-import type { AdminAccount, Language, Role, SchoolRecord, StudentRecord, TeacherRecord } from '../types';
+import type {
+  AdminAccount,
+  Language,
+  ParentAccountRecord,
+  Role,
+  SchoolRecord,
+  StudentRecord,
+  TeacherRecord,
+} from '../types';
 import {
   loadRememberedLoginIdentifier,
   saveRememberedLoginIdentifier,
   validateLoginIdentifierRealtime,
 } from '../utils/unifiedLoginEngine';
 import { calculateBMI, generateStudentCodes } from '../utils/rbacAndGrading';
-import { validateStudentActivationLogin } from '../utils/schoolConfigAndAddress';
 import {
   authenticateSchoolAccount,
   sanitizeActorDisplayForRole,
@@ -42,6 +49,7 @@ import {
   authenticateGuardianAccount,
   authenticateTeacherAccount,
 } from '../utils/authGuard';
+import { authenticateRegisteredParent } from '../utils/parentLinkingEngine';
 import { ALL_CLASSES, AVATARS, CENTRAL_ADMIN_CREDENTIALS } from '../data/mockData';
 import { b, tr } from '../i18n/translations';
 import { TrendLineChart } from './Charts';
@@ -704,16 +712,18 @@ export const AddStudentModal: React.FC<{
     const newStudent: StudentRecord = {
       id: `stu-${Date.now()}`,
       ...codes,
+      uniqueIdCode: codes.permanentId,
+      username: codes.permanentId.toLowerCase(),
       schoolId,
       schoolNameBn,
       previousSchools: [],
       nameBn: nameBn.trim(),
       nameEn: nameEn.trim(),
-      dob: '২০১৭-০৪-১২',
-      birthRegNo: birthReg.trim() || '20172614908199001',
+      dob: '',
+      birthRegNo: birthReg.trim(),
       gender,
-      fatherName: fatherName.trim() || 'মোঃ আব্দুল হক',
-      motherName: motherName.trim() || 'আয়েশা সিদ্দিকা',
+      fatherName: fatherName.trim(),
+      motherName: motherName.trim(),
       guardianMobile: mobile.trim(),
       emergencyContact: mobile.trim(),
       bloodGroup,
@@ -722,22 +732,25 @@ export const AddStudentModal: React.FC<{
       roll: nextSerial,
       status: submitAsPending ? 'pending' : 'active',
       approvalStatus: submitAsPending ? 'pending' : 'approved',
+      enrollmentStatus: 'active',
       attendancePct: submitAsPending ? 0 : 100,
-      heightCm: 130,
-      weightKg: 28,
+      heightCm: 0,
+      weightKg: 0,
       gpa: submitAsPending ? 'অপেক্ষমান' : 'প্রযোজ্য',
       stipendStatus: 'pending',
       admissionHistory: [`২০২৬: ${className} নতুন ভর্তি (${schoolNameBn})`],
-      documents: [
-        {
-          id: `doc-adm-${Date.now()}`,
-          name: 'ডিজিটাল জন্মনিবন্ধন সনদ.pdf',
-          type: 'birth_cert',
-          verified: !submitAsPending,
-          verifiedAt: submitAsPending ? undefined : todayIso,
-          docRef: birthReg.trim() || '20172614908199001',
-        },
-      ],
+      documents: birthReg.trim()
+        ? [
+            {
+              id: `doc-adm-${Date.now()}`,
+              name: 'ডিজিটাল জন্মনিবন্ধন সনদ.pdf',
+              type: 'birth_cert',
+              verified: !submitAsPending,
+              verifiedAt: submitAsPending ? undefined : todayIso,
+              docRef: birthReg.trim(),
+            },
+          ]
+        : [],
       approvalHistory: [
         {
           id: `SAPH-${Date.now().toString().slice(-4)}`,
@@ -1115,7 +1128,6 @@ export const AddAdminModal: React.FC<{
 
 export type LoginModalPresetMode =
   | 'teacher'
-  | 'student'
   | 'super_admin'
   | 'school'
   | 'guardian'
@@ -1127,15 +1139,17 @@ export const LoginModal: React.FC<{
   students?: StudentRecord[];
   schools?: SchoolRecord[];
   teachers?: TeacherRecord[];
+  registeredParents?: ParentAccountRecord[];
   initialMode?: LoginModalPresetMode;
   onClose: () => void;
   onLoginSuccess: (
     role: Role,
     studentId?: string,
     schoolId?: string,
-    extra?: { teacherId?: string; guardianMobile?: string; linkedStudentIds?: string[] }
+    extra?: { teacherId?: string; guardianMobile?: string; linkedStudentIds?: string[]; parentId?: string }
   ) => void;
   onOpenTeacherRegistration?: () => void;
+  onOpenParentRegistration?: () => void;
   onGoogleSignIn?: () => Promise<void> | void;
   googleSigningIn?: boolean;
   onSuperAdminFirebaseSignIn?: (
@@ -1151,10 +1165,12 @@ export const LoginModal: React.FC<{
   students = [],
   schools = [],
   teachers = [],
+  registeredParents = [],
   initialMode = 'teacher',
   onClose,
   onLoginSuccess,
   onOpenTeacherRegistration,
+  onOpenParentRegistration,
   onGoogleSignIn,
   googleSigningIn = false,
   onSuperAdminFirebaseSignIn,
@@ -1163,26 +1179,20 @@ export const LoginModal: React.FC<{
   onOpenFirebaseRecovery,
 }) => {
   const [viewMode, setViewMode] = useState<LoginModalPresetMode>(initialMode);
-  const [studentSubTab, setStudentSubTab] = useState<'code_id' | 'username'>('code_id');
-  const [showActivationInput, setShowActivationInput] = useState(false);
   const [showForgotHelp, setShowForgotHelp] = useState(false);
 
-  const [identifier, setIdentifier] = useState('tch_rahim');
-  const [password, setPassword] = useState('teacher@123');
-  const [adminIdentifier, setAdminIdentifier] = useState(CENTRAL_ADMIN_CREDENTIALS.email);
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
+  const [adminIdentifier, setAdminIdentifier] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [superAdminLoading, setSuperAdminLoading] = useState(false);
   const [superAdminUnverified, setSuperAdminUnverified] = useState(false);
   const [superAdminStatusMsg, setSuperAdminStatusMsg] = useState<string | null>(null);
-  const [schoolAuthIdentifier, setSchoolAuthIdentifier] = useState('SCH-2026-00015');
-  const [schoolAuthPassword, setSchoolAuthPassword] = useState('school@123');
-  const [guardianIdentifier, setGuardianIdentifier] = useState('01712345678');
-  const [guardianPassword, setGuardianPassword] = useState('parent@123');
+  const [schoolAuthIdentifier, setSchoolAuthIdentifier] = useState('');
+  const [schoolAuthPassword, setSchoolAuthPassword] = useState('');
+  const [guardianIdentifier, setGuardianIdentifier] = useState('');
+  const [guardianPassword, setGuardianPassword] = useState('');
 
-  const [schoolCodeInput, setSchoolCodeInput] = useState('GPS-1042');
-  const [studentIdInput, setStudentIdInput] = useState('STD-2026-GPS1042-0012');
-  const [studentMobileInput, setStudentMobileInput] = useState('01712345678');
-  const [activationCodeInput, setActivationCodeInput] = useState('ACT-0012-74');
   const [rememberMe, setRememberMe] = useState(() => Boolean(loadRememberedLoginIdentifier()));
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
@@ -1198,19 +1208,20 @@ export const LoginModal: React.FC<{
       setSuperAdminUnverified(false);
       setSuperAdminStatusMsg(null);
       if (initialMode === 'super_admin') {
-        setAdminIdentifier(remembered && remembered.includes('@') ? remembered : CENTRAL_ADMIN_CREDENTIALS.email);
+        setAdminIdentifier(remembered && remembered.includes('@') ? remembered : '');
         setAdminPassword('');
       } else if (initialMode === 'teacher') {
-        setIdentifier(remembered || 'tch_rahim');
-        setPassword('teacher@123');
+        setIdentifier(remembered || '');
+        setPassword('');
       } else if (initialMode === 'school') {
-        setSchoolAuthIdentifier(remembered || 'SCH-2026-00015');
-        setSchoolAuthPassword('school@123');
+        setSchoolAuthIdentifier(remembered || '');
+        setSchoolAuthPassword('');
       } else if (initialMode === 'guardian') {
-        setGuardianIdentifier(remembered || '01712345678');
-        setGuardianPassword('parent@123');
-      } else if (remembered) {
-        setIdentifier(remembered);
+        setGuardianIdentifier(remembered || '');
+        setGuardianPassword('');
+      } else {
+        setIdentifier(remembered || '');
+        setPassword('');
       }
     }
   }, [open, initialMode]);
@@ -1222,9 +1233,7 @@ export const LoginModal: React.FC<{
         ? schoolAuthIdentifier
         : viewMode === 'guardian'
           ? guardianIdentifier
-          : viewMode === 'student'
-            ? studentIdInput
-            : identifier;
+          : identifier;
   const activeIdentifierValidation = validateLoginIdentifierRealtime(activeIdentifierValue);
 
   if (!open) return null;
@@ -1319,12 +1328,24 @@ export const LoginModal: React.FC<{
         setError(b(guardianCheck.messageBn, guardianCheck.messageEn, lang));
         return;
       }
+      const regParentAuth = authenticateRegisteredParent(registeredParents, students, guardianIdentifier, guardianPassword);
+      if (regParentAuth.ok && regParentAuth.parent) {
+        saveRememberedLoginIdentifier(guardianIdentifier, rememberMe);
+        setError('');
+        onLoginSuccess('guardian', regParentAuth.linkedStudentIds[0], undefined, {
+          guardianMobile: regParentAuth.parent.mobile,
+          linkedStudentIds: regParentAuth.linkedStudentIds,
+          parentId: regParentAuth.parent.id,
+        });
+        onClose();
+        return;
+      }
       const guardianAuth = authenticateGuardianAccount(students, guardianIdentifier, guardianPassword);
       if (!guardianAuth.ok) {
         setError(
           b(
-            guardianAuth.errorBn ?? 'অভিভাবক লগইন তথ্য সঠিক নয়।',
-            guardianAuth.errorEn ?? 'Invalid guardian credentials.',
+            regParentAuth.errorBn ?? guardianAuth.errorBn ?? 'Parent লগইন তথ্য সঠিক নয়।',
+            regParentAuth.errorEn ?? guardianAuth.errorEn ?? 'Invalid Parent credentials.',
             lang
           )
         );
@@ -1336,24 +1357,6 @@ export const LoginModal: React.FC<{
         guardianMobile: guardianAuth.guardianMobile,
         linkedStudentIds: guardianAuth.linkedStudentIds,
       });
-      onClose();
-      return;
-    }
-
-    if (viewMode === 'student') {
-      const res = validateStudentActivationLogin(
-        students,
-        studentIdInput,
-        studentMobileInput,
-        showActivationInput ? activationCodeInput : 'ACT-0012-74'
-      );
-      if (!res.ok || !res.student) {
-        setError(b(res.errorBn ?? 'তথ্য সঠিক নয়।', res.errorEn ?? 'Invalid student login.', lang));
-        return;
-      }
-      saveRememberedLoginIdentifier(studentIdInput, rememberMe);
-      setError('');
-      onLoginSuccess('student', res.student.id, res.student.schoolId);
       onClose();
       return;
     }
@@ -1391,6 +1394,19 @@ export const LoginModal: React.FC<{
       return;
     }
 
+    const matchedParent = authenticateRegisteredParent(registeredParents, students, rawId, rawPass);
+    if (matchedParent.ok && matchedParent.parent) {
+      saveRememberedLoginIdentifier(rawId, rememberMe);
+      setError('');
+      onLoginSuccess('guardian', matchedParent.linkedStudentIds[0], undefined, {
+        guardianMobile: matchedParent.parent.mobile,
+        linkedStudentIds: matchedParent.linkedStudentIds,
+        parentId: matchedParent.parent.id,
+      });
+      onClose();
+      return;
+    }
+
     const matchedGuardian = authenticateGuardianAccount(students, rawId, rawPass);
     if (matchedGuardian.ok) {
       saveRememberedLoginIdentifier(rawId, rememberMe);
@@ -1405,8 +1421,8 @@ export const LoginModal: React.FC<{
 
     setError(
       b(
-        'লগইন তথ্য বা পাসওয়ার্ড সঠিক নয়। নিচের রোল প্রিসেট অথবা সঠিক পাসওয়ার্ড ব্যবহার করুন।',
-        'Invalid credentials or password. Try one of the quick role presets below.',
+        'লগইন তথ্য বা পাসওয়ার্ড সঠিক নয়। অনুগ্রহ করে যাচাই করে আবার চেষ্টা করুন।',
+        'Invalid credentials or password. Please verify and try again.',
         lang
       )
     );
@@ -1660,8 +1676,8 @@ export const LoginModal: React.FC<{
               <button type="button" onClick={() => setViewMode('teacher')} className="hover:text-blue-300 cursor-pointer">
                 {b('শিক্ষক লগইন', 'Teacher Login', lang)}
               </button>
-              <button type="button" onClick={() => setViewMode('student')} className="hover:text-amber-300 cursor-pointer">
-                {b('শিক্ষার্থী লগইন', 'Student Login', lang)}
+              <button type="button" onClick={() => setViewMode('guardian')} className="hover:text-sky-300 cursor-pointer">
+                {b('Parent লগইন', 'Parent Login', lang)}
               </button>
             </div>
           </form>
@@ -1670,7 +1686,6 @@ export const LoginModal: React.FC<{
     );
   }
 
-  const isStudentMode = viewMode === 'student';
   const isSchoolMode = viewMode === 'school';
   const isGuardianMode = viewMode === 'guardian';
 
@@ -1692,7 +1707,7 @@ export const LoginModal: React.FC<{
           <X className="w-4 h-4" />
         </button>
 
-        {/* Top Modal Mode Switcher Pills */}
+        {/* Top Modal Mode Switcher Pills — Strictly 4 Roles (NO Student Login) */}
         <div className="flex flex-wrap items-center justify-center gap-1.5 pt-1 pr-6 text-[11px]">
           <button
             type="button"
@@ -1706,7 +1721,7 @@ export const LoginModal: React.FC<{
                 : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
             }`}
           >
-            {b('🏫 বিদ্যালয় লগইন', '🏫 School', lang)}
+            {b('School Admin', 'School Admin', lang)}
           </button>
           <button
             type="button"
@@ -1715,12 +1730,12 @@ export const LoginModal: React.FC<{
               setError('');
             }}
             className={`px-2.5 py-1 rounded-lg font-semibold cursor-pointer ${
-              !isStudentMode && !isSchoolMode && !isGuardianMode
+              !isSchoolMode && !isGuardianMode
                 ? 'bg-blue-600 text-white'
                 : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
             }`}
           >
-            {b('শিক্ষক / স্টাফ', 'Teacher', lang)}
+            {b('Teacher', 'Teacher', lang)}
           </button>
           <button
             type="button"
@@ -1734,21 +1749,7 @@ export const LoginModal: React.FC<{
                 : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
             }`}
           >
-            {b('অভিভাবক', 'Guardian', lang)}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setViewMode('student');
-              setError('');
-            }}
-            className={`px-2.5 py-1 rounded-lg font-semibold cursor-pointer ${
-              isStudentMode
-                ? 'bg-amber-600 text-white'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
-            }`}
-          >
-            {b('শিক্ষার্থী', 'Student', lang)}
+            {b('Parent', 'Parent', lang)}
           </button>
           <button
             type="button"
@@ -1758,7 +1759,7 @@ export const LoginModal: React.FC<{
             }}
             className="px-2.5 py-1 rounded-lg font-semibold bg-violet-50 dark:bg-violet-950/40 text-violet-700 dark:text-violet-300 cursor-pointer"
           >
-            {b('সুপার অ্যাডমিন', 'Super Admin', lang)}
+            {b('Super Central Admin', 'Super Central Admin', lang)}
           </button>
         </div>
 
@@ -1770,10 +1771,10 @@ export const LoginModal: React.FC<{
               </div>
               <div>
                 <h3 id="login-modal-title" className="text-base font-extrabold text-slate-900 dark:text-white">
-                  {b('অভিভাবক পোর্টাল লগইন (Guardian)', 'Guardian Portal Login', lang)}
+                  {b('অভিভাবক পোর্টাল লগইন (Parent)', 'Parent Portal Login', lang)}
                 </h3>
                 <p className="text-xs text-slate-500">
-                  {b('নিবন্ধিত মোবাইল নম্বর / Guardian Link Code এবং পাসওয়ার্ড দিয়ে প্রবেশ করুন', 'Sign in with registered guardian mobile or link code', lang)}
+                  {b('নিবন্ধিত ইউজারনেম, মোবাইল বা Parent ID এবং পাসওয়ার্ড দিয়ে প্রবেশ করুন', 'Sign in with registered Parent username, mobile, or Unique ID', lang)}
                 </p>
               </div>
             </div>
@@ -1781,7 +1782,7 @@ export const LoginModal: React.FC<{
             <form onSubmit={handleLogin} className="space-y-3 text-xs">
               <div>
                 <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  {b('অভিভাবকের মোবাইল / Link Code *', 'Guardian Mobile / Link Code *', lang)}
+                  {b('Parent ইউজারনেম / মোবাইল / Unique ID *', 'Parent Username / Mobile / Unique ID *', lang)}
                 </label>
                 <input
                   data-testid="guardian-login-identifier"
@@ -1791,7 +1792,7 @@ export const LoginModal: React.FC<{
                     setGuardianIdentifier(e.target.value);
                     setError('');
                   }}
-                  placeholder="01712345678"
+                  placeholder={b('ইউজারনেম, মোবাইল বা Unique ID লিখুন', 'Enter username, mobile, or Unique ID', lang)}
                   className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono outline-none focus:border-sky-600"
                 />
                 {guardianIdentifier.trim().length > 0 && (
@@ -1849,23 +1850,6 @@ export const LoginModal: React.FC<{
 
               {error && <p className="text-xs text-red-600 font-semibold">{error}</p>}
 
-              <div className="rounded-xl bg-sky-50/70 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800 p-3 flex items-center justify-between gap-2">
-                <span className="text-sky-900 dark:text-sky-200 font-medium">
-                  {b('নমুনা অভিভাবক:', 'Demo Guardian:', lang)} <span className="font-mono">01712345678</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setGuardianIdentifier('01712345678');
-                    setGuardianPassword('parent@123');
-                    setError('');
-                  }}
-                  className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-sky-300 dark:border-sky-700 text-sky-800 dark:text-sky-200 font-semibold cursor-pointer"
-                >
-                  {b('ফিল করুন', 'Fill', lang)}
-                </button>
-              </div>
-
               <div className="grid grid-cols-2 gap-2.5 pt-1">
                 <button
                   type="button"
@@ -1879,15 +1863,29 @@ export const LoginModal: React.FC<{
                   data-testid="guardian-login-submit-btn"
                   className="h-10 px-4 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold cursor-pointer"
                 >
-                  {b('অভিভাবক প্রবেশ', 'Sign In', lang)}
+                  {b('Parent প্রবেশ', 'Parent Sign In', lang)}
                 </button>
               </div>
+
+              {onOpenParentRegistration && (
+                <div className="text-center pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onOpenParentRegistration();
+                    }}
+                    className="text-xs font-semibold text-sky-700 dark:text-sky-400 hover:underline cursor-pointer"
+                  >
+                    {b('নতুন অভিভাবক? এখানে ক্লিক করে Parent অ্যাকাউন্ট খুলুন', 'New Parent? Click here to create a Parent account', lang)}
+                  </button>
+                </div>
+              )}
             </form>
           </div>
         ) : null}
 
         {!isGuardianMode && isSchoolMode ? (
-          /* School Portal Isolation Login Card */
           <div className="space-y-4">
             <div className="text-center space-y-2">
               <OfficialAppLogo
@@ -1897,12 +1895,12 @@ export const LoginModal: React.FC<{
                 className="mx-auto shadow-sm"
               />
               <h3 id="login-modal-title" className="text-lg font-extrabold text-slate-900 dark:text-white">
-                {b('🏫 বিদ্যালয় পোর্টাল লগইন (School Login)', '🏫 School Portal Login', lang)}
+                {b('বিদ্যালয় পোর্টাল লগইন (School Admin)', 'School Admin Portal Login', lang)}
               </h3>
               <p className="text-xs text-slate-500">
                 {b(
-                  'School ID (SCH-2026-XXXXX) / স্কুল কোড / ইমেইল এবং পাসওয়ার্ড দিয়ে প্রবেশ করুন',
-                  'Sign in using School ID (SCH-2026-XXXXX), school code, or official email',
+                  'School ID / স্কুল কোড / ইউজারনেম / ইমেইল এবং পাসওয়ার্ড দিয়ে প্রবেশ করুন',
+                  'Sign in using School ID, school code, username, or official email',
                   lang
                 )}
               </p>
@@ -1921,7 +1919,7 @@ export const LoginModal: React.FC<{
                     setSchoolAuthIdentifier(e.target.value);
                     setError('');
                   }}
-                  placeholder="SCH-2026-00015 বা GPS-1042"
+                  placeholder={b('School ID, কোড বা ইমেইল লিখুন', 'Enter School ID, code, or email', lang)}
                   className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono outline-none focus:border-emerald-600"
                 />
                 {schoolAuthIdentifier.trim().length > 0 && (
@@ -1979,36 +1977,6 @@ export const LoginModal: React.FC<{
 
               {error && <p className="text-xs text-red-600 font-semibold">{error}</p>}
 
-              <div className="rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 p-3 space-y-2">
-                <div className="font-semibold text-emerald-900 dark:text-emerald-200">
-                  {b('নমুনা বিদ্যালয় অ্যাকাউন্ট (আইসোলেশন টেস্ট):', 'Quick School Login Presets:', lang)}
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSchoolAuthIdentifier('SCH-2026-00015');
-                      setSchoolAuthPassword('school@123');
-                      setError('');
-                    }}
-                    className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200 font-medium cursor-pointer"
-                  >
-                    মডেল সরকারি প্রা. বি. (SCH-2026-00015)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSchoolAuthIdentifier('SCH-2026-00016');
-                      setSchoolAuthPassword('school@123');
-                      setError('');
-                    }}
-                    className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-blue-300 dark:border-blue-700 text-blue-800 dark:text-blue-200 font-medium cursor-pointer"
-                  >
-                    আদর্শ বালিকা উচ্চ বি. (SCH-2026-00016)
-                  </button>
-                </div>
-              </div>
-
               <div className="grid grid-cols-2 gap-2.5 pt-1">
                 <button
                   type="button"
@@ -2027,168 +1995,7 @@ export const LoginModal: React.FC<{
               </div>
             </form>
           </div>
-        ) : !isGuardianMode && isStudentMode ? (
-          /* Student Portal Modal Layout (matches student_login_modal_8a914aa8.png) */
-          <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <OfficialAppLogo sizeClass="w-12 h-12" roundedClass="rounded-xl" paddingClass="p-1" />
-              <div>
-                <h3 id="login-modal-title" className="text-base font-extrabold text-slate-900 dark:text-white">
-                  {b('শিক্ষার্থী পোর্টাল (Student Portal)', 'Student Portal', lang)}
-                </h3>
-                <p className="text-xs text-slate-500">
-                  {b('হাজিরা বিবরণী, ক্লাস রুটিন, বাড়ির কাজ ও পরীক্ষার মার্কশিট দর্শন', 'Attendance, class routine, homework & exam marksheets', lang)}
-                </p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl text-xs">
-              <button
-                type="button"
-                onClick={() => setStudentSubTab('code_id')}
-                className={`py-1.5 rounded-lg font-semibold cursor-pointer ${
-                  studentSubTab === 'code_id'
-                    ? 'bg-white dark:bg-slate-900 text-amber-700 dark:text-amber-300 shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400'
-                }`}
-              >
-                {b('স্কুল কোড ও শিক্ষার্থী আইডি', 'School Code & ID', lang)}
-              </button>
-              <button
-                type="button"
-                onClick={() => setStudentSubTab('username')}
-                className={`py-1.5 rounded-lg font-semibold cursor-pointer ${
-                  studentSubTab === 'username'
-                    ? 'bg-white dark:bg-slate-900 text-amber-700 dark:text-amber-300 shadow-xs'
-                    : 'text-slate-600 dark:text-slate-400'
-                }`}
-              >
-                {b('ব্যবহারকারী নাম (Username)', 'Username', lang)}
-              </button>
-            </div>
-
-            <form onSubmit={handleLogin} className="space-y-3 text-xs">
-              {studentSubTab === 'code_id' && (
-                <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    {b('স্কুল কোড (School Code - ঐচ্ছিক)', 'School Code (Optional)', lang)}
-                  </label>
-                  <input
-                    type="text"
-                    value={schoolCodeInput}
-                    onChange={(e) => setSchoolCodeInput(e.target.value)}
-                    placeholder="e.g. GPS-1042"
-                    className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono outline-none focus:border-amber-500"
-                  />
-                </div>
-              )}
-              <div>
-                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  {b('শিক্ষার্থী আইডি (Student ID) *', 'Student ID *', lang)}
-                </label>
-                <input
-                  data-testid="student-login-id"
-                  type="text"
-                  value={studentIdInput}
-                  onChange={(e) => {
-                    setStudentIdInput(e.target.value);
-                    setError('');
-                  }}
-                  placeholder="STD-2026-GPS1042-0012"
-                  className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono outline-none focus:border-amber-500"
-                />
-                {studentIdInput.trim().length > 0 && (
-                  <p
-                    data-testid="login-modal-identifier-validation"
-                    className={`mt-1 text-[11px] font-medium ${
-                      activeIdentifierValidation.valid ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600'
-                    }`}
-                  >
-                    {b(activeIdentifierValidation.messageBn, activeIdentifierValidation.messageEn, lang)}
-                  </p>
-                )}
-              </div>
-              <div>
-                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  {b('নিবন্ধিত মোবাইল / পাসওয়ার্ড *', 'Registered Mobile / Password *', lang)}
-                </label>
-                <div className="relative">
-                  <input
-                    data-testid="student-login-mobile"
-                    type={showPassword ? 'text' : 'tel'}
-                    value={studentMobileInput}
-                    onChange={(e) => {
-                      setStudentMobileInput(e.target.value);
-                      setError('');
-                    }}
-                    placeholder="01712345678"
-                    className="w-full h-10 pl-3 pr-10 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-mono outline-none focus:border-amber-500"
-                  />
-                  <button
-                    type="button"
-                    data-testid="login-modal-password-toggle"
-                    onClick={() => setShowPassword((v) => !v)}
-                    aria-label={showPassword ? b('লুকান', 'Hide', lang) : b('দেখুন', 'Show', lang)}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-lg text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer"
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-              <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  data-testid="login-modal-remember-me"
-                  checked={rememberMe}
-                  onChange={(e) => {
-                    const next = e.target.checked;
-                    setRememberMe(next);
-                    saveRememberedLoginIdentifier(studentIdInput, next);
-                  }}
-                  className="w-3.5 h-3.5 rounded border-slate-300 text-amber-600 cursor-pointer"
-                />
-                <span>{b('মনে রাখুন (Remember Me)', 'Remember Me', lang)}</span>
-              </label>
-              {showActivationInput && (
-                <div>
-                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    {b('এককালীন অ্যাক্টিভেশন কোড (One-Time Activation Code)', 'One-Time Activation Code', lang)}
-                  </label>
-                  <input
-                    type="text"
-                    value={activationCodeInput}
-                    onChange={(e) => {
-                      setActivationCodeInput(e.target.value);
-                      setError('');
-                    }}
-                    placeholder="ACT-0012-74"
-                    className="w-full h-10 px-3 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50/40 dark:bg-slate-800 font-mono outline-none focus:border-amber-500"
-                  />
-                </div>
-              )}
-
-              {error && <p className="text-xs text-red-600 font-semibold">{error}</p>}
-
-              <button
-                type="submit"
-                data-testid="student-login-submit-btn"
-                className="w-full h-10 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold cursor-pointer transition-colors"
-              >
-                {b('শিক্ষার্থী ড্যাশবোর্ডে প্রবেশ করুন', 'Sign In to Student Portal', lang)}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowActivationInput((s) => !s)}
-                className="w-full h-10 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50/70 dark:bg-amber-950/30 text-amber-800 dark:text-amber-200 font-semibold flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <KeyRound className="w-3.5 h-3.5" />
-                {b('প্রথমবার প্রবেশ করছেন? এককালীন কোড দিয়ে সক্রিয় করুন', 'First time? Activate with One-Time Code', lang)}
-              </button>
-            </form>
-          </div>
         ) : !isGuardianMode ? (
-          /* Teacher / Staff / Portal Login Card (matches teacher_login_modal_d73d5b0d.png) */
           <div className="space-y-4">
             <div className="text-center space-y-2">
               <OfficialAppLogo
@@ -2201,7 +2008,7 @@ export const LoginModal: React.FC<{
                 {b('শিক্ষক ও পোর্টাল লগইন', 'Teacher & Portal Login', lang)}
               </h3>
               <p className="text-xs text-slate-500">
-                {b('Teacher ID অথবা ইউজারনেম ও পাসওয়ার্ড দিয়ে প্রবেশ করুন', 'Sign in with Teacher ID, username, or quick role preset', lang)}
+                {b('Teacher ID, ইউজারনেম বা ইমেইল ও পাসওয়ার্ড দিয়ে প্রবেশ করুন', 'Sign in with your Teacher ID, username, or email and password', lang)}
               </p>
             </div>
 
@@ -2218,7 +2025,7 @@ export const LoginModal: React.FC<{
                     setIdentifier(e.target.value);
                     setError('');
                   }}
-                  placeholder="e.g. TCH-GPS1042-02 বা tch_rahim"
+                  placeholder={b('Teacher ID, ইউজারনেম বা ইমেইল লিখুন', 'Enter Teacher ID, username, or email', lang)}
                   className={`w-full h-10 px-3 rounded-xl border bg-slate-50 dark:bg-slate-800 outline-none ${
                     identifier.trim().length > 0 && !activeIdentifierValidation.valid
                       ? 'border-red-500 focus:border-red-600'
@@ -2300,58 +2107,6 @@ export const LoginModal: React.FC<{
               )}
 
               {error && <p className="text-xs text-red-600 font-semibold">{error}</p>}
-
-              {/* Quick Role Presets */}
-              <div className="rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 p-3 space-y-2">
-                <div className="font-semibold text-slate-700 dark:text-slate-200">
-                  {b('দ্রুত রোল টেস্ট প্রিসেট:', 'Quick Role Presets:', lang)}
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIdentifier('tch_rahim');
-                      setPassword('teacher@123');
-                      setError('');
-                    }}
-                    className="px-2.5 py-1 rounded-lg bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-200 font-medium cursor-pointer"
-                  >
-                    Teacher (TCH-02)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIdentifier('head_gps1042');
-                      setPassword('school@123');
-                      setError('');
-                    }}
-                    className="px-2.5 py-1 rounded-lg bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-200 font-medium cursor-pointer"
-                  >
-                    School Admin (GPS-1042)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIdentifier('01712345678');
-                      setPassword('parent@123');
-                      setError('');
-                    }}
-                    className="px-2.5 py-1 rounded-lg bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-200 font-medium cursor-pointer"
-                  >
-                    Guardian (01712345678)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setError('');
-                      setViewMode('super_admin');
-                    }}
-                    className="px-2.5 py-1 rounded-lg bg-violet-100 dark:bg-violet-950 text-violet-800 dark:text-violet-200 font-medium cursor-pointer"
-                  >
-                    {b('সুপার অ্যাডমিন', 'Super Admin', lang)}
-                  </button>
-                </div>
-              </div>
 
               <div className="grid grid-cols-2 gap-2.5 pt-1">
                 <button

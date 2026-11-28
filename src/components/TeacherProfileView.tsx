@@ -99,7 +99,7 @@ export const TeacherProfileView: React.FC<TeacherProfileViewProps> = ({
   const approvalStatus = deriveTeacherApprovalStatus(teacher);
   const verificationStatus = deriveVerificationStatus(teacher);
   const teacherRoutine = routineSlots.filter(
-    (r) => r.teacherId === teacher.id || teacher.schoolId === 'GPS-1042' && r.subjectBn === teacher.subjects[0]
+    (r) => r.teacherId === teacher.id || (!r.teacherId && r.subjectBn === teacher.subjects[0])
   );
   const schoolStudents = students.filter((s) => s.schoolId === teacher.schoolId);
   const teacherNotifications = notifications.filter(

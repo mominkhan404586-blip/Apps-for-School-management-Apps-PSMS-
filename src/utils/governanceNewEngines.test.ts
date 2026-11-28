@@ -10,7 +10,7 @@ import {
   INITIAL_STUDENTS,
   INITIAL_TEACHERS,
   INITIAL_TEACHER_SCHOOL_ASSIGNMENTS,
-} from '../data/mockData';
+} from './testFixtures';
 import {
   CONTACT_ADMIN_CHANNELS,
   admitStudent6Part,

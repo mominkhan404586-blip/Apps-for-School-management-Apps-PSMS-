@@ -29,6 +29,7 @@ import type {
   AcademicSubjectConfig,
   Language,
   MasterRoutineRecord,
+  MasterSubjectFrameworkItem,
   Role,
   RoutineCellSchedule,
   RoutineDayConfig,
@@ -36,11 +37,13 @@ import type {
   RoutineStatus,
   RoutineType,
   SchoolRecord,
+  SchoolSubjectRecord,
   TeacherRecord,
   TeacherSubjectAssignment,
 } from '../types';
 import { b } from '../i18n/translations';
-import { ALL_CLASSES, NCTB_SUBJECTS } from '../data/mockData';
+import { ALL_CLASSES } from '../data/mockData';
+import { getActiveSubjectsForDropdown } from '../utils/centralSubjectAndStructureEngine';
 import {
   buildStudentPublishedRoutineView,
   buildTeacherPersonalRoutineView,
@@ -68,6 +71,9 @@ interface RoutineManagementSystemProps {
   routines: MasterRoutineRecord[];
   teachers: TeacherRecord[];
   subjects?: AcademicSubjectConfig[];
+  schoolSubjects?: SchoolSubjectRecord[];
+  masterFramework?: MasterSubjectFrameworkItem[];
+  academicYear?: string;
   teacherAssignments: TeacherSubjectAssignment[];
   teacherRecord?: TeacherRecord;
   studentClass?: string;
@@ -105,23 +111,27 @@ export const RoutineManagementSystem: React.FC<RoutineManagementSystemProps> = (
   routines,
   teachers,
   subjects = [],
+  schoolSubjects = [],
+  masterFramework = [],
+  academicYear,
   teacherAssignments,
   teacherRecord,
-  studentClass = 'Class 4',
+  studentClass = '',
   studentSection = 'ক (A)',
   studentName,
   readOnlyOversight = false,
   onUpdateRoutines,
 }) => {
-  const schoolId = school?.id ?? 'GPS-1042';
+  const schoolId = school?.id ?? '';
+  const todayIso = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const schoolRoutines = useMemo(
     () => routines.filter((r) => r.schoolId === schoolId),
     [routines, schoolId]
   );
 
-  // Student & Guardian View
+  // Student & Parent View
   const [studentViewMode, setStudentViewMode] = useState<'table' | 'cards'>('table');
-  const [simTodayIso, setSimTodayIso] = useState('2026-11-20');
+  const [simTodayIso, setSimTodayIso] = useState(todayIso);
 
   // Admin All-School Filters
   const [filterClass, setFilterClass] = useState('all');
@@ -140,18 +150,19 @@ export const RoutineManagementSystem: React.FC<RoutineManagementSystemProps> = (
   const [showDayPeriodPanel, setShowDayPeriodPanel] = useState(false);
   const [showVersionsPanel, setShowVersionsPanel] = useState(false);
   const [showTempConfigPanel, setShowTempConfigPanel] = useState(false);
-  const [extendDateInput, setExtendDateInput] = useState('2026-12-05');
+  const [extendDateInput, setExtendDateInput] = useState(todayIso);
 
   // Create Routine Form State
+  const resolvedYear = academicYear ?? school?.academicYear ?? String(new Date().getFullYear());
   const [newTitleBn, setNewTitleBn] = useState('');
   const [newType, setNewType] = useState<RoutineType>('weekly');
-  const [newYear, setNewYear] = useState(school?.academicYear ?? '২০২৬ শিক্ষাবর্ষ');
-  const [newMonth, setNewMonth] = useState('নভেম্বর ২০২৬');
-  const [newClass, setNewClass] = useState(school?.approvedClasses[4] ?? 'Class 4');
+  const [newYear, setNewYear] = useState(resolvedYear);
+  const [newMonth, setNewMonth] = useState('');
+  const [newClass, setNewClass] = useState(school?.approvedClasses[0] ?? 'Class 1');
   const [newSection, setNewSection] = useState('ক (A)');
   const [newIsTemp, setNewIsTemp] = useState(false);
-  const [newStartDate, setNewStartDate] = useState('2026-11-20');
-  const [newEndDate, setNewEndDate] = useState('2026-11-30');
+  const [newStartDate, setNewStartDate] = useState(todayIso);
+  const [newEndDate, setNewEndDate] = useState(todayIso);
 
   // Cell Editor State
   const [editingCellTarget, setEditingCellTarget] = useState<{
@@ -159,7 +170,7 @@ export const RoutineManagementSystem: React.FC<RoutineManagementSystemProps> = (
     periodId: string;
     existing?: RoutineCellSchedule;
   } | null>(null);
-  const [cellSubjectEn, setCellSubjectEn] = useState('Mathematics');
+  const [cellSubjectEn, setCellSubjectEn] = useState('');
   const [cellTeacherId, setCellTeacherId] = useState('');
   const [cellRoom, setCellRoom] = useState('204');
   const [cellStartTime, setCellStartTime] = useState('09:30');
@@ -182,11 +193,19 @@ export const RoutineManagementSystem: React.FC<RoutineManagementSystemProps> = (
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
   const subjectCatalog = useMemo(() => {
+    const activeFromRegistry = getActiveSubjectsForDropdown(
+      schoolSubjects.filter((s) => !schoolId || s.schoolId === schoolId),
+      resolvedYear,
+      newClass
+    );
+    if (activeFromRegistry.length > 0) {
+      return activeFromRegistry.map((s) => ({ nameBn: s.nameBn, nameEn: s.nameEn }));
+    }
     if (subjects.length > 0) {
       return subjects.map((s) => ({ nameBn: s.nameBn, nameEn: s.nameEn }));
     }
-    return NCTB_SUBJECTS.map((s) => ({ nameBn: s.nameBn, nameEn: s.nameEn }));
-  }, [subjects]);
+    return masterFramework.map((s) => ({ nameBn: s.nameBn, nameEn: s.nameEn }));
+  }, [schoolSubjects, schoolId, resolvedYear, newClass, subjects, masterFramework]);
 
   // === STUDENT & GUARDIAN PORTAL VIEW ===
   if (role === 'student' || role === 'guardian') {

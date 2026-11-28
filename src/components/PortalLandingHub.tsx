@@ -49,7 +49,6 @@ import {
 
 export type UnifiedLoginTab = 'login' | 'register' | 'verify';
 export type PasswordToolMode = 'none' | 'change' | 'forgot';
-export type DemoRolePreset = 'school_admin' | 'teacher' | 'student' | 'guardian';
 
 interface PortalLandingHubProps {
   open: boolean;
@@ -73,10 +72,9 @@ interface PortalLandingHubProps {
   onForgotPasswordSubmit: (
     identifier: string
   ) => Promise<{ ok: boolean; message: string }>;
-  onDemoQuickLogin: (preset: DemoRolePreset) => void;
   onOpenSchoolRegistration: () => void;
   onOpenTeacherRegistration: () => void;
-  onOpenStudentRegistration: () => void;
+  onOpenParentRegistration: () => void;
   onOpenStatusTracker: () => void;
   onOpenContactAdmin?: () => void;
   onOpenAppDownloadAndShare?: () => void;
@@ -121,10 +119,9 @@ export const PortalLandingHub: React.FC<PortalLandingHubProps> = ({
   onUnifiedLoginSubmit,
   onChangePasswordSubmit,
   onForgotPasswordSubmit,
-  onDemoQuickLogin,
   onOpenSchoolRegistration,
   onOpenTeacherRegistration,
-  onOpenStudentRegistration,
+  onOpenParentRegistration,
   onOpenStatusTracker,
   onOpenContactAdmin,
   onOpenAppDownloadAndShare,
@@ -165,28 +162,8 @@ export const PortalLandingHub: React.FC<PortalLandingHubProps> = ({
   const [verifyQuery, setVerifyQuery] = useState('');
   const [submittedVerifyQuery, setSubmittedVerifyQuery] = useState('');
 
-  // Compact Footer Sheets
+  // Compact Footer Sheet
   const [accountHelpOpen, setAccountHelpOpen] = useState(false);
-  const [demoModalOpen, setDemoModalOpen] = useState(false);
-
-  const sampleOptions = useMemo(() => {
-    if (verifyCategory === 'school') {
-      return schools.slice(0, 6).map((s) => ({
-        value: s.code,
-        label: `${s.code} · ${b(s.nameBn, s.nameEn, lang)}`,
-      }));
-    }
-    if (verifyCategory === 'teacher') {
-      return teachers.slice(0, 6).map((t) => ({
-        value: t.teacherCode,
-        label: `${t.teacherCode} · ${b(t.nameBn, t.nameEn, lang)}`,
-      }));
-    }
-    return students.slice(0, 6).map((st) => ({
-      value: st.permanentId,
-      label: `${st.permanentId} · ${b(st.nameBn, st.nameEn, lang)}`,
-    }));
-  }, [verifyCategory, schools, teachers, students, lang]);
 
   const effectiveVerifyQuery = (submittedVerifyQuery || verifyQuery).trim();
 
@@ -308,53 +285,6 @@ export const PortalLandingHub: React.FC<PortalLandingHubProps> = ({
     { step: 4, labelBn: 'সক্রিয়', labelEn: 'Active' },
   ];
 
-  const demoAccounts: {
-    id: DemoRolePreset;
-    role: Role;
-    titleBn: string;
-    titleEn: string;
-    idLabel: string;
-    accentClass: string;
-    icon: React.ComponentType<{ className?: string }>;
-  }[] = [
-    {
-      id: 'school_admin',
-      role: 'school_admin',
-      titleBn: 'বিদ্যালয় অ্যাডমিন (মডেল প্রা. বি.)',
-      titleEn: 'School Admin (GPS-1042)',
-      idLabel: 'SCH-2026-00015',
-      accentClass: 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40',
-      icon: Building2,
-    },
-    {
-      id: 'teacher',
-      role: 'teacher',
-      titleBn: 'শিক্ষক পোর্টাল (রহিম উদ্দিন)',
-      titleEn: 'Teacher (Rahim Uddin)',
-      idLabel: 'tch_rahim',
-      accentClass: 'text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40',
-      icon: BookOpen,
-    },
-    {
-      id: 'student',
-      role: 'student',
-      titleBn: 'শিক্ষার্থী পোর্টাল',
-      titleEn: 'Student Portal',
-      idLabel: 'STD-2026-GPS1042-0012',
-      accentClass: 'text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40',
-      icon: GraduationCap,
-    },
-    {
-      id: 'guardian',
-      role: 'guardian',
-      titleBn: 'অভিভাবক পোর্টাল',
-      titleEn: 'Guardian Portal',
-      idLabel: '01712345678',
-      accentClass: 'text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/40',
-      icon: Users,
-    },
-  ];
-
   return (
     <div
       data-testid="login-portal-gate"
@@ -426,8 +356,8 @@ export const PortalLandingHub: React.FC<PortalLandingHubProps> = ({
               </h1>
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 {b(
-                  'School Admin · বিদ্যালয় · শিক্ষক · শিক্ষার্থী — একক নিরাপদ প্রবেশ',
-                  'School Admin · Institution · Teacher · Student — Unified Sign In',
+                  'Super Central Admin · School Admin · Teacher · Parent — একক নিরাপদ প্রবেশ',
+                  'Super Central Admin · School Admin · Teacher · Parent — Unified Sign In',
                   lang
                 )}
               </p>
@@ -870,20 +800,20 @@ export const PortalLandingHub: React.FC<PortalLandingHubProps> = ({
 
                     <button
                       type="button"
-                      data-testid="register-option-student"
-                      onClick={onOpenStudentRegistration}
-                      className="w-full p-3.5 bg-white dark:bg-slate-900 hover:bg-amber-50/70 dark:hover:bg-amber-950/30 flex items-center justify-between gap-3 text-left cursor-pointer transition-colors"
+                      data-testid="register-option-parent"
+                      onClick={onOpenParentRegistration}
+                      className="w-full p-3.5 bg-white dark:bg-slate-900 hover:bg-sky-50/70 dark:hover:bg-sky-950/30 flex items-center justify-between gap-3 text-left cursor-pointer transition-colors"
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-10 h-10 rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 flex items-center justify-center shrink-0">
-                          <GraduationCap className="w-5 h-5" />
+                        <div className="w-10 h-10 rounded-lg bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-400 flex items-center justify-center shrink-0">
+                          <Users className="w-5 h-5" />
                         </div>
                         <div className="min-w-0">
                           <div className="text-sm font-bold text-slate-900 dark:text-white">
-                            {b('শিক্ষার্থী রেজিস্ট্রেশন', 'Student Registration', lang)}
+                            {b('অভিভাবক (Parent) অ্যাকাউন্ট', 'Parent Account Registration', lang)}
                           </div>
                           <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                            {b('অনলাইন ভর্তি আবেদন ও স্বয়ংক্রিয় Student ID', 'Submit student admission & get Student ID', lang)}
+                            {b('অ্যাকাউন্ট তৈরি করে স্কুল কোড ও Student ID দিয়ে সন্তান যুক্ত করুন', 'Register Parent account & link children via School + Student ID', lang)}
                           </div>
                         </div>
                       </div>
@@ -980,10 +910,10 @@ export const PortalLandingHub: React.FC<PortalLandingHubProps> = ({
                         }}
                         placeholder={
                           verifyCategory === 'school'
-                            ? b('কোড/আইডি (যেমন: GPS-1042)', 'Code/ID (e.g. GPS-1042)', lang)
+                            ? b('স্কুল কোড / ID / EIIN লিখুন', 'Enter School Code / ID / EIIN', lang)
                             : verifyCategory === 'teacher'
-                              ? b('Teacher ID / মোবাইল (TCH-GPS1042-02)', 'Teacher ID / Mobile', lang)
-                              : b('Student ID / মোবাইল (STD-2026-...)', 'Student ID / Mobile', lang)
+                              ? b('Teacher ID / মোবাইল নম্বর লিখুন', 'Enter Teacher ID / Mobile', lang)
+                              : b('Student ID / মোবাইল নম্বর লিখুন', 'Enter Student ID / Mobile', lang)
                         }
                         className="w-full h-10 pl-9 pr-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800 text-xs outline-none focus:border-emerald-600"
                       />
@@ -996,27 +926,6 @@ export const PortalLandingHub: React.FC<PortalLandingHubProps> = ({
                       {b('যাচাই করুন', 'Check', lang)}
                     </button>
                   </form>
-
-                  <select
-                    aria-label={b('তালিকা থেকে দ্রুত নির্বাচন', 'Quick select sample record', lang)}
-                    value=""
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        setVerifyQuery(e.target.value);
-                        setSubmittedVerifyQuery(e.target.value);
-                      }
-                    }}
-                    className="w-full h-9 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-700 dark:text-slate-200"
-                  >
-                    <option value="">
-                      {b('-- দ্রুত নমুনা রেকর্ড থেকে নির্বাচন করুন --', '-- Quick pick a record --', lang)}
-                    </option>
-                    {sampleOptions.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
 
                   {effectiveVerifyQuery ? (
                     verifyResult ? (
@@ -1128,16 +1037,6 @@ export const PortalLandingHub: React.FC<PortalLandingHubProps> = ({
             >
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
               <span>{b('অ্যাকাউন্ট সংক্রান্ত সকল বিষয়', 'All Account Matters', lang)}</span>
-            </button>
-
-            <button
-              type="button"
-              data-testid="footer-demo-account-btn"
-              onClick={() => setDemoModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold text-slate-800 dark:text-slate-200 cursor-pointer whitespace-nowrap transition-colors"
-            >
-              <Target className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              <span>{b('Demo Account', 'Demo Account', lang)}</span>
             </button>
           </div>
         </footer>
@@ -1261,77 +1160,6 @@ export const PortalLandingHub: React.FC<PortalLandingHubProps> = ({
                   <ArrowRight className="w-4 h-4 text-slate-400 shrink-0" />
                 </button>
               )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Compact Demo Account Picker Modal */}
-      {demoModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="demo-account-title"
-            data-testid="demo-account-modal"
-            className="w-full max-w-md rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-5 space-y-4 text-xs"
-          >
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <Target className="w-4 h-4 text-emerald-600" />
-                <h3 id="demo-account-title" className="text-base font-extrabold text-slate-900 dark:text-white">
-                  {b('Demo Account দিয়ে দেখুন', 'Explore with Demo Account', lang)}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setDemoModalOpen(false)}
-                aria-label={b('বন্ধ করুন', 'Close', lang)}
-                className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              {b(
-                'যেকোনো একটি ডেমো রোল বেছে নিয়ে সরাসরি অ্যাপের সম্পূর্ণ কার্যক্রম পরীক্ষা করুন:',
-                'Select any demo role below to preview the live application workflow:',
-                lang
-              )}
-            </p>
-
-            <div className="space-y-2">
-              {demoAccounts.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    data-testid={`demo-login-${item.id}`}
-                    onClick={() => {
-                      setDemoModalOpen(false);
-                      onDemoQuickLogin(item.id);
-                    }}
-                    className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-emerald-500/60 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/60 flex items-center justify-between gap-3 text-left cursor-pointer transition-colors"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${item.accentClass}`}>
-                        <Icon className="w-4 h-4" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="font-bold text-slate-900 dark:text-white truncate">
-                          {b(item.titleBn, item.titleEn, lang)}
-                        </div>
-                        <div className="font-mono text-[11px] text-slate-500 truncate">
-                          ID: {item.idLabel}
-                        </div>
-                      </div>
-                    </div>
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                  </button>
-                );
-              })}
             </div>
           </div>
         </div>

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { INITIAL_STUDENTS, INITIAL_TEACHERS } from '../data/mockData';
+import { INITIAL_STUDENTS, INITIAL_TEACHERS } from './testFixtures';
 import {
   BOOT_ADMIN_EMAIL,
   authenticateGuardianAccount,
@@ -95,14 +95,14 @@ test('Google Firebase Auth email mapping grants central_admin ONLY when verified
 });
 
 test('Teacher and Guardian institutional login validators enforce password verification', () => {
-  const okTeacher = authenticateTeacherAccount(INITIAL_TEACHERS, 'tch_rahim', 'teacher@123');
+  const okTeacher = authenticateTeacherAccount(INITIAL_TEACHERS, 'TCH-GPS1042-02', 'teacher@123');
   assert.equal(okTeacher.ok, true);
   assert.equal(okTeacher.teacher?.id, 'tch-2');
 
-  const okTeacherCode = authenticateTeacherAccount(INITIAL_TEACHERS, 'TCH-GPS1042-02', 'teacher@123');
-  assert.equal(okTeacherCode.ok, true);
+  const okTeacherEmail = authenticateTeacherAccount(INITIAL_TEACHERS, 'rahim.math@edu.bd', 'teacher@123');
+  assert.equal(okTeacherEmail.ok, true);
 
-  const badTeacherPass = authenticateTeacherAccount(INITIAL_TEACHERS, 'tch_rahim', 'wrong');
+  const badTeacherPass = authenticateTeacherAccount(INITIAL_TEACHERS, 'TCH-GPS1042-02', 'wrong');
   assert.equal(badTeacherPass.ok, false);
 
   const okGuardian = authenticateGuardianAccount(INITIAL_STUDENTS, '01712345678', 'parent@123');
@@ -113,32 +113,45 @@ test('Teacher and Guardian institutional login validators enforce password verif
   assert.equal(badGuardianPass.ok, false);
 });
 
-test('Session persistence restores verified user on reload and clears completely on logout', () => {
+test('Session persistence restores verified Parent user on reload, blocks student sessions, and clears on logout', () => {
   const storage = createMemoryStorage();
   assert.equal(readStoredPortalSession(storage), null);
 
-  const studentSession: AuthenticatedSession = {
-    uid: 'stu-rahim',
-    role: 'student',
-    displayName: 'Md. Rahim Uddin',
+  const parentSession: AuthenticatedSession = {
+    uid: 'parent-1',
+    role: 'guardian',
+    displayName: 'Md. Jamal Uddin (Parent)',
     provider: 'institutional_portal',
-    studentId: 'stu-rahim',
     schoolId: 'GPS-1042',
+    linkedStudentIds: ['stu-rahim'],
     signedInAtIso: '2026-11-24T01:05:00.000Z',
   };
 
-  persistPortalSession(studentSession, storage);
+  persistPortalSession(parentSession, storage);
   const restored = readStoredPortalSession(storage);
   assert.ok(restored);
-  assert.equal(restored?.role, 'student');
-  assert.equal(restored?.studentId, 'stu-rahim');
+  assert.equal(restored?.role, 'guardian');
+  assert.deepEqual(restored?.linkedStudentIds, ['stu-rahim']);
+
+  // Student sessions must never be accepted even if injected into storage
+  storage.setItem(
+    'psms_verified_auth_session_v1',
+    JSON.stringify({
+      uid: 'stu-rahim',
+      role: 'student',
+      displayName: 'Student',
+      provider: 'institutional_portal',
+      signedInAtIso: '2026-11-24T01:05:00.000Z',
+    })
+  );
+  assert.equal(readStoredPortalSession(storage), null);
 
   // Corrupt payload fails closed
   storage.setItem('psms_verified_auth_session_v1', '{"role":"central_admin"}');
   assert.equal(readStoredPortalSession(storage), null);
 
   // Logout clears storage completely
-  persistPortalSession(studentSession, storage);
+  persistPortalSession(parentSession, storage);
   clearStoredPortalSession(storage);
   assert.equal(readStoredPortalSession(storage), null);
 });

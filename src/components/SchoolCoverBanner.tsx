@@ -33,7 +33,7 @@ export const SchoolCoverBanner: React.FC<SchoolCoverBannerProps> = ({
   const coverUrl = hasRemovedCover ? '' : school?.coverImageUrl || RECOMMENDED_SCHOOL_COVERS[0].url;
   const schoolCodeLabel = school?.schoolPublicId
     ? `${school.schoolPublicId} · ${school.code}`
-    : school?.code ?? 'GPS-1042';
+    : school?.code ?? '—';
   const resolvedSubtitle =
     subtitle ?? (subtitleBn || subtitleEn ? b(subtitleBn ?? '', subtitleEn ?? subtitleBn ?? '', lang) : undefined);
 
@@ -66,7 +66,7 @@ export const SchoolCoverBanner: React.FC<SchoolCoverBannerProps> = ({
         <div className="space-y-1.5">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-lg sm:text-2xl font-extrabold tracking-tight leading-snug text-white drop-shadow-sm">
-              {b(school?.nameBn ?? 'মডেল সরকারি প্রাথমিক বিদ্যালয়', school?.nameEn ?? 'Model Govt. Primary School', lang)}
+              {b(school?.nameBn ?? 'নিবন্ধিত বিদ্যালয়', school?.nameEn ?? 'Registered School', lang)}
             </h2>
             <span className="px-2.5 py-0.5 rounded-lg bg-white/15 border border-white/20 text-[11px] font-mono font-semibold text-emerald-200 backdrop-blur-sm">
               {schoolCodeLabel}
@@ -78,11 +78,11 @@ export const SchoolCoverBanner: React.FC<SchoolCoverBannerProps> = ({
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-200">
               <span className="inline-flex items-center gap-1">
                 <Building2 className="w-3.5 h-3.5 text-emerald-300" />
-                EIIN: {school?.eiin ?? '108241'} · {school?.classRange ?? 'Pre-Primary – Class 5'}
+                EIIN: {school?.eiin ?? '—'} · {school?.classRange ?? '—'}
               </span>
               <span className="inline-flex items-center gap-1">
                 <MapPin className="w-3.5 h-3.5 text-emerald-300" />
-                {school?.upazila ?? 'মিরপুর'}, {school?.district ?? 'ঢাকা'}
+                {school?.upazila || school?.district ? `${school?.upazila ?? '—'}, ${school?.district ?? '—'}` : '—'}
               </span>
               <span className="inline-flex items-center gap-1">
                 <Users className="w-3.5 h-3.5 text-emerald-300" />

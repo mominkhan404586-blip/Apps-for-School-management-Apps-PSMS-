@@ -49,7 +49,7 @@ import {
 } from '../utils/attendanceExportAndStickers';
 import { buildAbsentStudentsSmsPayload } from '../utils/bulkSmsEngine';
 import { resolveApiUrl } from '../utils/deploymentConfig';
-import { DEFAULT_PROFILE_AVATARS } from '../data/mockData';
+import { AVATARS } from '../data/mockData';
 import { QrStickerPrintModal } from './QrStickerPrintModal';
 
 const maskMobile = (raw?: string): string => {
@@ -1250,7 +1250,7 @@ export const AutoIdAttendanceScanner: React.FC<AutoIdAttendanceScannerProps> = (
                           : 'bg-blue-700 hover:bg-blue-800 text-white'
                       }`}
                     >
-                      {autoQueueRunning ? 'অটো-কিউ থামান' : 'অটো-কিউ ডেমো'}
+                      {autoQueueRunning ? 'অটো-কিউ থামান' : 'অটো-কিউ চালু'}
                     </button>
                   </div>
                 </div>
@@ -1401,7 +1401,7 @@ export const AutoIdAttendanceScanner: React.FC<AutoIdAttendanceScannerProps> = (
                 {lastVerifiedScan.student ? (
                   <div className="flex items-center gap-3.5">
                     <img
-                      src={lastVerifiedScan.student.photoUrl || DEFAULT_PROFILE_AVATARS.student}
+                      src={lastVerifiedScan.student.photoUrl || AVATARS.studentRahim}
                       alt={lastVerifiedScan.student.nameEn}
                       className="w-14 h-14 rounded-xl object-cover border-2 border-white dark:border-slate-700 shadow-sm shrink-0"
                     />

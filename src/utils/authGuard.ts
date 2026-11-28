@@ -18,6 +18,7 @@ export interface AuthenticatedSession {
   teacherId?: string;
   studentId?: string;
   guardianMobile?: string;
+  linkedStudentIds?: string[];
   signedInAtIso: string;
 }
 
@@ -34,7 +35,6 @@ export const VALID_APP_ROLES: readonly Role[] = [
   'school_admin',
   'teacher',
   'guardian',
-  'student',
 ] as const;
 
 export const BOOT_ADMIN_EMAIL = 'mominkhan404586@gmail.com';
@@ -44,6 +44,10 @@ const ROLE_ALLOWED_TABS: Record<Role, readonly string[]> = {
   central_admin: [
     'dashboard',
     'schools',
+    'school_operations',
+    'school_setup',
+    'subject_registry',
+    'class_promotion_release',
     'locations',
     'teachers',
     'students',
@@ -66,6 +70,11 @@ const ROLE_ALLOWED_TABS: Record<Role, readonly string[]> = {
   school_admin: [
     'dashboard',
     'performance',
+    'school_operations',
+    'school_setup',
+    'subject_registry',
+    'class_promotion_release',
+    'student_attendance_qr',
     'academics',
     'students',
     'teachers',
@@ -93,6 +102,10 @@ const ROLE_ALLOWED_TABS: Record<Role, readonly string[]> = {
   teacher: [
     'dashboard',
     'my_work',
+    'school_operations',
+    'subject_registry',
+    'class_promotion_release',
+    'student_attendance_qr',
     'my_classes',
     'my_students',
     'teaching',
@@ -109,25 +122,7 @@ const ROLE_ALLOWED_TABS: Record<Role, readonly string[]> = {
     'reports',
     'settings',
   ],
-  student: [
-    'dashboard',
-    'todays_lessons',
-    'classes',
-    'routine',
-    'lessons',
-    'classwork',
-    'homework',
-    'assignment',
-    'assessment',
-    'results',
-    'progress',
-    'ranking',
-    'documents',
-    'notices',
-    'notifications',
-    'profile',
-    'settings',
-  ],
+  student: [],
   guardian: [
     'dashboard',
     'child',
@@ -320,6 +315,9 @@ export function validateStoredSessionPayload(raw: unknown): AuthenticatedSession
     studentId: typeof candidate.studentId === 'string' ? candidate.studentId.trim() : undefined,
     guardianMobile:
       typeof candidate.guardianMobile === 'string' ? candidate.guardianMobile.trim() : undefined,
+    linkedStudentIds: Array.isArray(candidate.linkedStudentIds)
+      ? candidate.linkedStudentIds.filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+      : undefined,
     signedInAtIso: candidate.signedInAtIso.trim(),
   };
 }
@@ -403,18 +401,17 @@ export function authenticateTeacherAccount(
   const matched = teachers.find((t) => {
     const code = t.teacherCode.toLowerCase();
     const id = t.id.toLowerCase();
+    const username = (t.username ?? '').toLowerCase();
+    const uniqueId = (t.uniqueIdCode ?? '').toLowerCase();
     const mobile = t.mobile.toLowerCase();
     const email = (t.email ?? '').toLowerCase();
-    const isRahimAlias =
-      (idClean === 'tch_rahim' || idClean === 'teacher') && t.id === 'tch-2';
-    const isSumaiyaAlias = idClean === 'tch_sumaiya' && t.id === 'tch-3';
     return (
       code === idClean ||
       id === idClean ||
+      (username.length > 0 && username === idClean) ||
+      (uniqueId.length > 0 && uniqueId === idClean) ||
       mobile === idClean ||
-      (email.length > 0 && email === idClean) ||
-      isRahimAlias ||
-      isSumaiyaAlias
+      (email.length > 0 && email === idClean)
     );
   });
 
@@ -442,8 +439,8 @@ export function authenticateTeacherAccount(
   if (passClean !== 'teacher@123') {
     return {
       ok: false,
-      errorBn: 'শিক্ষক পাসওয়ার্ড সঠিক নয় (ডেমো: teacher@123)।',
-      errorEn: 'Incorrect teacher password (demo default: teacher@123).',
+      errorBn: 'শিক্ষক অ্যাকাউন্টের পাসওয়ার্ড সঠিক নয়।',
+      errorEn: 'Incorrect teacher account password.',
     };
   }
 
@@ -468,25 +465,22 @@ export function authenticateGuardianAccount(
   if (!idClean || !passClean) {
     return {
       ok: false,
-      errorBn: 'অভিভাবকের মোবাইল নম্বর / লিংক কোড এবং পাসওয়ার্ড দিন।',
-      errorEn: 'Guardian mobile / link code and password are required.',
+      errorBn: 'Parent মোবাইল নম্বর / লিংক কোড এবং পাসওয়ার্ড দিন।',
+      errorEn: 'Parent mobile / link code and password are required.',
     };
   }
 
-  const normalizedMobile =
-    idClean === 'guardian' || idClean === 'guardian_jamal' ? '01712345678' : idClean;
-
   const linkedStudents = students.filter(
     (st) =>
-      st.guardianMobile.toLowerCase() === normalizedMobile ||
+      st.guardianMobile.toLowerCase() === idClean ||
       st.guardianLinkCode.toLowerCase() === idClean
   );
 
   if (linkedStudents.length === 0) {
     return {
       ok: false,
-      errorBn: 'এই মোবাইল বা Guardian Link Code-এর সাথে কোনো শিক্ষার্থী যুক্ত নেই।',
-      errorEn: 'No student linked to that guardian mobile or link code.',
+      errorBn: 'এই মোবাইল বা Link Code-এর সাথে কোনো শিক্ষার্থী যুক্ত নেই।',
+      errorEn: 'No student linked to that Parent mobile or link code.',
     };
   }
 
@@ -497,8 +491,8 @@ export function authenticateGuardianAccount(
   if (passClean !== 'parent@123' && !matchesLinkCode) {
     return {
       ok: false,
-      errorBn: 'অভিভাবক পাসওয়ার্ড সঠিক নয় (ডেমো: parent@123)।',
-      errorEn: 'Incorrect guardian password (demo default: parent@123).',
+      errorBn: 'Parent পাসওয়ার্ড সঠিক নয়।',
+      errorEn: 'Incorrect Parent password.',
     };
   }
 

@@ -17,9 +17,9 @@ import {
   saveRoutineWithVersioning,
   upsertRoutineCell,
 } from './routineManagementEngine';
-import { INITIAL_MASTER_ROUTINES } from '../data/routineSeedData';
-import { INITIAL_TEACHERS } from '../data/mockData';
-import { INITIAL_TEACHER_ASSIGNMENTS } from '../data/academicSeedData';
+import { INITIAL_MASTER_ROUTINES } from './testFixtures';
+import { INITIAL_TEACHERS } from './testFixtures';
+import { INITIAL_TEACHER_ASSIGNMENTS } from './testFixtures';
 
 test('parseTimeToMinutes & computeDurationMinutes handle 24h and invalid times', () => {
   assert.equal(parseTimeToMinutes('09:30'), 570);

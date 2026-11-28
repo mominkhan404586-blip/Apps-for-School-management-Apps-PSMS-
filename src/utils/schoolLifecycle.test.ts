@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { INITIAL_SCHOOLS } from '../data/mockData';
+import { INITIAL_SCHOOLS } from './testFixtures';
 import {
   applySchoolInfoEdit,
   computeSchoolSummaryCounts,

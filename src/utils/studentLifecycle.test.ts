@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { INITIAL_SCHOOLS, INITIAL_STUDENTS, INITIAL_STUDENT_CHANGE_REQUESTS } from '../data/mockData';
+import { INITIAL_SCHOOLS, INITIAL_STUDENTS, INITIAL_STUDENT_CHANGE_REQUESTS } from './testFixtures';
 import {
   STANDARD_CLASSES,
   applyStudentAllowedSelfPatch,

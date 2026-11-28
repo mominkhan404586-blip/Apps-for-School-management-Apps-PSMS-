@@ -35,6 +35,10 @@ import {
   Camera,
   Settings,
   Database,
+  Power,
+  Sliders,
+  ArrowUpRight,
+  ScanLine,
 } from 'lucide-react';
 import type { Language, Role, SchoolRecord, StudentRecord, TeacherRecord } from '../types';
 import type { DeviceViewMode } from '../utils/devicePreviewEngine';
@@ -52,6 +56,10 @@ export interface NavItem {
 export const CENTRAL_ADMIN_NAV: NavItem[] = [
   { id: 'dashboard', labelBn: 'Dashboard', labelEn: 'Dashboard', icon: LayoutDashboard, section: 'main' },
   { id: 'schools', labelBn: 'বিদ্যালয় ব্যবস্থাপনা', labelEn: 'Schools Management', icon: Building2, section: 'main' },
+  { id: 'school_operations', labelBn: 'বিদ্যালয় শুরু, ছুটি ও লিভ', labelEn: 'School Operations & Leave', icon: Power, section: 'main' },
+  { id: 'school_setup', labelBn: 'বিদ্যালয় কার্যক্রম (Setup)', labelEn: 'School Setup Wizard', icon: Sliders, section: 'main' },
+  { id: 'subject_registry', labelBn: 'শ্রেণীভিত্তিক বিষয় (Master)', labelEn: 'Master & School Subjects', icon: BookOpen, section: 'main' },
+  { id: 'class_promotion_release', labelBn: 'Class Promotion & Release', labelEn: 'Class Promotion & Release', icon: ArrowUpRight, section: 'main' },
   { id: 'locations', labelBn: 'লোকেশন ডাটাবেজ (BD)', labelEn: 'Location Database', icon: MapPin, section: 'main' },
   { id: 'teachers', labelBn: 'শিক্ষক অনুমোদন ও তালিকা', labelEn: 'Teacher Approvals', icon: Users, section: 'main' },
   { id: 'students', labelBn: 'শিক্ষার্থী ব্যবস্থাপনা', labelEn: 'Students Directory', icon: GraduationCap, section: 'main' },
@@ -74,6 +82,11 @@ export const CENTRAL_ADMIN_NAV: NavItem[] = [
 
 export const SCHOOL_ADMIN_NAV: NavItem[] = [
   { id: 'dashboard', labelBn: 'Dashboard', labelEn: 'Dashboard', icon: LayoutDashboard, section: 'main' },
+  { id: 'school_operations', labelBn: 'বিদ্যালয় শুরু, ছুটি ও লিভ', labelEn: 'Operations & Leave', icon: Power, section: 'main' },
+  { id: 'school_setup', labelBn: 'বিদ্যালয় কার্যক্রম (Setup)', labelEn: 'School Setup Wizard', icon: Sliders, section: 'main' },
+  { id: 'subject_registry', labelBn: 'শ্রেণীভিত্তিক বিষয়', labelEn: 'Subject Registry', icon: BookOpen, section: 'main' },
+  { id: 'class_promotion_release', labelBn: 'Class Promotion & Release', labelEn: 'Class Promotion & Release', icon: ArrowUpRight, section: 'main' },
+  { id: 'student_attendance_qr', labelBn: 'Student Attendance QR', labelEn: 'Student Attendance QR', icon: ScanLine, section: 'main' },
   { id: 'performance', labelBn: 'পারফরম্যান্স ড্যাশবোর্ড', labelEn: 'Performance Dashboard', icon: TrendingUp, section: 'main' },
   { id: 'academics', labelBn: 'একাডেমিক ম্যানেজমেন্ট', labelEn: 'Academic Management', icon: BookOpen, section: 'main' },
   { id: 'students', labelBn: 'শিক্ষার্থী তথ্য', labelEn: 'Students', icon: GraduationCap, section: 'main' },
@@ -102,6 +115,10 @@ export const SCHOOL_ADMIN_NAV: NavItem[] = [
 
 export const TEACHER_NAV: NavItem[] = [
   { id: 'dashboard', labelBn: 'Dashboard', labelEn: 'Dashboard', icon: LayoutDashboard, section: 'main' },
+  { id: 'school_operations', labelBn: 'বিদ্যালয় কার্যক্রম ও ছুটি', labelEn: 'Operations & Leave', icon: Power, section: 'main' },
+  { id: 'subject_registry', labelBn: 'শ্রেণীভিত্তিক বিষয়', labelEn: 'Subject Registry', icon: BookOpen, section: 'main' },
+  { id: 'class_promotion_release', labelBn: 'Class Promotion & Release', labelEn: 'Class Promotion & Release', icon: ArrowUpRight, section: 'main' },
+  { id: 'student_attendance_qr', labelBn: 'Student Attendance QR', labelEn: 'Student Attendance QR', icon: ScanLine, section: 'main' },
   { id: 'my_work', labelBn: 'My Work (আজকের কাজ)', labelEn: 'My Work', icon: CheckCircle2, section: 'main' },
   { id: 'my_classes', labelBn: 'My Classes (শ্রেণি ও স্বত্ব)', labelEn: 'My Classes', icon: Home, section: 'main' },
   { id: 'my_students', labelBn: 'আমার শিক্ষার্থী ও ভর্তি', labelEn: 'My Students & Admission', icon: GraduationCap, section: 'main' },
@@ -120,29 +137,9 @@ export const TEACHER_NAV: NavItem[] = [
   { id: 'settings', labelBn: 'Settings', labelEn: 'Settings', icon: Shield, section: 'footer' },
 ];
 
-export const STUDENT_NAV: NavItem[] = [
-  { id: 'dashboard', labelBn: 'Dashboard', labelEn: 'Dashboard', icon: LayoutDashboard, section: 'main' },
-  { id: 'todays_lessons', labelBn: 'আজকের পড়া ও Homework', labelEn: "Today's Lessons", icon: BookOpen, section: 'main' },
-  { id: 'classes', labelBn: 'My Classes', labelEn: 'My Classes', icon: Home, section: 'main' },
-  { id: 'routine', labelBn: 'Routine', labelEn: 'Routine', icon: CalendarDays, section: 'main' },
-  { id: 'lessons', labelBn: 'Lessons & Syllabus', labelEn: 'Lessons & Syllabus', icon: Layers, section: 'main' },
-  { id: 'classwork', labelBn: 'Classwork', labelEn: 'Classwork', icon: FileText, section: 'main' },
-  { id: 'homework', labelBn: 'Homework', labelEn: 'Homework', icon: ClipboardList, section: 'main' },
-  { id: 'assignment', labelBn: 'Assignment', labelEn: 'Assignment', icon: CheckCircle2, section: 'main' },
-  { id: 'assessment', labelBn: 'Exams & Assessment', labelEn: 'Assessment', icon: Clock, section: 'main' },
-  { id: 'results', labelBn: 'Results & Marksheet', labelEn: 'Results & Marksheet', icon: Award, section: 'main' },
-  { id: 'progress', labelBn: 'Academic Progress', labelEn: 'Progress', icon: TrendingUp, section: 'main' },
-  { id: 'ranking', labelBn: 'Merit & Ranking', labelEn: 'Ranking', icon: Sparkles, section: 'main' },
-  { id: 'documents', labelBn: 'ID Card & Documents', labelEn: 'Documents', icon: FolderOpen, section: 'main' },
-  { id: 'notices', labelBn: 'স্কুল ও শ্রেণি নোটিশ', labelEn: 'Notices & Circulars', icon: Megaphone, section: 'main' },
-  { id: 'notifications', labelBn: 'Notification Center', labelEn: 'Notification Center', icon: Bell, section: 'main' },
-  { id: 'profile', labelBn: 'আমার Profile', labelEn: 'My Profile', icon: User, section: 'main' },
-  { id: 'settings', labelBn: 'Settings (সেটিংস)', labelEn: 'Settings', icon: Settings, section: 'footer' },
-];
-
-export const GUARDIAN_NAV: NavItem[] = [
+export const PARENT_NAV: NavItem[] = [
   { id: 'dashboard', labelBn: 'ড্যাশবোর্ড', labelEn: 'Dashboard', icon: LayoutDashboard, section: 'main' },
-  { id: 'child', labelBn: 'আমার সন্তান', labelEn: 'My Child', icon: GraduationCap, section: 'main' },
+  { id: 'child', labelBn: 'সন্তান প্রোফাইল ও QR ID', labelEn: 'Child Profile & QR ID', icon: GraduationCap, section: 'main' },
   { id: 'todays_lessons', labelBn: 'আজকের পড়া ও Homework', labelEn: "Today's Lessons", icon: BookOpen, section: 'main' },
   { id: 'routine', labelBn: 'ক্লাস রুটিন', labelEn: 'Class Routine', icon: CalendarDays, section: 'main' },
   { id: 'attendance', labelBn: 'উপস্থিতি ও ছুটি', labelEn: 'Attendance & Leave', icon: Clock, section: 'main' },
@@ -157,10 +154,11 @@ export const GUARDIAN_NAV: NavItem[] = [
   { id: 'notifications', labelBn: 'Notification Center', labelEn: 'Notification Center', icon: Bell, section: 'main' },
   { id: 'messages', labelBn: 'শিক্ষকের সাথে যোগাযোগ', labelEn: 'Teacher Contact', icon: MessageSquare, section: 'main' },
   { id: 'school_info', labelBn: 'বিদ্যালয়ের তথ্য ও পাঠ্যবই', labelEn: 'School Info & Materials', icon: Building2, section: 'main' },
-  { id: 'profile', labelBn: 'আমার Profile', labelEn: 'My Profile', icon: User, section: 'main' },
+  { id: 'profile', labelBn: 'আমার Parent Profile', labelEn: 'My Parent Profile', icon: User, section: 'main' },
   { id: 'support', labelBn: 'Help & Support', labelEn: 'Help & Support', icon: HelpCircle, section: 'footer' },
   { id: 'settings', labelBn: 'Settings (সেটিংস)', labelEn: 'Settings', icon: Settings, section: 'footer' },
 ];
+export const GUARDIAN_NAV = PARENT_NAV;
 
 interface SidebarProps {
   role: Role;
@@ -204,9 +202,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         ? SCHOOL_ADMIN_NAV
         : role === 'teacher'
           ? TEACHER_NAV
-          : role === 'student'
-            ? STUDENT_NAV
-            : GUARDIAN_NAV;
+          : PARENT_NAV;
 
   const mainItems = items.filter((i) => i.section === 'main');
   const controlItems = items.filter((i) => i.section === 'control');
@@ -214,8 +210,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   // Deep Navy sidebar specifically for School Admin matching reference
   const isNavySidebar = role === 'school_admin';
-  const studentIdentity =
-    role === 'student' ? activeStudent : role === 'guardian' ? activeGuardianChild : undefined;
+  const studentIdentity = role === 'guardian' ? activeGuardianChild : undefined;
 
   const getActiveNavClass = () => {
     if (role === 'central_admin' || role === 'teacher') {

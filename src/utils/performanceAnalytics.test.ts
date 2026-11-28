@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { INITIAL_ATTENDANCE_HISTORY, INITIAL_EXAMS, INITIAL_KIOSK_SCANS, INITIAL_STUDENTS } from '../data/mockData';
+import { INITIAL_ATTENDANCE_HISTORY, INITIAL_EXAMS, INITIAL_KIOSK_SCANS, INITIAL_STUDENTS } from './testFixtures';
 import {
   buildAtRiskStudentAlerts,
   buildAttendanceTrendSeries,

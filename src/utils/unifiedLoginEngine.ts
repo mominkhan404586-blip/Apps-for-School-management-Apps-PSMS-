@@ -1,5 +1,6 @@
 import type {
   ApprovalRequest,
+  ParentAccountRecord,
   Role,
   SchoolRecord,
   StudentRecord,
@@ -11,7 +12,7 @@ import {
   authenticateGuardianAccount,
   authenticateTeacherAccount,
 } from './authGuard';
-import { validateStudentActivationLogin } from './schoolConfigAndAddress';
+import { authenticateRegisteredParent } from './parentLinkingEngine';
 
 export type UnifiedLoginOutcome =
   | {
@@ -22,6 +23,7 @@ export type UnifiedLoginOutcome =
       teacherId?: string;
       studentId?: string;
       guardianMobile?: string;
+      parentId?: string;
       linkedStudentIds?: string[];
     }
   | {
@@ -40,11 +42,12 @@ export interface ResolveUnifiedLoginParams {
   schools: SchoolRecord[];
   teachers: TeacherRecord[];
   students: StudentRecord[];
+  parents?: ParentAccountRecord[];
   passwordOverrides?: Record<string, string>;
 }
 
 export function buildPasswordOverrideKey(
-  role: 'school_admin' | 'teacher' | 'student' | 'guardian',
+  role: 'school_admin' | 'teacher' | 'guardian',
   id: string
 ): string {
   return `${role}:${id.trim().toLowerCase()}`;
@@ -74,12 +77,13 @@ export function resolveUnifiedPortalLogin(
     };
   }
 
-  // 2. School / Institution User (School Admin)
+  // 2. School Admin Account
   const matchedSchoolRecord = params.schools.find(
     (s) =>
       (s.schoolPublicId && s.schoolPublicId.toLowerCase() === idLower) ||
       s.code.toLowerCase() === idLower ||
       s.id.toLowerCase() === idLower ||
+      (s.uniqueIdCode && s.uniqueIdCode.toLowerCase() === idLower) ||
       (s.registrationId && s.registrationId.toLowerCase() === idLower) ||
       s.adminUsername.toLowerCase() === idLower ||
       s.email.toLowerCase() === idLower
@@ -135,17 +139,17 @@ export function resolveUnifiedPortalLogin(
   const matchedTeacherRecord = params.teachers.find((t) => {
     const code = t.teacherCode.toLowerCase();
     const id = t.id.toLowerCase();
+    const username = (t.username ?? '').toLowerCase();
+    const uniqueId = (t.uniqueIdCode ?? '').toLowerCase();
     const mobile = t.mobile.toLowerCase();
     const email = (t.email ?? '').toLowerCase();
-    const isRahimAlias = (idLower === 'tch_rahim' || idLower === 'teacher') && t.id === 'tch-2';
-    const isSumaiyaAlias = idLower === 'tch_sumaiya' && t.id === 'tch-3';
     return (
       code === idLower ||
       id === idLower ||
+      (username.length > 0 && username === idLower) ||
+      (uniqueId.length > 0 && uniqueId === idLower) ||
       mobile === idLower ||
-      (email.length > 0 && email === idLower) ||
-      isRahimAlias ||
-      isSumaiyaAlias
+      (email.length > 0 && email === idLower)
     );
   });
 
@@ -198,7 +202,7 @@ export function resolveUnifiedPortalLogin(
     };
   }
 
-  // 4. Student Account (by Permanent ID / Digital Serial / Guardian Mobile)
+  // 4. Separate Student Login is strictly disabled (4 roles only: Super Central Admin, School Admin, Teacher, Parent)
   const matchedStudentRecord = params.students.find(
     (s) =>
       s.permanentId.toLowerCase() === idLower ||
@@ -207,74 +211,57 @@ export function resolveUnifiedPortalLogin(
   );
 
   if (matchedStudentRecord) {
-    if (
-      matchedStudentRecord.status === 'deactivated' ||
-      matchedStudentRecord.status === 'archived' ||
-      matchedStudentRecord.status === 'rejected' ||
-      matchedStudentRecord.status === 'suspended'
-    ) {
-      return {
-        kind: 'error',
-        errorBn: `${matchedStudentRecord.nameBn} বর্তমানে ${matchedStudentRecord.status} অবস্থায় রয়েছে — প্রবেশ অনুমোদিত নয়।`,
-        errorEn: `${matchedStudentRecord.nameEn} is currently ${matchedStudentRecord.status}.`,
-      };
-    }
+    return {
+      kind: 'error',
+      errorBn:
+        'শিক্ষার্থীর জন্য আলাদা লগইন ব্যবস্থা নেই। বিদ্যালয়, শিক্ষক অথবা Parent পোর্টালের মাধ্যমে শিক্ষার্থীর তথ্য পরিচালনা করুন।',
+      errorEn:
+        'Separate Student login is disabled. Student records are managed via School Admin, Teacher, or Parent accounts.',
+    };
+  }
 
-    const overrideKey = buildPasswordOverrideKey('student', matchedStudentRecord.id);
-    const customPass = overrides[overrideKey];
-    if (customPass) {
-      if (rawPass === customPass) {
+  // 5. Registered Parent Accounts
+  if (params.parents && params.parents.length > 0) {
+    const parentMatched = params.parents.find(
+      (p) =>
+        p.id.toLowerCase() === idLower ||
+        p.username.toLowerCase() === idLower ||
+        p.uniqueIdCode.toLowerCase() === idLower ||
+        p.mobile.toLowerCase() === idLower ||
+        (p.email ?? '').toLowerCase() === idLower
+    );
+    if (parentMatched) {
+      const parentAuth = authenticateRegisteredParent(
+        params.parents,
+        params.students,
+        rawId,
+        rawPass,
+        overrides
+      );
+      if (parentAuth.ok && parentAuth.parent) {
         return {
           kind: 'portal_authenticated',
-          role: 'student',
-          displayName: matchedStudentRecord.nameEn,
-          schoolId: matchedStudentRecord.schoolId,
-          studentId: matchedStudentRecord.id,
+          role: 'guardian',
+          displayName: parentAuth.parent.name,
+          parentId: parentAuth.parent.id,
+          guardianMobile: parentAuth.parent.mobile,
+          studentId: parentAuth.linkedStudentIds[0],
+          linkedStudentIds: parentAuth.linkedStudentIds,
         };
       }
       return {
         kind: 'error',
-        errorBn: 'শিক্ষার্থী অ্যাকাউন্টের পাসওয়ার্ড সঠিক নয়।',
-        errorEn: 'Incorrect student password.',
+        errorBn: parentAuth.errorBn ?? 'Parent পাসওয়ার্ড সঠিক নয়।',
+        errorEn: parentAuth.errorEn ?? 'Incorrect Parent password.',
       };
     }
-
-    const studentByActivation = validateStudentActivationLogin(
-      params.students,
-      matchedStudentRecord.permanentId,
-      rawPass === matchedStudentRecord.guardianMobile ? rawPass : matchedStudentRecord.guardianMobile,
-      rawPass === matchedStudentRecord.activationCode ? rawPass : undefined
-    );
-
-    const matchesStudentPassword =
-      rawPass === matchedStudentRecord.guardianMobile ||
-      rawPass.toUpperCase() === matchedStudentRecord.activationCode.toUpperCase() ||
-      rawPass === 'student@123';
-
-    if (studentByActivation.ok && matchesStudentPassword) {
-      return {
-        kind: 'portal_authenticated',
-        role: 'student',
-        displayName: matchedStudentRecord.nameEn,
-        schoolId: matchedStudentRecord.schoolId,
-        studentId: matchedStudentRecord.id,
-      };
-    }
-
-    return {
-      kind: 'error',
-      errorBn: 'শিক্ষার্থী পাসওয়ার্ড সঠিক নয় (নিবন্ধিত মোবাইল, অ্যাক্টিভেশন কোড বা student@123 ব্যবহার করুন)।',
-      errorEn: 'Incorrect student password (use registered mobile, activation code, or student@123).',
-    };
   }
 
-  // 5. Guardian / Mobile-based Student or Guardian Account
+  // 6. Legacy Student-Linked Parent Mobile / Link Code Fallback (Parent role only)
   const guardianLinked = params.students.filter(
     (s) =>
-      s.guardianMobile.toLowerCase() === idLower ||
-      s.guardianLinkCode.toLowerCase() === idLower ||
-      idLower === 'guardian' ||
-      idLower === 'guardian_jamal'
+      (s.guardianMobile && s.guardianMobile.toLowerCase() === idLower) ||
+      (s.guardianLinkCode && s.guardianLinkCode.toLowerCase() === idLower)
   );
 
   if (guardianLinked.length > 0) {
@@ -285,7 +272,7 @@ export function resolveUnifiedPortalLogin(
         return {
           kind: 'portal_authenticated',
           role: 'guardian',
-          displayName: 'Guardian',
+          displayName: 'Parent',
           schoolId: guardianLinked[0].schoolId,
           studentId: guardianLinked[0].id,
           guardianMobile: primaryMobile,
@@ -294,19 +281,8 @@ export function resolveUnifiedPortalLogin(
       }
       return {
         kind: 'error',
-        errorBn: 'অভিভাবক অ্যাকাউন্টের পাসওয়ার্ড সঠিক নয়।',
-        errorEn: 'Incorrect guardian password.',
-      };
-    }
-
-    if (rawPass === 'student@123') {
-      const stu = guardianLinked[0];
-      return {
-        kind: 'portal_authenticated',
-        role: 'student',
-        displayName: stu.nameEn,
-        schoolId: stu.schoolId,
-        studentId: stu.id,
+        errorBn: 'Parent অ্যাকাউন্টের পাসওয়ার্ড সঠিক নয়।',
+        errorEn: 'Incorrect Parent password.',
       };
     }
 
@@ -315,7 +291,7 @@ export function resolveUnifiedPortalLogin(
       return {
         kind: 'portal_authenticated',
         role: 'guardian',
-        displayName: 'Guardian',
+        displayName: 'Parent',
         schoolId: guardianLinked[0].schoolId,
         studentId: guardianAuth.linkedStudentIds?.[0],
         guardianMobile: guardianAuth.guardianMobile,
@@ -330,7 +306,7 @@ export function resolveUnifiedPortalLogin(
     };
   }
 
-  // 6. Any email address not matched locally routes to Firebase Email/Password Sign-In
+  // 7. Any email address not matched locally routes to Firebase Email/Password Sign-In
   if (rawId.includes('@') && rawId.includes('.')) {
     return {
       kind: 'firebase_email',
@@ -341,7 +317,7 @@ export function resolveUnifiedPortalLogin(
   return {
     kind: 'error',
     errorBn: 'প্রদত্ত ইউজারনেম, মোবাইল নম্বর বা ইমেইলের কোনো অ্যাকাউন্ট পাওয়া যায়নি।',
-    errorEn: 'No matching School, Teacher, Student, or Guardian account found.',
+    errorEn: 'No matching Super Admin, School, Teacher, or Parent account found.',
   };
 }
 

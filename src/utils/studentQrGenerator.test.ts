@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { INITIAL_STUDENTS } from '../data/mockData';
+import { INITIAL_STUDENTS } from './testFixtures';
 import { matchStudentByIdCardCode } from './attendanceScannerEngine';
 import { buildStudentQrPayload, parseAndValidateStudentQrPayload } from './studentQrGenerator';
 

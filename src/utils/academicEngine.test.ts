@@ -33,7 +33,7 @@ import {
   INITIAL_SCHOOLS,
   INITIAL_STUDENTS,
   INITIAL_TEACHERS,
-} from '../data/mockData';
+} from './testFixtures';
 import {
   INITIAL_CLASSWORKS,
   INITIAL_CURRICULUM_UNITS,
@@ -42,7 +42,7 @@ import {
   INITIAL_RESULT_SUBMISSIONS,
   INITIAL_TEACHER_ASSIGNMENTS,
   INITIAL_TEACHER_ATTENDANCE,
-} from '../data/academicSeedData';
+} from './testFixtures';
 
 test('Teacher subject-based marks entry allows only assigned Class + Subject', () => {
   const rahimTeacher = INITIAL_TEACHERS.find((t) => t.id === 'tch-2')!;

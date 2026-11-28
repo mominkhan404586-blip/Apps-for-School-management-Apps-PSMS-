@@ -48,10 +48,12 @@ import type {
   ExtraAcademicItem,
   FeeRecord,
   GradingRuleItem,
+  HolidayPlanRecord,
   KioskScanEvent,
   Language,
   LessonPlanItem,
   MasterRoutineRecord,
+  MasterSubjectFrameworkItem,
   NoticeImageAttachment,
   NoticeItem,
   NoticeLifecycleStatus,
@@ -60,22 +62,29 @@ import type {
   OfficialDocumentRecord,
   OfficialDocumentTemplate,
   PermissionKey,
+  PromotionReleaseHistoryEntry,
   QuestionBankItem,
   ResultAuditEntry,
   RoutineSlot,
+  SchoolDailyOperationsState,
   SchoolRecord,
+  SchoolSetupConfig,
+  SchoolSubjectRecord,
   StudentAttendanceHistoryEntry,
   StudentChangeRequest,
   StudentRecord,
   StudentStatus,
   StudyMaterialItem,
   SubjectResultSubmission,
+  SubjectYearLockConfig,
   SubstitutePermissionRecord,
   SubstituteReason,
+  TeacherLeaveRecord,
   TeacherRecord,
   TeacherSchoolAssignment,
   TeacherSchoolPermissions,
   TeacherSubjectAssignment,
+  TeacherSubjectPermissionConfig,
 } from '../types';
 import {
   calculateBDGradeAndGPA,
@@ -120,13 +129,18 @@ import {
 } from './PortalIllustrations';
 import { SchoolCoverBanner } from './SchoolCoverBanner';
 import { useSyncEffect } from '../hooks/useSyncEffect';
+import { SchoolOperationsLeavePanel } from './SchoolOperationsLeavePanel';
+import { SchoolClassSubjectWorkspace } from './SchoolClassSubjectWorkspace';
+import { ClassPromotionReleasePanel } from './ClassPromotionReleasePanel';
+import { StudentAttendanceQr } from './StudentAttendanceQr';
+import { createEmptySchoolSetupConfig } from '../utils/centralSubjectAndStructureEngine';
 
 interface SchoolAdminViewsProps {
   activeTab: string;
   onSelectTab: (tab: string) => void;
   lang: Language;
   searchQuery: string;
-  ownSchool: SchoolRecord;
+  ownSchool?: SchoolRecord;
   allSchools: SchoolRecord[];
   onSwitchActiveSchool: (schoolId: string) => void;
   students: StudentRecord[];
@@ -304,6 +318,42 @@ interface SchoolAdminViewsProps {
   onEditTeacherPhoto?: (teacher: TeacherRecord) => void;
   rtdbSyncTick?: number;
   settingsCenterElement?: React.ReactNode;
+  // Operations, Leave, Structure, Centralized Subjects, Promotion/Release & Entry/Exit QR
+  dailyOps?: SchoolDailyOperationsState[];
+  holidays?: HolidayPlanRecord[];
+  teacherLeaves?: TeacherLeaveRecord[];
+  onChangeDailyOps?: (next: SchoolDailyOperationsState[]) => void;
+  onChangeHolidays?: (next: HolidayPlanRecord[]) => void;
+  onChangeTeacherLeaves?: (next: TeacherLeaveRecord[]) => void;
+  schoolSetup?: SchoolSetupConfig;
+  masterFramework?: MasterSubjectFrameworkItem[];
+  schoolSubjects?: SchoolSubjectRecord[];
+  lockConfigs?: SubjectYearLockConfig[];
+  teacherPermission?: TeacherSubjectPermissionConfig;
+  onSaveSchoolSetup?: (next: SchoolSetupConfig) => void;
+  onChangeSchoolSubjects?: (next: SchoolSubjectRecord[]) => void;
+  onChangeLockConfigs?: (next: SubjectYearLockConfig[]) => void;
+  onChangeTeacherPermission?: (next: TeacherSubjectPermissionConfig) => void;
+  promotionHistory?: PromotionReleaseHistoryEntry[];
+  onCommitPromotionOrRelease?: (
+    nextStudents: StudentRecord[],
+    historyEntry: PromotionReleaseHistoryEntry
+  ) => void;
+  onRecordEntryExitScan?: (params: {
+    rawCode: string;
+    schoolId: string;
+    mode: 'entry' | 'exit';
+    dateIso: string;
+    timeText: string;
+    allowedClasses?: string[];
+  }) => {
+    ok: boolean;
+    status: 'recorded' | 'duplicate' | 'not_found' | 'wrong_school' | 'unauthorized_class' | 'invalid_qr';
+    messageBn: string;
+    messageEn: string;
+    student?: StudentRecord;
+    parentNotified?: boolean;
+  };
 }
 
 export const SchoolAdminViews: React.FC<SchoolAdminViewsProps> = ({
@@ -426,17 +476,36 @@ export const SchoolAdminViews: React.FC<SchoolAdminViewsProps> = ({
   onEditTeacherPhoto,
   rtdbSyncTick = 0,
   settingsCenterElement,
+  dailyOps = [],
+  holidays = [],
+  teacherLeaves = [],
+  onChangeDailyOps,
+  onChangeHolidays,
+  onChangeTeacherLeaves,
+  schoolSetup,
+  masterFramework = [],
+  schoolSubjects = [],
+  lockConfigs = [],
+  teacherPermission,
+  onSaveSchoolSetup,
+  onChangeSchoolSubjects,
+  onChangeLockConfigs,
+  onChangeTeacherPermission,
+  promotionHistory = [],
+  onCommitPromotionOrRelease,
+  onRecordEntryExitScan,
 }) => {
   const [classFilter, setClassFilter] = useState('all');
   const [payMethod, setPayMethod] = useState<FeeRecord['method']>('bKash');
   const [, setRtdbRefreshNonce] = useState(0);
-  const [smsLog] = useState([
-    { id: 'sms-1', target: 'সকল অভিভাবক (২৪৮ জন)', message: 'আগামী ২০ নভেম্বর বার্ষিক পরীক্ষা শুরু।', status: 'Delivered (99.2%)', time: 'আজ সকাল ১০:০০' },
-    { id: 'sms-2', target: 'অনুপস্থিত শিক্ষার্থীর অভিভাবক (১২ জন)', message: 'আপনার সন্তান আজ বিদ্যালয়ে অনুপস্থিত।', status: 'Delivered (100%)', time: 'আজ সকাল ০৯:৪৫' },
-  ]);
 
-  const typeConfig = getSchoolTypeConfig(ownSchool.schoolType, ownSchool.approvedClasses);
-  const allowedClasses = typeConfig.defaultClasses;
+  const safeSchoolType = ownSchool?.schoolType ?? 'PRIMARY';
+  const safeApprovedClasses = ownSchool?.approvedClasses ?? [];
+  const typeConfig = getSchoolTypeConfig(safeSchoolType, safeApprovedClasses);
+  const allowedClasses =
+    schoolSetup?.selectedClasses && schoolSetup.selectedClasses.length > 0
+      ? schoolSetup.selectedClasses
+      : typeConfig.defaultClasses;
   const effectiveClassFilter = classFilter === 'all' || allowedClasses.includes(classFilter) ? classFilter : 'all';
   const filteredStudents = filterStudents(students, searchQuery, effectiveClassFilter);
 
@@ -451,11 +520,39 @@ export const SchoolAdminViews: React.FC<SchoolAdminViewsProps> = ({
     },
   });
 
-  const classDistributionData = allowedClasses.slice(0, 6).map((cls, idx) => {
+  if (!ownSchool) {
+    if (activeTab === 'settings' && settingsCenterElement) {
+      return <div className="space-y-5">{settingsCenterElement}</div>;
+    }
+    return (
+      <div
+        data-testid="school-admin-empty-state"
+        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 text-center space-y-4"
+      >
+        <div className="w-12 h-12 mx-auto rounded-2xl bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-400 flex items-center justify-center">
+          <GraduationCap className="w-6 h-6" />
+        </div>
+        <div className="space-y-1 max-w-md mx-auto">
+          <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+            {b('০ টি বিদ্যালয় নিবন্ধিত', '0 Schools Registered', lang)}
+          </h2>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {b(
+              'বর্তমানে কোনো সক্রিয় বিদ্যালয় যুক্ত নেই। নতুন বিদ্যালয় নিবন্ধন করুন অথবা Super Central Admin কর্তৃক আপনার বিদ্যালয়ের অনুমোদন সম্পন্ন হলে এখানে সম্পূর্ণ ড্যাশবোর্ড সক্রিয় হবে।',
+              'No active school is linked yet. Register a school or wait for Super Central Admin approval to unlock the full school dashboard.',
+              lang
+            )}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const classDistributionData = allowedClasses.slice(0, 6).map((cls) => {
     const actualCount = students.filter((s) => s.className === cls).length;
     return {
       label: cls,
-      value: actualCount > 0 ? actualCount * 18 + 20 : 38 + ((idx * 7) % 19),
+      value: actualCount,
     };
   });
 
@@ -782,16 +879,16 @@ export const SchoolAdminViews: React.FC<SchoolAdminViewsProps> = ({
           {[
             {
               title: b('মোট শিক্ষার্থী', 'Total Students', lang),
-              value: ownSchool.studentCount.toString(),
-              growth: `${students.length} ${b('সক্রিয় প্রোফাইল', 'sample profiles', lang)}`,
+              value: students.length.toString(),
+              growth: `${students.filter((s) => s.status === 'active').length} ${b('সক্রিয় প্রোফাইল', 'active profiles', lang)}`,
               tab: 'students',
               icon: GraduationCap,
               badge: 'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-400',
             },
             {
               title: b('মোট শিক্ষক', 'Total Teachers', lang),
-              value: ownSchool.teacherCount.toString(),
-              growth: `${teachers.length} ${b('নিবন্ধিত শিক্ষক', 'directory teachers', lang)}`,
+              value: teachers.length.toString(),
+              growth: `${teachers.filter((t) => t.status === 'active').length} ${b('নিবন্ধিত শিক্ষক', 'active teachers', lang)}`,
               tab: 'teachers',
               icon: Users,
               badge: 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400',
@@ -799,15 +896,15 @@ export const SchoolAdminViews: React.FC<SchoolAdminViewsProps> = ({
             {
               title: b('অনুমোদিত শ্রেণি', 'Configured Classes', lang),
               value: allowedClasses.length.toString(),
-              growth: ownSchool.classRange,
-              tab: 'classes',
+              growth: ownSchool.classRange || '—',
+              tab: 'school_setup',
               icon: BookOpen,
               badge: 'bg-sky-50 dark:bg-sky-950/50 text-sky-700 dark:text-sky-400',
             },
             {
               title: b('মোট পরীক্ষা', 'Total Exams', lang),
               value: exams.length.toString(),
-              growth: b('৩য় সাময়িক প্রকাশিত', '3rd Term Published', lang),
+              growth: `${exams.filter((e) => e.status === 'published').length} ${b('প্রকাশিত', 'Published', lang)}`,
               tab: 'exams',
               icon: ClipboardList,
               badge: 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-400',
@@ -856,15 +953,24 @@ export const SchoolAdminViews: React.FC<SchoolAdminViewsProps> = ({
                 QR Kiosk →
               </button>
             </div>
-            <AttendanceDonutChart
-              centerValue="93.5%"
-              centerLabel={b('উপস্থিতির হার', 'Attendance Rate', lang)}
-              segments={[
-                { label: b('উপস্থিত (Present)', 'Present', lang), value: 232, color: '#059669' },
-                { label: b('অনুপস্থিত (Absent)', 'Absent', lang), value: 11, color: '#DC2626' },
-                { label: b('ছুটি (Leave)', 'On Leave', lang), value: 5, color: '#D97706' },
-              ]}
-            />
+            {(() => {
+              const presentCount = attendanceHistory.filter((h) => h.status === 'present' || h.status === 'late').length;
+              const absentCount = attendanceHistory.filter((h) => h.status === 'absent').length;
+              const leaveCount = attendanceHistory.filter((h) => h.status === 'leave').length;
+              const totalRecords = presentCount + absentCount + leaveCount;
+              const ratePct = totalRecords > 0 ? `${Math.round((presentCount / totalRecords) * 1000) / 10}%` : '0%';
+              return (
+                <AttendanceDonutChart
+                  centerValue={ratePct}
+                  centerLabel={b('উপস্থিতির হার', 'Attendance Rate', lang)}
+                  segments={[
+                    { label: b('উপস্থিত (Present)', 'Present', lang), value: presentCount, color: '#059669' },
+                    { label: b('অনুপস্থিত (Absent)', 'Absent', lang), value: absentCount, color: '#DC2626' },
+                    { label: b('ছুটি (Leave)', 'On Leave', lang), value: leaveCount, color: '#D97706' },
+                  ]}
+                />
+              );
+            })()}
           </div>
 
           <div className="lg:col-span-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-4 shadow-xs">
@@ -993,17 +1099,18 @@ export const SchoolAdminViews: React.FC<SchoolAdminViewsProps> = ({
               {b('সাম্প্রতিক কার্যক্রম', 'Recent Activity Timeline', lang)}
             </h2>
             <ul className="space-y-3 text-xs">
-              {[
-                { title: b('নতুন শিক্ষার্থী নিবন্ধন', 'New Student Registered', lang), meta: 'মেহেদী হাসান · Pre-Primary' },
-                { title: b('Assignment জমা সম্পন্ন', 'Assignment Submitted', lang), meta: 'Class 4 · ৩৮/৪০ জন' },
-                { title: b('পরীক্ষার ফলাফল প্রকাশ', 'Exam Results Published', lang), meta: '৩য় সাময়িক ২০২৬' },
-                { title: b('নোটিশ প্রকাশ', 'Notice Published', lang), meta: 'বার্ষিক পরীক্ষার সময়সূচি' },
-              ].map((item) => (
-                <li key={item.title} className="border-b last:border-b-0 border-slate-100 dark:border-slate-800 pb-2 last:pb-0">
-                  <div className="font-semibold text-slate-900 dark:text-slate-100">{item.title}</div>
-                  <div className="text-slate-500 mt-0.5">{item.meta}</div>
+              {auditLogs.length === 0 ? (
+                <li className="text-slate-500">
+                  {b('এখনো কোনো সাম্প্রতিক কার্যক্রম রেকর্ড হয়নি।', 'No recent activity logged yet.', lang)}
                 </li>
-              ))}
+              ) : (
+                auditLogs.slice(0, 4).map((item) => (
+                  <li key={item.id} className="border-b last:border-b-0 border-slate-100 dark:border-slate-800 pb-2 last:pb-0">
+                    <div className="font-semibold text-slate-900 dark:text-slate-100">{item.what}</div>
+                    <div className="text-slate-500 mt-0.5">{item.targetName} · {item.when}</div>
+                  </li>
+                ))
+              )}
             </ul>
           </div>
 
@@ -1036,20 +1143,27 @@ export const SchoolAdminViews: React.FC<SchoolAdminViewsProps> = ({
                 </h2>
                 {(() => {
                   const latestExam = pickPrimaryTermOrPublishedExam(exams);
-                  return latestExam ? (
+                  if (!latestExam) {
+                    return (
+                      <p className="text-xs text-slate-500">
+                        {b('নতুন স্থানীয় পরীক্ষা তৈরি বা ফলাফল দেখুন।', 'Open Exams to manage Class/Model tests.', lang)}
+                      </p>
+                    );
+                  }
+                  const merit = computeStudentMeritList(latestExam.entries);
+                  const passedCount = merit.filter((m) => m.gpa > 0).length;
+                  const passPct = merit.length > 0 ? Math.round((passedCount / merit.length) * 1000) / 10 : 0;
+                  const gpa5Count = merit.filter((m) => m.gpa >= 5).length;
+                  return (
                     <div className="text-xs space-y-1">
                       <div className="font-semibold text-blue-900 dark:text-blue-200">
                         {b(latestExam.titleBn, latestExam.titleEn, lang)}
                       </div>
                       <div className="text-slate-500">{latestExam.className} · {latestExam.dateRange}</div>
                       <div className="tabular-nums font-bold text-emerald-700 dark:text-emerald-400 pt-1">
-                        {b('পাসের হার: ৯৭.৮% · জিপিএ-৫: ১৪ জন', 'Pass Rate: 97.8% · GPA 5.0: 14', lang)}
+                        {b(`পাসের হার: ${passPct}% · জিপিএ-৫: ${gpa5Count} জন`, `Pass Rate: ${passPct}% · GPA 5.0: ${gpa5Count}`, lang)}
                       </div>
                     </div>
-                  ) : (
-                    <p className="text-xs text-slate-500">
-                      {b('নতুন স্থানীয় পরীক্ষা তৈরি বা ফলাফল দেখুন।', 'Open Exams to manage Class/Model tests.', lang)}
-                    </p>
                   );
                 })()}
               </div>
@@ -1071,7 +1185,7 @@ export const SchoolAdminViews: React.FC<SchoolAdminViewsProps> = ({
               <h2 className="text-sm font-bold text-slate-900 dark:text-white">Account Security</h2>
             </div>
             <div className="text-xs space-y-2 text-slate-600 dark:text-slate-300">
-              <div>{b('শেষ লগইন:', 'Last Login:', lang)} ১৭ নভে ২০২৬, ০৮:৫০ AM</div>
+              <div>{b('সর্বশেষ সেশন:', 'Last Session:', lang)} {lastLoginIso.slice(0, 10)}</div>
               <div>{b('স্কুল স্কোপ:', 'School Scope:', lang)} <span className="font-mono font-semibold">{ownSchool.code} Only</span></div>
               <div>{b('নিরাপত্তা অবস্থা:', 'Security Status:', lang)} <span className="text-emerald-700 dark:text-emerald-400 font-semibold">Protected (RLS Active)</span></div>
               <button
@@ -1170,6 +1284,85 @@ export const SchoolAdminViews: React.FC<SchoolAdminViewsProps> = ({
     );
   }
 
+  if (activeTab === 'school_operations') {
+    return (
+      <SchoolOperationsLeavePanel
+        lang={lang}
+        role="school_admin"
+        schoolId={ownSchool.id}
+        school={ownSchool}
+        actorName={ownSchool.headTeacher}
+        dailyOps={dailyOps}
+        holidays={holidays}
+        teacherLeaves={teacherLeaves}
+        examRoutines={examRoutines}
+        onChangeDailyOps={onChangeDailyOps ?? (() => {})}
+        onChangeHolidays={onChangeHolidays ?? (() => {})}
+        onChangeTeacherLeaves={onChangeTeacherLeaves ?? (() => {})}
+      />
+    );
+  }
+
+  if (activeTab === 'school_setup' || activeTab === 'subject_registry') {
+    return (
+      <SchoolClassSubjectWorkspace
+        lang={lang}
+        role="school_admin"
+        schoolId={ownSchool.id}
+        actorName={ownSchool.headTeacher}
+        initialMode={activeTab === 'school_setup' ? 'setup' : 'subjects'}
+        schoolSetup={schoolSetup ?? createEmptySchoolSetupConfig(ownSchool.id)}
+        masterFramework={masterFramework}
+        schoolSubjects={schoolSubjects}
+        lockConfigs={lockConfigs}
+        teacherPermission={teacherPermission}
+        masterRoutines={masterRoutines}
+        routineSlots={routineSlots}
+        examRoutines={examRoutines}
+        teacherAssignments={teacherAssignments}
+        exams={exams}
+        onSaveSchoolSetup={onSaveSchoolSetup ?? (() => {})}
+        onChangeSchoolSubjects={onChangeSchoolSubjects ?? (() => {})}
+        onChangeLockConfigs={onChangeLockConfigs ?? (() => {})}
+        onChangeTeacherPermission={onChangeTeacherPermission ?? (() => {})}
+      />
+    );
+  }
+
+  if (activeTab === 'class_promotion_release') {
+    return (
+      <ClassPromotionReleasePanel
+        lang={lang}
+        schoolId={ownSchool.id}
+        actorName={ownSchool.headTeacher}
+        students={students}
+        history={promotionHistory}
+        onCommitPromotionOrRelease={onCommitPromotionOrRelease ?? (() => {})}
+      />
+    );
+  }
+
+  if (activeTab === 'student_attendance_qr') {
+    return (
+      <StudentAttendanceQr
+        lang={lang}
+        schoolId={ownSchool.id}
+        school={ownSchool}
+        students={students}
+        attendanceHistory={attendanceHistory}
+        onRecordEntryExitScan={
+          onRecordEntryExitScan ??
+          (() => ({
+            ok: false,
+            status: 'not_found',
+            messageBn: 'QR স্ক্যান হ্যান্ডলার সংযুক্ত নয়।',
+            messageEn: 'QR scan handler not connected.',
+          }))
+        }
+      />
+    );
+  }
+
   // Full 34-Module Academic Management Hub (mapped from Academics, Classes, Routine, Subjects, Lessons, Events, Reports)
   if (activeTab === 'routine') {
     return (
@@ -1182,6 +1375,9 @@ export const SchoolAdminViews: React.FC<SchoolAdminViewsProps> = ({
           routines={masterRoutines}
           teachers={teachers}
           subjects={subjects}
+          schoolSubjects={schoolSubjects}
+          masterFramework={masterFramework}
+          academicYear={schoolSetup?.academicYear ?? ownSchool.academicYear}
           teacherAssignments={teacherAssignments}
           onUpdateRoutines={onUpdateMasterRoutines ?? (() => {})}
         />
@@ -1392,6 +1588,10 @@ export const SchoolAdminViews: React.FC<SchoolAdminViewsProps> = ({
           schools={[ownSchool]}
           students={students}
           exams={exams}
+          subjects={subjects}
+          schoolSubjects={schoolSubjects}
+          masterFramework={masterFramework}
+          academicYear={schoolSetup?.academicYear ?? ownSchool.academicYear}
           onCreateLocalExam={onCreateLocalExam ?? (() => {})}
           onToggleCentralTermPublish={() => {}}
           onUpdateExamMark={onUpdateExamMark}
@@ -1720,41 +1920,57 @@ export const SchoolAdminViews: React.FC<SchoolAdminViewsProps> = ({
 
   // AI Smart Analysis
   if (activeTab === 'ai_insights') {
+    const lowAttendanceStudent = students
+      .slice()
+      .sort((a, b2) => a.attendancePct - b2.attendancePct)
+      .find((s) => s.attendancePct < 75);
+    const completedSlots = routineSlots.filter((s) => s.status === 'completed').length;
+    const coveragePct = routineSlots.length > 0 ? Math.round((completedSlots / routineSlots.length) * 100) : 0;
     return (
       <div className="space-y-6">
         <div className="flex items-center gap-2">
           <Sparkles className="w-5 h-5 text-blue-700 dark:text-blue-400" />
           <h1 className="text-xl font-bold text-slate-900 dark:text-white">
-            {b('AI ও স্মার্ট একাডেমিক বিশ্লেষণ', 'AI School Insights & Actionable Analytics', lang)}
+            {b('স্মার্ট একাডেমিক বিশ্লেষণ', 'School Insights & Actionable Analytics', lang)}
           </h1>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-2">
             <div className="text-xs font-bold text-red-600 dark:text-red-400">
-              {b('হাজিরার হার কমে যাওয়ার প্রবণতা', 'Attendance Drop Detection', lang)}
+              {b('হাজিরার হার পর্যবেক্ষণ', 'Attendance Drop Detection', lang)}
             </div>
-            <p className="text-sm font-semibold text-slate-900 dark:text-white">Class 8 — রাকিব হাসান (68.5%)</p>
+            <p className="text-sm font-semibold text-slate-900 dark:text-white">
+              {lowAttendanceStudent
+                ? `${lowAttendanceStudent.className} — ${lowAttendanceStudent.nameBn} (${lowAttendanceStudent.attendancePct}%)`
+                : b('কোনো কম উপস্থিতির সতর্কতা নেই', 'No low-attendance alerts', lang)}
+            </p>
             <p className="text-xs text-slate-600 dark:text-slate-300">
-              {b('গত ১৪ দিনে ৫ দিন অনুপস্থিত। অভিভাবকের সাথে জরুরি যোগাযোগ সাজেস্ট করা হলো।', 'Absent 5 days in last 14 days. Immediate guardian outreach recommended.', lang)}
+              {lowAttendanceStudent
+                ? b('অভিভাবকের (Parent) সাথে যোগাযোগ করার পরামর্শ দেওয়া হলো।', 'Parent outreach recommended.', lang)
+                : b('নতুন হাজিরা রেকর্ড যোগ হলে স্বয়ংক্রিয় বিশ্লেষণ দেখানো হবে।', 'Analytics update automatically as attendance records are added.', lang)}
             </p>
           </div>
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-2">
             <div className="text-xs font-bold text-amber-600 dark:text-amber-400">
-              {b('দুর্বল বিষয় শনাক্তকরণ', 'Weak Subject Detection', lang)}
+              {b('নিবন্ধিত বিষয় ও ক্লাস কাঠামো', 'Registered Subject Coverage', lang)}
             </div>
-            <p className="text-sm font-semibold text-slate-900 dark:text-white">Class 4 — {b('ইংরেজি (গড় ৭৪%)', 'English (Avg 74%)', lang)}</p>
+            <p className="text-sm font-semibold text-slate-900 dark:text-white">
+              {b(`${schoolSubjects.length} টি নিবন্ধিত বিষয়`, `${schoolSubjects.length} Registered Subjects`, lang)}
+            </p>
             <p className="text-xs text-slate-600 dark:text-slate-300">
-              {b('অন্য বিষয়ের তুলনায় ইংরেজিতে প্যারাগ্রাফ অংশে অতিরিক্ত অনুশীলন প্রয়োজন।', 'Lower writing rubric score compared to Bangla and Math.', lang)}
+              {b('শ্রেণিভিত্তিক বিষয় ব্যবস্থাপনা থেকে প্রতিটি শ্রেণির বিষয় ও শিক্ষক নির্ধারণ করুন।', 'Manage class-wise subjects and teachers from Subject Management.', lang)}
             </p>
           </div>
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5 space-y-2">
             <div className="text-xs font-bold text-emerald-700 dark:text-emerald-400">
-              {b('পরীক্ষার প্রস্তুতি ও প্রশাসনিক করণীয়', 'Exam Readiness & Action Items', lang)}
+              {b('ক্লাস ও পরীক্ষার প্রস্তুতি', 'Class & Exam Readiness', lang)}
             </div>
-            <p className="text-sm font-semibold text-slate-900 dark:text-white">{b('সিলেবাস সম্পন্ন: ৯৪%', 'Syllabus Coverage: 94%', lang)}</p>
+            <p className="text-sm font-semibold text-slate-900 dark:text-white">
+              {b(`সেশন সম্পন্ন: ${coveragePct}%`, `Session Completion: ${coveragePct}%`, lang)}
+            </p>
             <p className="text-xs text-slate-600 dark:text-slate-300">
-              {b('২০ নভেম্বরের পরীক্ষার পূর্বে ১টি রিভিশন মডেল টেস্ট ও প্রবেশপত্র বিতরণ সম্পন্ন করুন।', 'Complete 1 revision test and admit card print before 20 Nov.', lang)}
+              {b(`মোট ${exams.length} টি পরীক্ষার রেকর্ড সংযুক্ত রয়েছে।`, `${exams.length} exam record(s) linked.`, lang)}
             </p>
           </div>
         </div>
@@ -1951,7 +2167,7 @@ export const SchoolAdminViews: React.FC<SchoolAdminViewsProps> = ({
                 bodyEn: payload.bodyEn,
                 category: payload.category,
                 audience: 'all',
-                date: '১৯ নভে ২০২৬',
+                date: new Date().toISOString().slice(0, 10),
                 schoolId: ownSchool.id,
                 author: ownSchool.headTeacher,
                 authorRole: 'school_admin',

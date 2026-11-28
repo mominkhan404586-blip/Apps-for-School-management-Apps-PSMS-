@@ -584,14 +584,14 @@ export const CentralRealtimeDataPanel: React.FC<CentralRealtimeDataPanelProps> =
                   : 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300'
               }`}
             >
-              {firebaseUser?.emailVerified ? 'Verified ✓' : 'Portal Preview'}
+              {firebaseUser?.emailVerified ? 'Verified ✓' : b('প্রাতিষ্ঠানিক সেশন', 'Institutional Session', lang)}
             </span>
           </div>
           <div className="font-mono font-bold text-slate-900 dark:text-white truncate">
             {firebaseUser?.email || projectInfo.projectId}
           </div>
           <div className="text-[11px] text-slate-500 truncate">
-            {firebaseUser?.uid ? `UID: ${firebaseUser.uid}` : b('লগইন: ডেমো / পোর্টাল মোড', 'Session: Portal Demo Mode', lang)}
+            {firebaseUser?.uid ? `UID: ${firebaseUser.uid}` : b('লগইন: ফায়ারবেস অথেনটিকেশন অপেক্ষমাণ', 'Session: Awaiting Verified Auth', lang)}
           </div>
         </div>
 
@@ -826,8 +826,8 @@ export const CentralRealtimeDataPanel: React.FC<CentralRealtimeDataPanelProps> =
                   lang
                 )
               : b(
-                  'ডেমো অ্যাডমিন মোডে আছেন। রিয়েল-টাইম ডাটাবেজে লাইভ পিং লিখতে Verified Firebase (mominkhan404586@gmail.com) দিয়ে সাইন-ইন করুন।',
-                  'Running in portal preview mode. Sign in with verified Firebase Auth (mominkhan404586@gmail.com) to execute live RTDB writes.',
+                  'রিয়েল-টাইম ডাটাবেজে লাইভ পিং লিখতে Verified Firebase (mominkhan404586@gmail.com) দিয়ে সাইন-ইন করুন।',
+                  'Sign in with verified Firebase Auth (mominkhan404586@gmail.com) to execute live RTDB writes.',
                   lang
                 )}
           </div>
@@ -905,10 +905,9 @@ export const CentralRealtimeDataPanel: React.FC<CentralRealtimeDataPanelProps> =
                       }
                       className="h-8 px-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-[11px]"
                     >
-                      <option value="school_admin">school_admin</option>
-                      <option value="teacher">teacher</option>
-                      <option value="student">student</option>
-                      <option value="guardian">guardian</option>
+                      <option value="school_admin">School Admin</option>
+                      <option value="teacher">Teacher</option>
+                      <option value="guardian">Parent</option>
                     </select>
                     <select
                       aria-label="Assign School"
@@ -1113,7 +1112,7 @@ export const CentralRealtimeDataPanel: React.FC<CentralRealtimeDataPanelProps> =
               type="text"
               value={storageScopeId}
               onChange={(e) => setStorageScopeId(e.target.value)}
-              placeholder={firebaseUser?.uid || schools[0]?.id || 'GPS-1042'}
+              placeholder={firebaseUser?.uid || schools[0]?.id || 'school-id'}
               className="w-full h-10 px-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
             />
           </div>
@@ -1338,11 +1337,10 @@ export const CentralRealtimeDataPanel: React.FC<CentralRealtimeDataPanelProps> =
                 onChange={(e) => setEditRole(e.target.value as RealtimeUserRole)}
                 className="w-full h-9 px-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
               >
-                <option value="central_admin">central_admin</option>
-                <option value="school_admin">school_admin</option>
-                <option value="teacher">teacher</option>
-                <option value="student">student</option>
-                <option value="guardian">guardian</option>
+                <option value="central_admin">Super Central Admin</option>
+                <option value="school_admin">School Admin</option>
+                <option value="teacher">Teacher</option>
+                <option value="guardian">Parent</option>
                 <option value="pending">pending</option>
               </select>
             </div>
@@ -1449,8 +1447,8 @@ export const CentralRealtimeDataPanel: React.FC<CentralRealtimeDataPanelProps> =
             </h2>
             <p className="text-[11px] text-slate-500 mt-0.5">
               {b(
-                'Admin, Teacher, Student এবং Guardian শুধুমাত্র নিজস্ব নির্ধারিত বিদ্যালয় (schoolId) ও প্রোফাইল আইডি (uid/teacherId/studentId)-এর ডেটা অ্যাক্সেস করতে পারবে।',
-                'Admin, Teacher, Student, and Guardian can only read/write data scoped to their assigned schoolId and profile ID.',
+                'Super Central Admin, School Admin, Teacher এবং Parent শুধুমাত্র নিজস্ব নির্ধারিত বিদ্যালয় (schoolId) ও প্রোফাইল আইডির ডেটা অ্যাক্সেস করতে পারবে।',
+                'Super Central Admin, School Admin, Teacher, and Parent can only read/write data scoped to their assigned schoolId and profile ID.',
                 lang
               )}
             </p>
@@ -1472,24 +1470,24 @@ export const CentralRealtimeDataPanel: React.FC<CentralRealtimeDataPanelProps> =
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 text-xs">
           {[
             {
-              role: 'Central / School Admin',
-              scopeBn: 'Super Admin: সকল স্কুল; School Admin: শুধু নিজ schoolId-এর শিক্ষক/শিক্ষার্থী/হাজিরা/ফলাফল।',
-              scopeEn: 'Super Admin: global; School Admin: strictly assigned schoolId scope.',
+              role: 'Super Central Admin',
+              scopeBn: 'সকল বিদ্যালয়, শিক্ষক, শিক্ষার্থী, Parent ও সরকারি ফ্রেমওয়ার্ক নিয়ন্ত্রণ।',
+              scopeEn: 'Global control across schools, teachers, students, Parents & master framework.',
+            },
+            {
+              role: 'School Admin',
+              scopeBn: 'নিজ schoolId-এর শিক্ষক, শিক্ষার্থী, Parent, শ্রেণি-বিষয় ও দৈনিক কার্যক্রম।',
+              scopeEn: 'Strictly assigned schoolId teachers, students, Parents & daily operations.',
             },
             {
               role: 'Teacher',
-              scopeBn: 'নিজ schoolId-এর শ্রেণি/হাজিরা/ফলাফল ও শুধু নিজ teacherId প্রোফাইল।',
-              scopeEn: 'Assigned schoolId attendance/results & own teacherId profile only.',
+              scopeBn: 'নিজ schoolId-এর শ্রেণি, QR হাজিরা, ফলাফল ও নিজস্ব ছুটি/প্রোফাইল।',
+              scopeEn: 'Assigned schoolId classes, QR attendance, marks & own leave/profile.',
             },
             {
-              role: 'Student',
-              scopeBn: 'শুধু নিজ schoolId ও নিজ studentId-এর প্রোফাইল, হাজিরা, ফলাফল ও নোটিশ।',
-              scopeEn: 'Strictly own studentId profile, attendance, results & school notices.',
-            },
-            {
-              role: 'Guardian',
-              scopeBn: 'শুধু নিজ সংযুক্ত সন্তানের studentId ও নির্ধারিত schoolId-এর তথ্য।',
-              scopeEn: 'Strictly linked child studentId & assigned schoolId records.',
+              role: 'Parent',
+              scopeBn: 'শুধু নিজ সংযুক্ত সন্তানের Student ID ও নির্ধারিত schoolId-এর প্রোফাইল ও হাজিরা।',
+              scopeEn: 'Strictly linked child Student ID & assigned schoolId profile/attendance.',
             },
           ].map((item) => (
             <div

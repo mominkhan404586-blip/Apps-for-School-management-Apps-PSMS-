@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { INITIAL_ATTENDANCE_HISTORY, INITIAL_KIOSK_SCANS, INITIAL_SCHOOLS, INITIAL_STUDENTS } from '../data/mockData';
+import { INITIAL_ATTENDANCE_HISTORY, INITIAL_KIOSK_SCANS, INITIAL_SCHOOLS, INITIAL_STUDENTS } from './testFixtures';
 import {
   buildAttendanceExportRows,
   buildStudentQrStickerList,

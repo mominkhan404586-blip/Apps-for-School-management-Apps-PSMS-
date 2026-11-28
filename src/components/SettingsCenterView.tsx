@@ -1080,7 +1080,7 @@ export const SettingsCenterView: React.FC<SettingsCenterViewProps> = ({
                 </div>
                 <div className="text-[11px] text-slate-500 dark:text-slate-400">
                   {otpTestCode
-                    ? b(`ডেমো OTP কোড: ${otpTestCode}`, `Verification OTP: ${otpTestCode}`, lang)
+                    ? b(`যাচাইকরণ OTP কোড: ${otpTestCode}`, `Verification OTP: ${otpTestCode}`, lang)
                     : b('আপনার সক্রিয় মোবাইল/ইমেইলে নিরাপত্তামূলক OTP যাচাই করুন', 'Verify active security channel with an instant OTP', lang)}
                 </div>
               </div>

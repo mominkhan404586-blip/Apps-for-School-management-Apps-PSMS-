@@ -211,11 +211,17 @@ export const TeacherStudentAdmissionModal: React.FC<TeacherStudentAdmissionModal
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-700 space-y-1.5">
                 <div className="font-bold text-sm text-slate-900 dark:text-white">{createdResult.student.nameBn}</div>
-                <div><strong>Student ID (Username):</strong> <span className="font-mono font-bold text-blue-700">{createdResult.student.permanentId}</span></div>
-                <div><strong>Initial Password:</strong> <span className="font-mono">{createdResult.initialPassword}</span></div>
-                <div><strong>Activation Code:</strong> <span className="font-mono">{createdResult.student.activationCode}</span></div>
+                <div><strong>Unique Student ID:</strong> <span className="font-mono font-bold text-blue-700">{createdResult.student.permanentId}</span></div>
+                <div><strong>Guardian Link Code (GLC):</strong> <span className="font-mono">{createdResult.student.guardianLinkCode}</span></div>
                 <div><strong>Class / Section / Roll:</strong> {createdResult.student.className} · {createdResult.student.section} · #{createdResult.student.roll}</div>
                 <div><strong>Approval Status:</strong> <span className="font-bold">{createdResult.student.status}</span></div>
+                <p className="text-[11px] text-emerald-700 dark:text-emerald-400 pt-1">
+                  {b(
+                    'শিক্ষার্থীর আলাদা কোনো লগইন নেই — অভিভাবক (Parent) অ্যাকাউন্ট থেকে স্কুল কোড ও এই Student ID দিয়ে যুক্ত হওয়া যাবে।',
+                    'Students do not log in separately — Parents link this Student ID + School Code from their Parent Portal.',
+                    lang
+                  )}
+                </p>
               </div>
 
               <div className="p-4 rounded-xl border-2 border-blue-200 dark:border-blue-800 bg-blue-50/40 dark:bg-blue-950/20 flex flex-col items-center justify-center text-center space-y-2">

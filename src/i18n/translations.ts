@@ -2,12 +2,12 @@ import type { Language } from '../types';
 
 export const labels = {
   // Brand & Role titles
-  centralTitle: { bn: 'প্রাথমিক শিক্ষা কেন্দ্রীয় প্রশাসন', en: 'Central Education Administration' },
-  centralSubtitle: { bn: 'Primary Education Management System', en: 'Primary Education Management System' },
-  schoolTitle: { bn: 'মডেল সরকারি প্রাথমিক বিদ্যালয়', en: 'Model Government Primary School' },
-  schoolSubtitle: { bn: 'School ID: GPS-1042', en: 'School ID: GPS-1042' },
-  guardianTitle: { bn: 'প্রাথমিক শিক্ষা ব্যবস্থাপনা', en: 'Primary Education Portal' },
-  guardianSubtitle: { bn: 'অভিভাবক ও শিক্ষার্থী পোর্টাল', en: 'Guardian & Student Portal' },
+  centralTitle: { bn: 'প্রাথমিক ও মাধ্যমিক শিক্ষা কেন্দ্রীয় প্রশাসন', en: 'Central Education Administration' },
+  centralSubtitle: { bn: 'Primary & Secondary Education Management System', en: 'Primary & Secondary Education Management System' },
+  schoolTitle: { bn: 'বিদ্যালয় ব্যবস্থাপনা ড্যাশবোর্ড', en: 'School Management Dashboard' },
+  schoolSubtitle: { bn: 'প্রাতিষ্ঠানিক পোর্টাল', en: 'Institutional Portal' },
+  guardianTitle: { bn: 'শিক্ষা ব্যবস্থাপনা পোর্টাল', en: 'Education Management Portal' },
+  guardianSubtitle: { bn: 'অভিভাবক (Parent) ও প্রতিষ্ঠান পোর্টাল', en: 'Parent & School Portal' },
 
   // Common Header
   searchPlaceholder: { bn: 'বিদ্যালয়, শিক্ষার্থী ID, শিক্ষক বা নোটিশ খুঁজুন...', en: 'Search schools, student ID, teachers or notices...' },
@@ -36,9 +36,9 @@ export const labels = {
   print: { bn: 'প্রিন্ট / PDF', en: 'Print / PDF' },
 
   // Roles
-  roleCentral: { bn: 'Central Admin', en: 'Central Admin' },
+  roleCentral: { bn: 'Super Central Admin', en: 'Super Central Admin' },
   roleSchool: { bn: 'School Admin', en: 'School Admin' },
-  roleGuardian: { bn: 'Guardian', en: 'Guardian' },
+  roleGuardian: { bn: 'অভিভাবক (Parent)', en: 'Parent' },
 } as const;
 
 export function tr(key: keyof typeof labels, lang: Language): string {

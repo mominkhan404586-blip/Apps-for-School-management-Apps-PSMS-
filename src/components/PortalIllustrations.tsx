@@ -183,28 +183,28 @@ export const ApplicationStatusTrackerModal: React.FC<ApplicationStatusTrackerMod
       num: 1,
       labelBn: 'অনুরোধ প্রেরিত',
       labelEn: 'Request Sent',
-      date: matched.school?.registrationDate ?? '2026-11-17',
+      date: matched.school?.registrationDate ?? '—',
       icon: Check,
     },
     {
       num: 2,
       labelBn: 'পর্যালোচনাধীন',
       labelEn: 'Under Review',
-      date: matched.req?.submittedAt ?? matched.school?.registrationDate ?? '2026-11-17',
+      date: matched.req?.submittedAt ?? matched.school?.registrationDate ?? '—',
       icon: Search,
     },
     {
       num: 3,
       labelBn: 'অনুমোদিত',
       labelEn: 'Approved',
-      date: currentStep >= 3 ? matched.school?.verifiedDate ?? '2026-11-18' : '',
+      date: currentStep >= 3 ? matched.school?.verifiedDate ?? '—' : '',
       icon: Check,
     },
     {
       num: 4,
       labelBn: 'অ্যাকটিভ',
       labelEn: 'Active',
-      date: currentStep >= 4 ? matched.school?.verifiedDate ?? '2026-11-18' : '',
+      date: currentStep >= 4 ? matched.school?.verifiedDate ?? '—' : '',
       icon: Rocket,
     },
   ];
@@ -260,7 +260,7 @@ export const ApplicationStatusTrackerModal: React.FC<ApplicationStatusTrackerMod
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder={b('Request ID বা School Code লিখুন (যেমন: GPS-1042, REQ-901)', 'Enter Request ID or School Code (e.g. GPS-1042)', lang)}
+                placeholder={b('Request ID বা School Code লিখুন (যেমন: SCH-CODE)', 'Enter Request ID or School Code', lang)}
                 className="w-full h-9 pl-9 pr-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:border-blue-600"
               />
             </div>

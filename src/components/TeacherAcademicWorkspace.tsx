@@ -28,16 +28,19 @@ import {
 } from 'lucide-react';
 import type {
   AcademicCancelClassReason,
+  AcademicSubjectConfig,
   AssignmentItem,
   ClassworkItem,
   DailyLessonHomeworkItem,
   ExamRecord,
   ExamRoutineRecord,
   GradingRuleItem,
+  HolidayPlanRecord,
   KioskScanEvent,
   Language,
   LessonPlanItem,
   MasterRoutineRecord,
+  MasterSubjectFrameworkItem,
   NoticeImageAttachment,
   NoticeItem,
   NoticeLifecycleStatus,
@@ -45,16 +48,23 @@ import type {
   NotificationPreferences,
   OfficialDocumentRecord,
   OfficialDocumentTemplate,
+  PromotionReleaseHistoryEntry,
   RoutineSlot,
+  SchoolDailyOperationsState,
   SchoolRecord,
+  SchoolSetupConfig,
+  SchoolSubjectRecord,
   StudentAttendanceHistoryEntry,
   StudentRecord,
   SubjectResultSubmission,
+  SubjectYearLockConfig,
   SubstitutePermissionRecord,
   TeacherAttendanceLog,
+  TeacherLeaveRecord,
   TeacherRecord,
   TeacherSchoolAssignment,
   TeacherSubjectAssignment,
+  TeacherSubjectPermissionConfig,
 } from '../types';
 import {
   CANCEL_CLASS_REASONS,
@@ -87,12 +97,16 @@ import { OfficialDocumentSystem } from './OfficialDocumentSystem';
 import { ExamRoutineSystem } from './ExamRoutineSystem';
 import { SchoolCoverBanner } from './SchoolCoverBanner';
 import { useSyncEffect } from '../hooks/useSyncEffect';
+import { SchoolOperationsLeavePanel } from './SchoolOperationsLeavePanel';
+import { SchoolClassSubjectWorkspace } from './SchoolClassSubjectWorkspace';
+import { ClassPromotionReleasePanel } from './ClassPromotionReleasePanel';
+import { StudentAttendanceQr } from './StudentAttendanceQr';
 
 interface TeacherAcademicWorkspaceProps {
   activeTab: string;
   onSelectTab: (tab: string) => void;
   lang: Language;
-  teacher: TeacherRecord;
+  teacher?: TeacherRecord;
   allTeachers: TeacherRecord[];
   onSwitchTeacher: (teacherId: string) => void;
   notifications: NotificationItem[];
@@ -221,6 +235,43 @@ interface TeacherAcademicWorkspaceProps {
   onOpenPhotoEditor?: () => void;
   rtdbSyncTick?: number;
   settingsCenterElement?: React.ReactNode;
+  // Operations, Leave, Structure, Centralized Subjects, Promotion & Entry/Exit QR
+  dailyOps?: SchoolDailyOperationsState[];
+  holidays?: HolidayPlanRecord[];
+  teacherLeaves?: TeacherLeaveRecord[];
+  onChangeDailyOps?: (next: SchoolDailyOperationsState[]) => void;
+  onChangeHolidays?: (next: HolidayPlanRecord[]) => void;
+  onChangeTeacherLeaves?: (next: TeacherLeaveRecord[]) => void;
+  schoolSetup?: SchoolSetupConfig;
+  masterFramework?: MasterSubjectFrameworkItem[];
+  schoolSubjects?: SchoolSubjectRecord[];
+  lockConfigs?: SubjectYearLockConfig[];
+  teacherPermission?: TeacherSubjectPermissionConfig;
+  subjects?: AcademicSubjectConfig[];
+  onSaveSchoolSetup?: (next: SchoolSetupConfig) => void;
+  onChangeSchoolSubjects?: (next: SchoolSubjectRecord[]) => void;
+  onChangeLockConfigs?: (next: SubjectYearLockConfig[]) => void;
+  onChangeTeacherPermission?: (next: TeacherSubjectPermissionConfig) => void;
+  promotionHistory?: PromotionReleaseHistoryEntry[];
+  onCommitPromotionOrRelease?: (
+    nextStudents: StudentRecord[],
+    historyEntry: PromotionReleaseHistoryEntry
+  ) => void;
+  onRecordEntryExitScan?: (params: {
+    rawCode: string;
+    schoolId: string;
+    mode: 'entry' | 'exit';
+    dateIso: string;
+    timeText: string;
+    allowedClasses?: string[];
+  }) => {
+    ok: boolean;
+    status: 'recorded' | 'duplicate' | 'not_found' | 'wrong_school' | 'unauthorized_class' | 'invalid_qr';
+    messageBn: string;
+    messageEn: string;
+    student?: StudentRecord;
+    parentNotified?: boolean;
+  };
 }
 
 export const TeacherAcademicWorkspace: React.FC<TeacherAcademicWorkspaceProps> = ({
@@ -296,26 +347,46 @@ export const TeacherAcademicWorkspace: React.FC<TeacherAcademicWorkspaceProps> =
   onOpenPhotoEditor,
   rtdbSyncTick = 0,
   settingsCenterElement,
+  dailyOps = [],
+  holidays = [],
+  teacherLeaves = [],
+  onChangeDailyOps,
+  onChangeHolidays,
+  onChangeTeacherLeaves,
+  schoolSetup,
+  masterFramework = [],
+  schoolSubjects = [],
+  lockConfigs = [],
+  teacherPermission,
+  subjects = [],
+  onSaveSchoolSetup,
+  onChangeSchoolSubjects,
+  onChangeLockConfigs,
+  onChangeTeacherPermission,
+  promotionHistory = [],
+  onCommitPromotionOrRelease,
+  onRecordEntryExitScan,
 }) => {
+  const todayIso = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const [subReason, setSubReason] = useState('Teacher Absent');
   const [subSlotId, setSubSlotId] = useState<string | null>(null);
   const [cwTitle, setCwTitle] = useState('');
   const [cwFeedbackDraft, setCwFeedbackDraft] = useState<Record<string, string>>({});
   const [joinSchoolSearch, setJoinSchoolSearch] = useState('');
   const [joinDesignation, setJoinDesignation] = useState('সহকারী শিক্ষক');
-  const [joinSubjectsInput, setJoinSubjectsInput] = useState('বাংলা, গণিত');
+  const [joinSubjectsInput, setJoinSubjectsInput] = useState('');
 
   // Part B Professional Profile form state
-  const [partBDegree, setPartBDegree] = useState(teacher.academicDegree ?? teacher.qualification ?? 'B.A / B.Ed');
-  const [partBMajor, setPartBMajor] = useState(teacher.subjectMajor ?? teacher.subjects.join(', ') ?? 'বাংলা ও গণিত');
-  const [partBTraining, setPartBTraining] = useState(teacher.training ?? 'C-in-Ed / B.Ed');
-  const [partBExp, setPartBExp] = useState(teacher.experienceYears ?? 3);
-  const [partBPrevInst, setPartBPrevInst] = useState(teacher.previousInstitution ?? '');
+  const [partBDegree, setPartBDegree] = useState(teacher?.academicDegree ?? teacher?.qualification ?? 'B.A / B.Ed');
+  const [partBMajor, setPartBMajor] = useState(teacher?.subjectMajor ?? teacher?.subjects.join(', ') ?? '');
+  const [partBTraining, setPartBTraining] = useState(teacher?.training ?? 'C-in-Ed / B.Ed');
+  const [partBExp, setPartBExp] = useState(teacher?.experienceYears ?? 0);
+  const [partBPrevInst, setPartBPrevInst] = useState(teacher?.previousInstitution ?? '');
   const [partBStatus, setPartBStatus] = useState<NonNullable<TeacherRecord['employmentStatus']>>(
-    teacher.employmentStatus ?? 'Active'
+    teacher?.employmentStatus ?? 'Active'
   );
   const [partBType, setPartBType] = useState<NonNullable<TeacherRecord['teacherType']>>(
-    teacher.teacherType ?? 'Permanent'
+    teacher?.teacherType ?? 'Permanent'
   );
 
   // Start Class Confirmation Modal & Cancel Class Modal
@@ -327,48 +398,100 @@ export const TeacherAcademicWorkspace: React.FC<TeacherAcademicWorkspaceProps> =
   // Substitute Permission Modal (My Classes)
   const [grantPermSlot, setGrantPermSlot] = useState<RoutineSlot | null>(null);
   const [permSubTeacherId, setPermSubTeacherId] = useState(
-    allTeachers.find((t) => t.schoolId === teacher.schoolId && t.id !== teacher.id)?.id ?? ''
+    teacher ? (allTeachers.find((t) => t.schoolId === teacher.schoolId && t.id !== teacher.id)?.id ?? '') : ''
   );
-  const [permDate, setPermDate] = useState('2026-11-19');
+  const [permDate, setPermDate] = useState(todayIso);
   const [permReason, setPermReason] = useState('Personal Leave / Training');
   const [permDuration, setPermDuration] = useState(1);
 
-  const myAttendance = teacherAttendance.find((a) => a.teacherId === teacher.id);
-  const myAssignments = teacherAssignments.filter((a) => a.teacherId === teacher.id);
-  const scopedSchoolId = activeSchool?.id ?? activeAssignment?.schoolId ?? teacher.schoolId;
+  const myAttendance = teacher ? teacherAttendance.find((a) => a.teacherId === teacher.id) : undefined;
+  const myAssignments = teacher ? teacherAssignments.filter((a) => a.teacherId === teacher.id) : [];
+  const scopedSchoolId = activeSchool?.id ?? activeAssignment?.schoolId ?? teacher?.schoolId ?? '';
 
   useSyncEffect({
     syncTick: rtdbSyncTick,
     rtdbPath: scopedSchoolId && teacher?.id ? `schools/${scopedSchoolId}/teachers/${teacher.id}` : undefined,
     onSync: () => {
+      if (!teacher) return;
       setPartBDegree(teacher.academicDegree ?? teacher.qualification ?? 'B.A / B.Ed');
-      setPartBMajor(teacher.subjectMajor ?? teacher.subjects.join(', ') ?? 'বাংলা ও গণিত');
+      setPartBMajor(teacher.subjectMajor ?? teacher.subjects.join(', ') ?? '');
       setPartBTraining(teacher.training ?? 'C-in-Ed / B.Ed');
-      setPartBExp(teacher.experienceYears ?? 3);
+      setPartBExp(teacher.experienceYears ?? 0);
       setPartBPrevInst(teacher.previousInstitution ?? '');
       setPartBStatus(teacher.employmentStatus ?? 'Active');
       setPartBType(teacher.teacherType ?? 'Permanent');
     },
   });
+
+  const safeTeacherPlaceholder = useMemo<TeacherRecord>(
+    () =>
+      teacher ?? {
+        id: 'empty-teacher',
+        teacherCode: '—',
+        nameBn: '—',
+        nameEn: '—',
+        schoolId: scopedSchoolId || '',
+        schoolNameBn: '',
+        designation: '',
+        subjects: [],
+        assignedClasses: [],
+        mobile: '',
+        email: '',
+        status: 'pending',
+        joinDate: todayIso,
+        qualification: '',
+        attendanceScore: 0,
+        performanceScore: 0,
+      },
+    [teacher, scopedSchoolId, todayIso]
+  );
+
+  const workload = useMemo(
+    () => computeTeacherWorkload(safeTeacherPlaceholder, teacherAssignments, routineSlots),
+    [safeTeacherPlaceholder, teacherAssignments, routineSlots]
+  );
+
+  const dailyTasksReport = useMemo(
+    () => computeTeacherDailyTasks(safeTeacherPlaceholder, myAttendance, routineSlots, dailyLessons, subjectSubmissions),
+    [safeTeacherPlaceholder, myAttendance, routineSlots, dailyLessons, subjectSubmissions]
+  );
+
+  const perfMetrics = useMemo(
+    () => computeTeacherPerformanceMetrics(safeTeacherPlaceholder, routineSlots, dailyLessons, myAttendance),
+    [safeTeacherPlaceholder, routineSlots, dailyLessons, myAttendance]
+  );
+
+  if (!teacher) {
+    if (activeTab === 'settings' && settingsCenterElement) {
+      return <div className="space-y-5">{settingsCenterElement}</div>;
+    }
+    return (
+      <div
+        data-testid="teacher-empty-state"
+        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 text-center space-y-3"
+      >
+        <div className="w-12 h-12 mx-auto rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 flex items-center justify-center">
+          <UserCheck className="w-6 h-6" />
+        </div>
+        <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+          {b('০ জন শিক্ষক নিবন্ধিত', '0 Teachers Registered', lang)}
+        </h2>
+        <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+          {b(
+            'বর্তমানে কোনো শিক্ষক প্রোফাইল সক্রিয় নেই। শিক্ষক হিসেবে নিবন্ধন ও অনুমোদনের পর আপনার শ্রেণি, হাজিরা ও রুটিন এখানে দেখা যাবে।',
+            'No teacher profile is active yet. Once registered and approved, your assigned classes, attendance, and routine will appear here.',
+            lang
+          )}
+        </p>
+      </div>
+    );
+  }
+
   const scopedSchoolNameBn = activeSchool?.nameBn ?? activeAssignment?.schoolNameBn ?? teacher.schoolNameBn;
   const canAddStudent = activeAssignment ? activeAssignment.permissions.addStudent : true;
   const canCreateNotice = activeAssignment ? activeAssignment.permissions.createNotice : true;
   const canGenerateDocs = activeAssignment ? activeAssignment.permissions.generateDocs : true;
   const canTakeAttendance = activeAssignment ? activeAssignment.permissions.takeAttendance : true;
-  const workload = useMemo(
-    () => computeTeacherWorkload(teacher, teacherAssignments, routineSlots),
-    [teacher, teacherAssignments, routineSlots]
-  );
-
-  const dailyTasksReport = useMemo(
-    () => computeTeacherDailyTasks(teacher, myAttendance, routineSlots, dailyLessons, subjectSubmissions),
-    [teacher, myAttendance, routineSlots, dailyLessons, subjectSubmissions]
-  );
-
-  const perfMetrics = useMemo(
-    () => computeTeacherPerformanceMetrics(teacher, routineSlots, dailyLessons, myAttendance),
-    [teacher, routineSlots, dailyLessons, myAttendance]
-  );
 
   const myTodaySlots = routineSlots.filter(
     (s) => (s.substituteTeacherId ?? s.teacherId) === teacher.id
@@ -386,6 +509,91 @@ export const TeacherAcademicWorkspace: React.FC<TeacherAcademicWorkspaceProps> =
   const sameSchoolOtherTeachers = allTeachers.filter(
     (t) => t.schoolId === teacher.schoolId && t.id !== teacher.id
   );
+
+  if (activeTab === 'school_operations') {
+    return (
+      <SchoolOperationsLeavePanel
+        lang={lang}
+        role="teacher"
+        schoolId={scopedSchoolId}
+        school={activeSchool}
+        actorName={teacher.nameBn}
+        currentTeacher={teacher}
+        dailyOps={dailyOps}
+        holidays={holidays}
+        teacherLeaves={teacherLeaves}
+        examRoutines={examRoutines}
+        onChangeDailyOps={onChangeDailyOps ?? (() => {})}
+        onChangeHolidays={onChangeHolidays ?? (() => {})}
+        onChangeTeacherLeaves={onChangeTeacherLeaves ?? (() => {})}
+      />
+    );
+  }
+
+  if (activeTab === 'subject_registry') {
+    return (
+      <SchoolClassSubjectWorkspace
+        lang={lang}
+        role="teacher"
+        schoolId={scopedSchoolId}
+        actorName={teacher.nameBn}
+        initialMode="subjects"
+        schoolSetup={schoolSetup}
+        masterFramework={masterFramework}
+        schoolSubjects={schoolSubjects}
+        lockConfigs={lockConfigs}
+        teacherPermission={teacherPermission}
+        masterRoutines={masterRoutines}
+        routineSlots={routineSlots}
+        examRoutines={examRoutines}
+        teacherAssignments={teacherAssignments}
+        exams={exams}
+        onSaveSchoolSetup={onSaveSchoolSetup ?? (() => {})}
+        onChangeSchoolSubjects={onChangeSchoolSubjects ?? (() => {})}
+        onChangeLockConfigs={onChangeLockConfigs ?? (() => {})}
+        onChangeTeacherPermission={onChangeTeacherPermission ?? (() => {})}
+      />
+    );
+  }
+
+  if (activeTab === 'class_promotion_release') {
+    return (
+      <ClassPromotionReleasePanel
+        lang={lang}
+        schoolId={scopedSchoolId}
+        actorName={teacher.nameBn}
+        students={students}
+        history={promotionHistory}
+        onCommitPromotionOrRelease={onCommitPromotionOrRelease ?? (() => {})}
+      />
+    );
+  }
+
+  if (activeTab === 'student_attendance_qr') {
+    return (
+      <StudentAttendanceQr
+        lang={lang}
+        schoolId={scopedSchoolId}
+        school={activeSchool}
+        students={students}
+        attendanceHistory={attendanceHistory}
+        allowedClasses={
+          activeAssignment?.assignedClasses.length
+            ? activeAssignment.assignedClasses
+            : teacher.assignedClasses
+        }
+        onRecordEntryExitScan={
+          onRecordEntryExitScan ??
+          (() => ({
+            ok: false,
+            status: 'not_found',
+            messageBn: 'QR স্ক্যান হ্যান্ডলার সংযুক্ত নয়।',
+            messageEn: 'QR scan handler not connected.',
+          }))
+        }
+      />
+    );
+  }
 
   // Tab: Notification Center
   if (activeTab === 'notifications') {
@@ -745,12 +953,16 @@ export const TeacherAcademicWorkspace: React.FC<TeacherAcademicWorkspaceProps> =
         <ExaminationManagementPanel
           lang={lang}
           role="teacher"
-          schoolId={teacher.schoolId}
+          schoolId={scopedSchoolId}
           actorName={teacher.nameBn}
           teacher={teacher}
           schools={activeSchool ? [activeSchool] : []}
           students={students}
           exams={exams}
+          subjects={subjects}
+          schoolSubjects={schoolSubjects}
+          masterFramework={masterFramework}
+          academicYear={schoolSetup?.academicYear ?? activeSchool?.academicYear}
           teacherAssignments={teacherAssignments}
           onCreateLocalExam={onCreateLocalExam ?? (() => {})}
           onToggleCentralTermPublish={() => {}}
@@ -981,9 +1193,14 @@ export const TeacherAcademicWorkspace: React.FC<TeacherAcademicWorkspaceProps> =
         <RoutineManagementSystem
           lang={lang}
           role="teacher"
+          school={activeSchool}
           actorName={teacher.nameBn}
           routines={masterRoutines}
           teachers={allTeachers}
+          subjects={subjects}
+          schoolSubjects={schoolSubjects}
+          masterFramework={masterFramework}
+          academicYear={schoolSetup?.academicYear ?? activeSchool?.academicYear}
           teacherAssignments={teacherAssignments}
           teacherRecord={teacher}
           onUpdateRoutines={() => {}}
@@ -1081,11 +1298,11 @@ export const TeacherAcademicWorkspace: React.FC<TeacherAcademicWorkspaceProps> =
               onClick={() => {
                 if (!cwTitle.trim()) return;
                 onCreateClasswork({
-                  date: '2026-11-18',
-                  className: 'Class 4',
+                  date: todayIso,
+                  className: teacher.assignedClasses[0] ?? 'Class 1',
                   section: 'ক (A)',
-                  subjectBn: teacher.subjects[0] ?? 'গণিত',
-                  subjectEn: teacher.subjects[0] ?? 'Mathematics',
+                  subjectBn: teacher.subjects[0] ?? 'সাধারণ',
+                  subjectEn: teacher.subjects[0] ?? 'General',
                   teacherId: teacher.id,
                   teacherName: teacher.nameBn,
                   titleBn: cwTitle.trim(),
@@ -1282,7 +1499,7 @@ export const TeacherAcademicWorkspace: React.FC<TeacherAcademicWorkspaceProps> =
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block font-semibold mb-1">{b('ডেমো শিক্ষক পরিবর্তন করুন', 'Switch Active Teacher Profile', lang)}</label>
+              <label className="block font-semibold mb-1">{b('শিক্ষক প্রোফাইল নির্বাচন করুন', 'Switch Active Teacher Profile', lang)}</label>
               <select
                 value={teacher.id}
                 onChange={(e) => onSwitchTeacher(e.target.value)}
@@ -1808,7 +2025,7 @@ export const TeacherAcademicWorkspace: React.FC<TeacherAcademicWorkspaceProps> =
                         )}
                       </span>
                       <span className="font-mono text-slate-500">
-                        Started: {slot.startedAt ?? slot.session?.startedAt ?? '09:32 AM'}
+                        Started: {slot.startedAt ?? slot.session?.startedAt ?? '—'}
                       </span>
                     </div>
 
@@ -1820,7 +2037,7 @@ export const TeacherAcademicWorkspace: React.FC<TeacherAcademicWorkspaceProps> =
                           onChange={(e) => onUpdateSessionDetails(slot.id, { lessonTopic: e.target.value })}
                           className="w-full h-8 px-2 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 mb-1.5"
                         >
-                          <option value={slot.lessonTopic ?? 'ভগ্নাংশের যোগ ও বিয়োগ'}>{slot.lessonTopic ?? 'ভগ্নাংশের যোগ ও বিয়োগ'}</option>
+                          <option value={slot.lessonTopic ?? ''}>{slot.lessonTopic ?? b('-- পাঠ নির্বাচন করুন --', '-- Select Lesson --', lang)}</option>
                           {lessonPlans.map((lp) => (
                             <option key={lp.id} value={lp.lessonTopic}>{lp.chapterTitle}: {lp.lessonTopic}</option>
                           ))}

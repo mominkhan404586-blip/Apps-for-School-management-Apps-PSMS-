@@ -55,6 +55,7 @@ import type {
   AuditLogEntry,
   BdLocationDatabase,
   ClassSectionRoomConfig,
+  ClassStreamGroup,
   ClassTestQuizItem,
   ClassworkItem,
   ContactAdminMessage,
@@ -65,10 +66,12 @@ import type {
   ExamScheduleItem,
   ExtraAcademicItem,
   GradingRuleItem,
+  HolidayPlanRecord,
   Language,
   LessonPlanItem,
   LocationNode,
   MasterRoutineRecord,
+  MasterSubjectFrameworkItem,
   NoticeImageAttachment,
   NoticeItem,
   NoticeLifecycleStatus,
@@ -77,14 +80,18 @@ import type {
   OfficialDocumentRecord,
   OfficialDocumentTemplate,
   PermissionKey,
+  PromotionReleaseHistoryEntry,
   QuestionBankItem,
   ResultAuditEntry,
   RolePermissionMatrix,
   RoutineSlot,
   SchoolAdminMember,
+  SchoolDailyOperationsState,
   SchoolDeactivationRecord,
   SchoolInspectionRecord,
   SchoolRecord,
+  SchoolSetupConfig,
+  SchoolSubjectRecord,
   SchoolSuspensionDetails,
   SchoolTypeCode,
   StudentChangeRequest,
@@ -92,18 +99,25 @@ import type {
   StudentStatus,
   StudyMaterialItem,
   SubjectResultSubmission,
+  SubjectYearLockConfig,
   SubstitutePermissionRecord,
   TeacherApprovalCategory,
   TeacherChangeRequest,
+  TeacherLeaveRecord,
   TeacherRecord,
   TeacherStatus,
   TeacherSubjectAssignment,
+  TeacherSubjectPermissionConfig,
 } from '../types';
-import { AVATARS, CENTRAL_ADMIN_CREDENTIALS, NCTB_SUBJECTS } from '../data/mockData';
+import { AVATARS, CENTRAL_ADMIN_CREDENTIALS } from '../data/mockData';
 import {
   getSchoolTypeConfig,
   SCHOOL_TYPE_OPTIONS,
 } from '../utils/schoolConfigAndAddress';
+import {
+  INITIAL_GOVERNMENT_SUBJECT_FRAMEWORK,
+  createEmptySchoolSetupConfig,
+} from '../utils/centralSubjectAndStructureEngine';
 import {
   computeSchoolSummaryCounts,
   deriveApprovalStatus,
@@ -168,6 +182,9 @@ import { OfficialDocumentSystem } from './OfficialDocumentSystem';
 import { ExamRoutineSystem } from './ExamRoutineSystem';
 import { isMainCentralAdmin } from '../utils/adminAndTeacherIdentityEngine';
 import { CentralRealtimeDataPanel } from './CentralRealtimeDataPanel';
+import { SchoolOperationsLeavePanel } from './SchoolOperationsLeavePanel';
+import { SchoolClassSubjectWorkspace } from './SchoolClassSubjectWorkspace';
+import { ClassPromotionReleasePanel } from './ClassPromotionReleasePanel';
 
 interface CentralAdminViewsProps {
   activeTab: string;
@@ -316,6 +333,28 @@ interface CentralAdminViewsProps {
   onEditSchoolCover?: (school: SchoolRecord) => void;
   settingsCenterElement?: React.ReactNode;
   onRtdbUserUpdated?: (record: import('../utils/realtimeDatabaseSync').RealtimeUserAccountRecord) => void;
+  // Centralized Master Framework, Per-School Operations, Structure & Promotion
+  masterFramework?: MasterSubjectFrameworkItem[];
+  onChangeMasterFramework?: (next: MasterSubjectFrameworkItem[]) => void;
+  schoolSetupConfigs?: Record<string, SchoolSetupConfig>;
+  schoolSubjects?: SchoolSubjectRecord[];
+  lockConfigs?: SubjectYearLockConfig[];
+  teacherSubjectPermissions?: Record<string, TeacherSubjectPermissionConfig>;
+  onSaveSchoolSetup?: (next: SchoolSetupConfig) => void;
+  onChangeSchoolSubjects?: (next: SchoolSubjectRecord[]) => void;
+  onChangeLockConfigs?: (next: SubjectYearLockConfig[]) => void;
+  onChangeTeacherPermission?: (next: TeacherSubjectPermissionConfig) => void;
+  dailyOps?: SchoolDailyOperationsState[];
+  holidays?: HolidayPlanRecord[];
+  teacherLeaves?: TeacherLeaveRecord[];
+  onChangeDailyOps?: (next: SchoolDailyOperationsState[]) => void;
+  onChangeHolidays?: (next: HolidayPlanRecord[]) => void;
+  onChangeTeacherLeaves?: (next: TeacherLeaveRecord[]) => void;
+  promotionHistory?: PromotionReleaseHistoryEntry[];
+  onCommitPromotionOrRelease?: (
+    nextStudents: StudentRecord[],
+    historyEntry: PromotionReleaseHistoryEntry
+  ) => void;
 }
 
 export const CentralAdminViews: React.FC<CentralAdminViewsProps> = ({
@@ -439,10 +478,34 @@ export const CentralAdminViews: React.FC<CentralAdminViewsProps> = ({
   onEditSchoolCover,
   settingsCenterElement,
   onRtdbUserUpdated,
+  masterFramework = INITIAL_GOVERNMENT_SUBJECT_FRAMEWORK,
+  onChangeMasterFramework,
+  schoolSetupConfigs = {},
+  schoolSubjects = [],
+  lockConfigs = [],
+  teacherSubjectPermissions = {},
+  onSaveSchoolSetup,
+  onChangeSchoolSubjects,
+  onChangeLockConfigs,
+  onChangeTeacherPermission,
+  dailyOps = [],
+  holidays = [],
+  teacherLeaves = [],
+  onChangeDailyOps,
+  onChangeHolidays,
+  onChangeTeacherLeaves,
+  promotionHistory = [],
+  onCommitPromotionOrRelease,
 }) => {
   const can = (key: PermissionKey) =>
     hasGovernancePermission(permissionMatrix, activeReviewerRole, key);
   const [entityModal, setEntityModal] = useState<EntityModalTarget | null>(null);
+  const [fwCode, setFwCode] = useState('');
+  const [fwNameBn, setFwNameBn] = useState('');
+  const [fwNameEn, setFwNameEn] = useState('');
+  const [fwClassMin, setFwClassMin] = useState(1);
+  const [fwClassMax, setFwClassMax] = useState(5);
+  const [fwGroup, setFwGroup] = useState<'' | ClassStreamGroup>('');
 
   const [visitingSchoolId, setVisitingSchoolId] = useState<string | null>(null);
   const [profileInitialTab, setProfileInitialTab] = useState<SchoolProfileSubTab>('overview');
@@ -809,10 +872,10 @@ export const CentralAdminViews: React.FC<CentralAdminViewsProps> = ({
               </div>
             </div>
             <div className="text-2xl font-extrabold tabular-nums text-slate-900 dark:text-white mt-2">
-              {(1240 + schools.length).toLocaleString('en-IN')}
+              {schools.length.toLocaleString('en-IN')}
             </div>
             <div className="text-xs text-emerald-700 dark:text-emerald-400 font-semibold mt-1.5 tabular-nums">
-              Verified: {1195 + schools.filter((s) => s.status === 'verified').length} · {b('দেখুন', 'View', lang)} →
+              Verified: {schools.filter((s) => s.status === 'verified' || s.status === 'active').length} · {b('দেখুন', 'View', lang)} →
             </div>
           </button>
 
@@ -830,10 +893,10 @@ export const CentralAdminViews: React.FC<CentralAdminViewsProps> = ({
               </div>
             </div>
             <div className="text-2xl font-extrabold tabular-nums text-slate-900 dark:text-white mt-2">
-              8,642
+              {teachers.length.toLocaleString('en-IN')}
             </div>
             <div className="text-xs text-amber-700 dark:text-amber-400 font-semibold mt-1.5 tabular-nums">
-              Pending Approval: 126 · {b('দেখুন', 'View', lang)} →
+              Pending Approval: {teachers.filter((t) => t.status === 'pending').length} · {b('দেখুন', 'View', lang)} →
             </div>
           </button>
 
@@ -851,10 +914,10 @@ export const CentralAdminViews: React.FC<CentralAdminViewsProps> = ({
               </div>
             </div>
             <div className="text-2xl font-extrabold tabular-nums text-slate-900 dark:text-white mt-2">
-              2,45,780
+              {students.length.toLocaleString('en-IN')}
             </div>
             <div className="text-xs text-blue-700 dark:text-blue-400 font-semibold mt-1.5 tabular-nums">
-              Verification Pending: 1,284 · {b('দেখুন', 'View', lang)} →
+              Verification Pending: {students.filter((s) => !s.verifiedByCentral).length} · {b('দেখুন', 'View', lang)} →
             </div>
           </button>
 
@@ -872,10 +935,10 @@ export const CentralAdminViews: React.FC<CentralAdminViewsProps> = ({
               </div>
             </div>
             <div className="text-2xl font-extrabold tabular-nums text-slate-900 dark:text-white mt-2">
-              {182 + pendingReqs.length}
+              {pendingReqs.length}
             </div>
             <div className="text-xs text-red-600 dark:text-red-400 font-semibold mt-1.5 tabular-nums">
-              Urgent: {12 + urgentReqs.length} · {b('পর্যালোচনা করুন', 'Review', lang)} →
+              Urgent: {urgentReqs.length} · {b('পর্যালোচনা করুন', 'Review', lang)} →
             </div>
           </button>
         </div>
@@ -3811,22 +3874,45 @@ export const CentralAdminViews: React.FC<CentralAdminViewsProps> = ({
         </div>
 
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="text-sm font-bold text-slate-900 dark:text-white">
+                {b('সরকারি মাস্টার বিষয় ফ্রেমওয়ার্ক (Super Central Admin নিয়ন্ত্রিত)', 'Government Master Subject Framework (Central Reference)', lang)}
+              </div>
+              <div className="text-[11px] text-slate-500">
+                {b(
+                  'বিদ্যালয়সমূহ স্বয়ংক্রিয়ভাবে কোনো বিষয় পায় না—শুধুমাত্র তাদের সেটআপ অনুযায়ী ইমপোর্ট বা নিজস্ব বিষয় যোগ করতে পারে।',
+                  'Schools start with 0 subjects and may optionally import matching items from this reference list.',
+                  lang
+                )}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => onSelectTab('subject_registry')}
+              className="px-3 py-1.5 rounded-lg bg-blue-700 hover:bg-blue-800 text-white text-xs font-semibold cursor-pointer"
+            >
+              {b('ফ্রেমওয়ার্ক ও স্কুল বিষয় নিয়ন্ত্রণ →', 'Manage Master Framework →', lang)}
+            </button>
+          </div>
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 text-slate-500">
                 <th className="py-3 px-4 font-semibold">Subject Code</th>
                 <th className="py-3 px-3 font-semibold">{b('বিষয়', 'Subject', lang)}</th>
                 <th className="py-3 px-3 font-semibold">{b('শ্রেণি সীমা', 'Grade Range', lang)}</th>
-                <th className="py-3 px-4 font-semibold text-right">{b('সাপ্তাহিক পিরিয়ড', 'Weekly Load', lang)}</th>
+                <th className="py-3 px-4 font-semibold text-right">{b('বিভাগ (Stream)', 'Stream', lang)}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {NCTB_SUBJECTS.map((sub) => (
-                <tr key={sub.code}>
+              {masterFramework.map((sub) => (
+                <tr key={sub.id}>
                   <td className="py-3 px-4 font-mono font-semibold">{sub.code}</td>
                   <td className="py-3 px-3 font-semibold text-slate-900 dark:text-white">{b(sub.nameBn, sub.nameEn, lang)}</td>
-                  <td className="py-3 px-3 text-slate-600 dark:text-slate-400">{sub.classes}</td>
-                  <td className="py-3 px-4 text-right tabular-nums font-semibold">{sub.weeklyPeriods}</td>
+                  <td className="py-3 px-3 text-slate-600 dark:text-slate-400">
+                    {sub.applicableClasses.join(', ')}
+                  </td>
+                  <td className="py-3 px-4 text-right font-semibold">{sub.groupName ?? sub.type}</td>
                 </tr>
               ))}
             </tbody>
@@ -3895,6 +3981,266 @@ export const CentralAdminViews: React.FC<CentralAdminViewsProps> = ({
             subjectSubmissions={subjectSubmissions}
             onToggleSchoolPublishPermission={onToggleSchoolPublishPermission}
             onPublishAllEligibleResults={onPublishAllEligibleResults}
+          />
+        )}
+      </div>
+    );
+  }
+
+  if (activeTab === 'subject_registry' || activeTab === 'school_setup') {
+    const selectedOversightSchool =
+      schools.find((s) => s.id === oversightSchoolId) ?? schools[0];
+    return (
+      <div className="space-y-6">
+        {activeTab === 'subject_registry' && (
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-4 text-xs">
+            <div>
+              <h1 className="text-lg font-bold text-slate-900 dark:text-white">
+                {b('সরকারি মাস্টার বিষয় ফ্রেমওয়ার্ক (Super Central Admin)', 'Government Master Subject Framework', lang)}
+              </h1>
+              <p className="text-slate-500 mt-0.5">
+                {b(
+                  'এখানে কেন্দ্রীয় রেফারেন্স ফ্রেমওয়ার্ক যোগ বা পরিচালনা করুন। প্রতিটি বিদ্যালয় তাদের রেজিস্ট্রিতে এখান থেকে ইমপোর্ট করতে পারবে।',
+                  'Manage central reference curriculum items. Schools remain isolated until they import or add subjects.',
+                  lang
+                )}
+              </p>
+            </div>
+            {onChangeMasterFramework && (
+              <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 items-end bg-slate-50 dark:bg-slate-800/40 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
+                <div>
+                  <label className="block font-semibold mb-1">{b('কোড', 'Code', lang)}</label>
+                  <input
+                    type="text"
+                    value={fwCode}
+                    onChange={(e) => setFwCode(e.target.value)}
+                    placeholder="SUB-101"
+                    className="w-full h-9 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold mb-1">{b('বাংলা নাম', 'Name (BN)', lang)}</label>
+                  <input
+                    type="text"
+                    value={fwNameBn}
+                    onChange={(e) => setFwNameBn(e.target.value)}
+                    className="w-full h-9 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold mb-1">{b('ইংরেজি নাম', 'Name (EN)', lang)}</label>
+                  <input
+                    type="text"
+                    value={fwNameEn}
+                    onChange={(e) => setFwNameEn(e.target.value)}
+                    className="w-full h-9 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold mb-1">{b('শ্রেণি (Min–Max)', 'Class Range', lang)}</label>
+                  <div className="flex gap-1">
+                    <input
+                      type="number"
+                      min={1}
+                      max={10}
+                      value={fwClassMin}
+                      onChange={(e) => setFwClassMin(Number(e.target.value))}
+                      className="w-1/2 h-9 px-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+                    />
+                    <input
+                      type="number"
+                      min={1}
+                      max={10}
+                      value={fwClassMax}
+                      onChange={(e) => setFwClassMax(Number(e.target.value))}
+                      className="w-1/2 h-9 px-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block font-semibold mb-1">{b('বিভাগ', 'Stream', lang)}</label>
+                  <select
+                    value={fwGroup}
+                    onChange={(e) => setFwGroup(e.target.value as '' | ClassStreamGroup)}
+                    className="w-full h-9 px-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+                  >
+                    <option value="">General (All)</option>
+                    <option value="science">Science</option>
+                    <option value="business">Business Studies</option>
+                    <option value="humanities">Humanities</option>
+                    <option value="vocational">Vocational</option>
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!fwCode.trim() || !fwNameBn.trim()) return;
+                    const minC = Math.max(1, Math.min(fwClassMin, fwClassMax));
+                    const maxC = Math.min(10, Math.max(fwClassMin, fwClassMax));
+                    const classes: string[] = [];
+                    for (let c = minC; c <= maxC; c++) classes.push(`Class ${c}`);
+                    const newItem: MasterSubjectFrameworkItem = {
+                      id: `gov-sub-${Date.now()}`,
+                      code: fwCode.trim(),
+                      nameBn: fwNameBn.trim(),
+                      nameEn: fwNameEn.trim() || fwNameBn.trim(),
+                      applicableClasses: classes,
+                      groupName: fwGroup || undefined,
+                      weeklyPeriods: 5,
+                      fullMarks: 100,
+                      passMarks: 33,
+                      type: fwGroup ? 'Elective' : 'Compulsory',
+                      origin: 'government',
+                    };
+                    onChangeMasterFramework([...masterFramework, newItem]);
+                    setFwCode('');
+                    setFwNameBn('');
+                    setFwNameEn('');
+                  }}
+                  className="h-9 px-3 rounded-lg bg-blue-700 hover:bg-blue-800 text-white font-semibold cursor-pointer"
+                >
+                  + {b('যুক্ত করুন', 'Add Master Item', lang)}
+                </button>
+              </div>
+            )}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-500">
+                    <th className="py-2 px-3">Code</th>
+                    <th className="py-2 px-3">{b('বিষয়', 'Subject', lang)}</th>
+                    <th className="py-2 px-3">{b('শ্রেণি', 'Classes', lang)}</th>
+                    <th className="py-2 px-3">{b('বিভাগ', 'Stream', lang)}</th>
+                    {onChangeMasterFramework && <th className="py-2 px-3 text-right">Action</th>}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {masterFramework.map((item) => (
+                    <tr key={item.id}>
+                      <td className="py-2 px-3 font-mono font-semibold">{item.code}</td>
+                      <td className="py-2 px-3 font-semibold text-slate-900 dark:text-white">{b(item.nameBn, item.nameEn, lang)}</td>
+                      <td className="py-2 px-3">{item.applicableClasses.join(', ')}</td>
+                      <td className="py-2 px-3">{item.groupName ?? item.type}</td>
+                      {onChangeMasterFramework && (
+                        <td className="py-2 px-3 text-right">
+                          <button
+                            type="button"
+                            onClick={() => onChangeMasterFramework(masterFramework.filter((f) => f.id !== item.id))}
+                            className="text-red-600 hover:underline font-semibold cursor-pointer"
+                          >
+                            {b('মুছুন', 'Remove', lang)}
+                          </button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {selectedOversightSchool ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-xs">
+              <label className="font-semibold text-slate-600 dark:text-slate-300">
+                {b('বিদ্যালয় নির্বাচন:', 'Select School:', lang)}
+              </label>
+              <select
+                value={selectedOversightSchool.id}
+                onChange={(e) => setOversightSchoolId(e.target.value)}
+                className="h-9 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-semibold"
+              >
+                {schools.map((sc) => (
+                  <option key={sc.id} value={sc.id}>
+                    {sc.nameBn} ({sc.code})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <SchoolClassSubjectWorkspace
+              lang={lang}
+              role="central_admin"
+              schoolId={selectedOversightSchool.id}
+              actorName={currentAdmin?.name ?? 'Super Central Admin'}
+              initialMode={activeTab === 'school_setup' ? 'setup' : 'subjects'}
+              schoolSetup={schoolSetupConfigs[selectedOversightSchool.id] ?? createEmptySchoolSetupConfig(selectedOversightSchool.id)}
+              masterFramework={masterFramework}
+              schoolSubjects={schoolSubjects}
+              lockConfigs={lockConfigs}
+              teacherPermission={teacherSubjectPermissions[selectedOversightSchool.id]}
+              masterRoutines={masterRoutines}
+              routineSlots={routineSlots}
+              examRoutines={examRoutines}
+              teacherAssignments={teacherAssignments}
+              exams={exams}
+              onSaveSchoolSetup={onSaveSchoolSetup ?? (() => {})}
+              onChangeSchoolSubjects={onChangeSchoolSubjects ?? (() => {})}
+              onChangeLockConfigs={onChangeLockConfigs ?? (() => {})}
+              onChangeTeacherPermission={onChangeTeacherPermission ?? (() => {})}
+            />
+          </div>
+        ) : (
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 text-center text-xs text-slate-500">
+            {b('০ টি বিদ্যালয় নিবন্ধিত। বিদ্যালয় নিবন্ধিত হলে এখানে স্কুল কাঠামো ও বিষয় নিয়ন্ত্রণ করা যাবে।', '0 schools registered yet. Register a school to manage school-specific structure and subjects.', lang)}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (activeTab === 'school_operations' || activeTab === 'class_promotion_release') {
+    const selectedOversightSchool =
+      schools.find((s) => s.id === oversightSchoolId) ?? schools[0];
+    if (!selectedOversightSchool) {
+      return (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 text-center text-xs text-slate-500">
+          {b('০ টি বিদ্যালয় নিবন্ধিত। বিদ্যালয় যুক্ত হলে দৈনিক কার্যক্রম ও শ্রেণি উন্নয়ন পরিচালনা করা যাবে।', '0 schools registered yet.', lang)}
+        </div>
+      );
+    }
+    const scopedStudents = students.filter((st) => st.schoolId === selectedOversightSchool.id);
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2 text-xs">
+          <label className="font-semibold text-slate-600 dark:text-slate-300">
+            {b('বিদ্যালয় নির্বাচন:', 'Select School:', lang)}
+          </label>
+          <select
+            value={selectedOversightSchool.id}
+            onChange={(e) => setOversightSchoolId(e.target.value)}
+            className="h-9 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-semibold"
+          >
+            {schools.map((sc) => (
+              <option key={sc.id} value={sc.id}>
+                {sc.nameBn} ({sc.code})
+              </option>
+            ))}
+          </select>
+        </div>
+        {activeTab === 'school_operations' ? (
+          <SchoolOperationsLeavePanel
+            lang={lang}
+            role="central_admin"
+            schoolId={selectedOversightSchool.id}
+            school={selectedOversightSchool}
+            actorName={currentAdmin?.name ?? 'Super Central Admin'}
+            dailyOps={dailyOps}
+            holidays={holidays}
+            teacherLeaves={teacherLeaves}
+            examRoutines={examRoutines}
+            onChangeDailyOps={(next) => onChangeDailyOps?.(next)}
+            onChangeHolidays={(next) => onChangeHolidays?.(next)}
+            onChangeTeacherLeaves={(next) => onChangeTeacherLeaves?.(next)}
+          />
+        ) : (
+          <ClassPromotionReleasePanel
+            lang={lang}
+            schoolId={selectedOversightSchool.id}
+            actorName={currentAdmin?.name ?? 'Super Central Admin'}
+            students={scopedStudents}
+            history={promotionHistory}
+            onCommitPromotionOrRelease={onCommitPromotionOrRelease ?? (() => {})}
           />
         )}
       </div>

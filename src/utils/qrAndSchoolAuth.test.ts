@@ -4,7 +4,7 @@ import {
   INITIAL_KIOSK_SCANS,
   INITIAL_SCHOOLS,
   INITIAL_STUDENTS,
-} from '../data/mockData';
+} from './testFixtures';
 import {
   authenticateSchoolAccount,
   filterByActiveSchool,

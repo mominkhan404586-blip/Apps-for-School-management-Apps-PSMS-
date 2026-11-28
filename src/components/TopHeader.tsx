@@ -91,6 +91,7 @@ interface TopHeaderProps {
   centralAdminName?: string;
   guardianName?: string;
   rtdbSyncStatus?: 'idle' | 'syncing' | 'synced' | 'error';
+  onOpenUserProfileManager?: () => void;
 }
 
 export const TopHeader: React.FC<TopHeaderProps> = ({
@@ -138,6 +139,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
   centralAdminName,
   guardianName,
   rtdbSyncStatus = 'synced',
+  onOpenUserProfileManager,
 }) => {
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -168,10 +170,8 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
           ? b(activeSchool.nameBn, activeSchool.nameEn, lang)
           : tr('schoolTitle', lang)
         : role === 'teacher'
-          ? b('শিক্ষক পোর্টাল · মডেল প্রাথমিক', 'Teacher Portal · Model Primary', lang)
-          : role === 'student'
-            ? b('শিক্ষার্থী পোর্টাল · স্মার্ট আইডি', 'Student Portal · Smart ID', lang)
-            : tr('guardianTitle', lang);
+          ? b('শিক্ষক পোর্টাল', 'Teacher Portal', lang)
+          : tr('guardianTitle', lang);
 
   const brandSubtitle =
     role === 'central_admin'
@@ -183,48 +183,39 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
         : role === 'teacher'
           ? activeTeacher
             ? `${activeTeacher.teacherCode} · ${activeTeacher.assignedClasses[0] ?? activeTeacher.schoolId}`
-            : 'TCH-GPS1042-02 · Class 4'
-          : role === 'student'
-            ? activeStudent?.permanentId ?? 'STD-2026-GPS1042-0012'
-            : tr('guardianSubtitle', lang);
+            : b('স্বয়ংক্রিয় শিক্ষক আইডি', 'Verified Teacher Account', lang)
+          : tr('guardianSubtitle', lang);
 
   const profileInfo =
     role === 'central_admin'
       ? {
           name: centralAdminName?.trim() || b(CENTRAL_ADMIN_CREDENTIALS.displayNameBn, CENTRAL_ADMIN_CREDENTIALS.displayNameEn, lang),
-          roleLabel: 'Central Admin',
+          roleLabel: 'Super Central Admin',
           avatar: centralAdminPhotoUrl || AVATARS.centralAdmin,
         }
       : role === 'school_admin'
         ? {
-            name: activeSchool?.headTeacher ?? b('বেগম ফাতেমা খাতুন', 'Begum Fatema Khatun', lang),
+            name: activeSchool?.headTeacher || b('বিদ্যালয় অ্যাডমিন', 'School Admin', lang),
             roleLabel: b('প্রধান শিক্ষক / School Admin', 'Head Teacher / School Admin', lang),
             avatar: activeSchool?.headTeacherPhotoUrl || AVATARS.headTeacher,
           }
         : role === 'teacher'
           ? {
-              name: activeTeacher ? b(activeTeacher.nameBn, activeTeacher.nameEn, lang) : b('মোঃ আব্দুর রহিম', 'Md. Abdur Rahim', lang),
-              roleLabel: activeTeacher?.designation ?? b('সহকারী শিক্ষক (গণিত)', 'Assistant Teacher (Math)', lang),
+              name: activeTeacher ? b(activeTeacher.nameBn, activeTeacher.nameEn, lang) : b('শিক্ষক অ্যাকাউন্ট', 'Teacher Account', lang),
+              roleLabel: activeTeacher?.designation || b('শিক্ষক (Teacher)', 'Teacher', lang),
               avatar: activeTeacher?.photoUrl || AVATARS.headTeacher,
             }
-          : role === 'student'
-            ? {
-                name: activeStudent ? b(activeStudent.nameBn, activeStudent.nameEn, lang) : b('মোঃ রাহিম উদ্দিন', 'Md. Rahim Uddin', lang),
-                roleLabel: activeStudent ? b(`শিক্ষার্থী (${activeStudent.className})`, `Student (${activeStudent.className})`, lang) : b('শিক্ষার্থী (Class 4)', 'Student (Class 4)', lang),
-                avatar: activeStudent?.photoUrl || AVATARS.studentRahim,
-              }
-            : {
-                name: guardianName?.trim() || b('মোঃ জামাল উদ্দিন', 'Md. Jamal Uddin', lang),
-                roleLabel: b('অভিভাবক (Guardian)', 'Guardian', lang),
-                avatar: guardianPhotoUrl || AVATARS.headTeacher,
-              };
+          : {
+              name: guardianName?.trim() || b('অভিভাবক অ্যাকাউন্ট', 'Parent Account', lang),
+              roleLabel: b('অভিভাবক (Parent)', 'Parent', lang),
+              avatar: guardianPhotoUrl || AVATARS.headTeacher,
+            };
 
   const roleOptions: { id: Role; label: string }[] = [
     { id: 'central_admin', label: 'Central' },
     { id: 'school_admin', label: 'School' },
     { id: 'teacher', label: 'Teacher' },
-    { id: 'guardian', label: 'Guardian' },
-    { id: 'student', label: 'Student' },
+    { id: 'guardian', label: 'Parent' },
   ];
 
   return (
@@ -273,7 +264,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
               setSearchFocused(true);
             }}
             placeholder={
-              role === 'guardian' || role === 'student'
+              role === 'guardian'
                 ? b('ক্লাস, ফলাফল বা পাঠ খুঁজুন...', 'Search classes, results...', lang)
                 : b('খুঁজুন: ID, স্কুল বা শিক্ষক...', 'Search ID, school, teacher...', lang)
             }
@@ -421,8 +412,8 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
           </button>
         )}
 
-        {/* Guardian Child Selector */}
-        {role === 'guardian' && (
+        {/* Parent Child Selector */}
+        {role === 'guardian' && guardianChildren.length > 0 && (
           <div className="hidden sm:flex items-center">
             <label htmlFor="guardian-child-select" className="sr-only">
               {tr('selectChild', lang)}
@@ -732,6 +723,21 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
                 <User className="w-4 h-4" />
                 {tr('profile', lang)}
               </button>
+
+              {onOpenUserProfileManager && (
+                <button
+                  type="button"
+                  data-testid="header-user-profile-manager-btn"
+                  onClick={() => {
+                    onOpenUserProfileManager();
+                    setProfileOpen(false);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium rounded-lg text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/30 cursor-pointer"
+                >
+                  <ShieldCheck className="w-4 h-4" />
+                  {b('অ্যাকাউন্ট প্রোফাইল ও ইউনিক আইডি', 'Account Profile & Unique ID', lang)}
+                </button>
+              )}
 
               <button
                 type="button"

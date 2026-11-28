@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { INITIAL_STUDENTS, INITIAL_TEACHERS } from '../data/mockData';
+import { INITIAL_STUDENTS, INITIAL_TEACHERS } from './testFixtures';
 import {
   buildAbsentStudentsSmsPayload,
   buildAudienceSmsRecipients,

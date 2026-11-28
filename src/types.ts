@@ -244,6 +244,7 @@ export interface SchoolRecord {
   coverImageUrl?: string;
   loginPassword?: string;
   headTeacherPhotoUrl?: string;
+  uniqueIdCode?: string;
 }
 
 export interface ApprovalRequest {
@@ -297,6 +298,8 @@ export interface AdminAccount {
   lastLogin: string;
   twoFactorEnabled: boolean;
   photoUrl?: string;
+  uniqueIdCode?: string;
+  gender?: 'Male' | 'Female';
 }
 
 export interface ContactAdminMessage {
@@ -456,6 +459,10 @@ export interface StudentRecord {
   admittedByTeacherId?: string;
   admittedByTeacherName?: string;
   qrPayload?: string;
+  username?: string;
+  uniqueIdCode?: string;
+  enrollmentStatus?: 'active' | 'promoted' | 'released';
+  academicSnapshots?: StudentYearSnapshot[];
 }
 
 export type TeacherStatus =
@@ -580,6 +587,8 @@ export interface TeacherRecord {
   teacherType?: 'Permanent' | 'Contract' | 'Part-time' | 'Substitute';
   globalVerificationStatus?: 'pending' | 'under_review' | 'verified' | 'active' | 'suspended' | 'inactive' | 'deactivated';
   partBCompleted?: boolean;
+  username?: string;
+  uniqueIdCode?: string;
 }
 
 export interface TeacherSchoolPermissions {
@@ -689,8 +698,10 @@ export interface StudentAttendanceHistoryEntry {
   dateIso: string;
   status: 'present' | 'late' | 'absent';
   scanTime?: string;
+  exitTime?: string;
   source: 'auto_camera' | 'manual_teacher' | 'kiosk';
   guardianNotified?: boolean;
+  exitNotified?: boolean;
 }
 
 export type ExamCategoryType =
@@ -1561,5 +1572,224 @@ export interface ExamRoutineRecord {
   updatedAt: string;
   publishedAt?: string;
 }
+
+// === User Account Identity, Parent Linking, Operations, School Wizard, Subject Registry & Promotion ===
+
+export type ProfileVerificationStatus = 'verified' | 'pending' | 'reverification_required';
+
+export interface UserProfileRecord {
+  entityId: string;
+  role: 'central_admin' | 'school_admin' | 'teacher' | 'guardian';
+  displayName: string;
+  username: string;
+  uniqueIdCode: string;
+  gender: 'Male' | 'Female';
+  email: string;
+  mobile: string;
+  photoUrl?: string;
+  avatarPresetId?: string;
+  verificationStatus: ProfileVerificationStatus;
+  verifiedAt?: string;
+  lastUpdatedAt: string;
+  reverificationReason?: string;
+}
+
+export interface ParentAccountRecord {
+  id: string;
+  name: string;
+  username: string;
+  uniqueIdCode: string;
+  email?: string;
+  mobile: string;
+  gender: 'Male' | 'Female';
+  photoUrl?: string;
+  password: string;
+  linkedChildIds: string[];
+  verificationStatus: ProfileVerificationStatus;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface StudentYearSnapshot {
+  academicYear: string;
+  className: string;
+  section: string;
+  roll: number;
+  attendancePct: number;
+  gpa?: string;
+  finalGrade?: string;
+  statusAtClose: 'promoted' | 'released';
+  recordedAt: string;
+}
+
+export interface PromotionReleaseHistoryEntry {
+  id: string;
+  schoolId: string;
+  actionType: 'promote' | 'release';
+  sourceAcademicYear: string;
+  targetAcademicYear?: string;
+  sourceClassName: string;
+  targetClassName?: string;
+  studentIds: string[];
+  studentNames: string[];
+  actorName: string;
+  timestamp: string;
+  note?: string;
+}
+
+export type SchoolDailyTeachingStatus =
+  | 'not_started'
+  | 'running'
+  | 'ended_early'
+  | 'holiday'
+  | 'exam_running';
+
+export interface SchoolDailyOperationsState {
+  schoolId: string;
+  dateIso: string;
+  isStarted: boolean;
+  startedAt?: string;
+  startedBy?: string;
+  endedEarly: boolean;
+  endedEarlyAt?: string;
+  endedEarlyBy?: string;
+}
+
+export interface HolidayPlanRecord {
+  id: string;
+  schoolId: string;
+  nameBn: string;
+  nameEn?: string;
+  holidayType: 'Summer' | 'Annual' | 'Winter' | 'Other';
+  startDateTime: string;
+  endDateTime: string;
+  description: string;
+  createdBy: string;
+  createdAt: string;
+  manualOverrideInactive?: boolean;
+}
+
+export interface TeacherLeaveRecord {
+  id: string;
+  schoolId: string;
+  teacherId: string;
+  teacherName: string;
+  startDateTime: string;
+  endDateTime: string;
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  earlyReturnRequested?: boolean;
+  earlyReturnReason?: string;
+  earlyReturnStatus?: 'pending' | 'approved' | 'rejected';
+  approvedBy?: string;
+  createdAt: string;
+}
+
+export interface AttendanceNotificationDedupRecord {
+  key: string;
+  studentId: string;
+  schoolId: string;
+  dateIso: string;
+  type: 'entry' | 'exit';
+  timeText: string;
+  sentAtIso: string;
+}
+
+export type SchoolSetupType =
+  | 'PRIMARY'
+  | 'SECONDARY'
+  | 'PRIMARY_SECONDARY'
+  | 'KINDERGARTEN'
+  | 'MADRASA';
+
+export type ClassStreamGroup = 'science' | 'humanities' | 'business' | 'vocational';
+
+export interface ClassSectionDivisionConfig {
+  id: string;
+  divisionNameBn: string;
+  divisionNameEn: string;
+  includedGroups: ClassStreamGroup[];
+  roomNo?: string;
+}
+
+export interface ClassSubjectDraftItem {
+  code: string;
+  nameBn: string;
+  nameEn: string;
+  fullMarks?: number;
+  passMarks?: number;
+}
+
+export interface ClassStructureConfig {
+  className: string;
+  subjects: ClassSubjectDraftItem[];
+  subjectsSavedAt?: string;
+  selectedGroups: ClassStreamGroup[];
+  groupSubjects: Partial<Record<ClassStreamGroup, ClassSubjectDraftItem[]>>;
+  groupsSavedAt?: string;
+  sections: ClassSectionDivisionConfig[];
+  sectionsSavedAt?: string;
+}
+
+export interface SchoolSetupConfig {
+  schoolId: string;
+  schoolType: SchoolSetupType | null;
+  schoolTypeLocked: boolean;
+  selectedClasses: string[];
+  classConfigs: Record<string, ClassStructureConfig>;
+  updatedAt: string;
+}
+
+export interface MasterSubjectFrameworkItem {
+  id: string;
+  code: string;
+  nameBn: string;
+  nameEn: string;
+  applicableClasses: string[];
+  groupName?: ClassStreamGroup;
+  weeklyPeriods: number;
+  fullMarks: number;
+  passMarks: number;
+  type: 'Compulsory' | 'Elective' | 'Co-Curricular';
+  origin: 'government';
+}
+
+export interface SchoolSubjectRecord {
+  id: string;
+  schoolId: string;
+  academicYear: string;
+  className: string;
+  groupName?: ClassStreamGroup;
+  code: string;
+  nameBn: string;
+  nameEn: string;
+  weeklyPeriods: number;
+  fullMarks: number;
+  passMarks: number;
+  type: 'Compulsory' | 'Elective' | 'Co-Curricular';
+  origin: 'government' | 'institution';
+  sourceFrameworkId?: string;
+  status: 'active' | 'archived';
+  isLocked?: boolean;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface TeacherSubjectPermissionConfig {
+  schoolId: string;
+  allowView: boolean;
+  allowAdd: boolean;
+  allowEdit: boolean;
+  allowArchiveOrDelete: boolean;
+  allowLock: boolean;
+}
+
+export interface SubjectYearLockConfig {
+  schoolId: string;
+  academicYear: string;
+  yearLocked: boolean;
+  lockedClasses: string[];
+}
+
 
 

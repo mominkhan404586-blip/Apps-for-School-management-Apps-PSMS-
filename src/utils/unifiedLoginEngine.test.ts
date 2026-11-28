@@ -5,7 +5,7 @@ import {
   INITIAL_SCHOOLS,
   INITIAL_STUDENTS,
   INITIAL_TEACHERS,
-} from '../data/mockData';
+} from './testFixtures';
 import { BOOT_ADMIN_EMAIL } from './authGuard';
 import {
   buildPasswordOverrideKey,
@@ -35,7 +35,7 @@ test('resolveUnifiedPortalLogin routes Super Admin Gmail and email accounts to F
   assert.equal(genericEmailRes.kind, 'firebase_email');
 });
 
-test('resolveUnifiedPortalLogin authenticates School Admin, Teacher, Student, and Guardian from unified inputs', () => {
+test('resolveUnifiedPortalLogin authenticates School Admin, Teacher, and Parent while blocking Student login', () => {
   const schoolRes = resolveUnifiedPortalLogin({
     identifier: 'SCH-2026-00015',
     password: 'school@123',
@@ -50,7 +50,7 @@ test('resolveUnifiedPortalLogin authenticates School Admin, Teacher, Student, an
   }
 
   const teacherRes = resolveUnifiedPortalLogin({
-    identifier: 'tch_rahim',
+    identifier: 'TCH-GPS1042-02',
     password: 'teacher@123',
     schools: INITIAL_SCHOOLS,
     teachers: INITIAL_TEACHERS,
@@ -62,18 +62,15 @@ test('resolveUnifiedPortalLogin authenticates School Admin, Teacher, Student, an
     assert.equal(teacherRes.teacherId, 'tch-2');
   }
 
-  const studentRes = resolveUnifiedPortalLogin({
+  // Student IDs must NOT authenticate as a student login; parents access student info via Parent portal
+  const studentBlockedRes = resolveUnifiedPortalLogin({
     identifier: 'STD-2026-GPS1042-0012',
     password: '01712345678',
     schools: INITIAL_SCHOOLS,
     teachers: INITIAL_TEACHERS,
     students: INITIAL_STUDENTS,
   });
-  assert.equal(studentRes.kind, 'portal_authenticated');
-  if (studentRes.kind === 'portal_authenticated') {
-    assert.equal(studentRes.role, 'student');
-    assert.equal(studentRes.studentId, 'stu-rahim');
-  }
+  assert.equal(studentBlockedRes.kind, 'error');
 
   const guardianRes = resolveUnifiedPortalLogin({
     identifier: '01712345678',
@@ -94,7 +91,7 @@ test('resolveUnifiedPortalLogin honors passwordOverrides after password change',
   };
 
   const oldFail = resolveUnifiedPortalLogin({
-    identifier: 'tch_rahim',
+    identifier: 'TCH-GPS1042-02',
     password: 'teacher@123',
     schools: INITIAL_SCHOOLS,
     teachers: INITIAL_TEACHERS,
@@ -104,7 +101,7 @@ test('resolveUnifiedPortalLogin honors passwordOverrides after password change',
   assert.equal(oldFail.kind, 'error');
 
   const newOk = resolveUnifiedPortalLogin({
-    identifier: 'tch_rahim',
+    identifier: 'TCH-GPS1042-02',
     password: 'newpass@2026',
     schools: INITIAL_SCHOOLS,
     teachers: INITIAL_TEACHERS,

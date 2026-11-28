@@ -220,6 +220,7 @@ import { SettingsCenterView } from './components/SettingsCenterView';
 import { OfflineIndicator, PWAInstallBanner } from './components/PWAInstallBanner';
 import { AppDownloadAndShareModal } from './components/AppDownloadAndShareModal';
 import { AuthLoadingScreen } from './components/AuthScreens';
+import { WelcomeSplash } from './components/WelcomeSplash';
 import {
   FirebaseEmailAuthModal,
   type FirebaseEmailAuthTab,
@@ -427,6 +428,16 @@ export default function App() {
   const [emailAuthModalOpen, setEmailAuthModalOpen] = useState(false);
   const [emailAuthInitialTab, setEmailAuthInitialTab] = useState<FirebaseEmailAuthTab>('signin');
   const [emailAuthPrefill, setEmailAuthPrefill] = useState<string>('');
+  const [welcomeSplashDone, setWelcomeSplashDone] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('autostart') === '1') return true;
+      return window.sessionStorage.getItem('psms_welcome_seen') === '1';
+    } catch {
+      return false;
+    }
+  });
 
   const [role, setRole] = useState<Role>(initialBootstrap.role);
   const [activeTab, setActiveTab] = useState<string>(initialBootstrap.tab);
@@ -1187,9 +1198,6 @@ export default function App() {
           setActiveTeacherPortalId(updated.teacherId);
           if (updated.schoolId) setActiveTeacherSchoolId(updated.schoolId);
         }
-        if (updated.role === 'student' && updated.studentId) {
-          setActiveStudentPortalId(updated.studentId);
-        }
         if (updated.role === 'guardian' && updated.studentId) {
           setSelectedChildId(updated.studentId);
         }
@@ -1292,15 +1300,36 @@ export default function App() {
               eiin: rs.eiin || next[idx].eiin,
               status: (rs.status as SchoolRecord['status']) || next[idx].status,
             };
-          } else if (INITIAL_SCHOOLS[0]) {
+          } else {
             next.unshift({
-              ...INITIAL_SCHOOLS[0],
               id: rs.schoolId,
               code: rs.schoolId,
+              eiin: rs.eiin,
               nameBn: rs.nameBn,
               nameEn: rs.nameEn,
-              eiin: rs.eiin,
+              schoolType: 'PRIMARY',
+              mobile: '',
+              email: '',
+              cluster: '',
+              division: '',
+              district: '',
+              upazila: '',
+              union: '',
+              village: '',
+              fullAddress: '',
+              addressSource: 'AUTOMATIC',
+              headTeacher: '',
+              adminUsername: rs.schoolId,
+              studentCount: 0,
+              teacherCount: 0,
+              classRange: 'Class 1 - Class 5',
+              approvedClasses: ['Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5'],
+              academicYear: '২০২৬',
               status: (rs.status as SchoolRecord['status']) || 'pending',
+              registrationMethod: 'ONLINE',
+              documents: [],
+              verifiedDate: '',
+              attendanceRate: 0,
             });
           }
         });
@@ -1361,18 +1390,23 @@ export default function App() {
               mobile: rt.mobile || next[idx].mobile,
               status: (rt.status as TeacherRecord['status']) || next[idx].status,
             };
-          } else if (INITIAL_TEACHERS[0]) {
+          } else {
             next.unshift({
-              ...INITIAL_TEACHERS[0],
               id: rt.teacherId,
               teacherCode: rt.teacherId,
               schoolId: rt.schoolId,
+              schoolNameBn: rt.schoolId,
               nameBn: rt.nameBn,
               nameEn: rt.nameEn,
               designation: rt.designation,
+              qualification: '',
+              joiningDate: new Date().toISOString().slice(0, 10),
+              subjects: [],
+              assignedClasses: [],
               email: rt.email || '',
               mobile: rt.mobile || '',
               status: (rt.status as TeacherRecord['status']) || 'pending',
+              performanceScore: 0,
             });
           }
         });
@@ -1397,19 +1431,32 @@ export default function App() {
               guardianMobile: rs.guardianMobile || next[idx].guardianMobile,
               status: (rs.status as StudentRecord['status']) || next[idx].status,
             };
-          } else if (INITIAL_STUDENTS[0]) {
+          } else {
             next.unshift({
-              ...INITIAL_STUDENTS[0],
               id: rs.studentId,
               permanentId: rs.studentId,
+              activationCode: '',
+              guardianLinkCode: '',
               schoolId: rs.schoolId,
+              schoolNameBn: rs.schoolId,
               nameBn: rs.nameBn,
               nameEn: rs.nameEn,
+              dob: '',
+              birthRegNo: '',
+              gender: 'Male',
+              fatherName: '',
+              motherName: '',
+              bloodGroup: '',
               className: rs.className,
               section: rs.section,
               roll: rs.roll,
               guardianMobile: rs.guardianMobile,
               status: (rs.status as StudentRecord['status']) || 'active',
+              attendancePct: 0,
+              heightCm: 0,
+              weightKg: 0,
+              stipendStatus: 'not_applied',
+              admissionHistory: [],
             });
           }
         });
@@ -7113,6 +7160,19 @@ export default function App() {
         </button>
       </nav>
         </>
+      ) : !welcomeSplashDone ? (
+        <WelcomeSplash
+          lang={lang}
+          autoAdvanceMs={1100}
+          onContinue={() => {
+            setWelcomeSplashDone(true);
+            try {
+              window.sessionStorage.setItem('psms_welcome_seen', '1');
+            } catch {
+              // ignore storage restriction
+            }
+          }}
+        />
       ) : (
         <PortalLandingHub
           open={true}

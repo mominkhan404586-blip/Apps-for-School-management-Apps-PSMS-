@@ -14,17 +14,21 @@ import {
 } from 'lucide-react';
 import { ExamPdfReportModal } from './ExamPdfReportModal';
 import type {
+  AcademicSubjectConfig,
   ExamCategoryType,
   ExamRecord,
   Language,
+  MasterSubjectFrameworkItem,
   Role,
   SchoolRecord,
+  SchoolSubjectRecord,
   StudentRecord,
   TeacherRecord,
   TeacherSubjectAssignment,
 } from '../types';
 import { b } from '../i18n/translations';
-import { ALL_CLASSES, NCTB_SUBJECTS } from '../data/mockData';
+import { ALL_CLASSES } from '../data/mockData';
+import { getActiveSubjectsForDropdown } from '../utils/centralSubjectAndStructureEngine';
 import {
   EXAM_CATEGORY_LABELS,
   canActorEditExamMarks,
@@ -46,6 +50,10 @@ interface ExaminationManagementPanelProps {
   schools: SchoolRecord[];
   students: StudentRecord[];
   exams: ExamRecord[];
+  subjects?: AcademicSubjectConfig[];
+  schoolSubjects?: SchoolSubjectRecord[];
+  masterFramework?: MasterSubjectFrameworkItem[];
+  academicYear?: string;
   teacherAssignments?: TeacherSubjectAssignment[];
   onCreateLocalExam: (payload: CreateLocalExamPayload) => void;
   onToggleCentralTermPublish: (examId: string, publish: boolean) => void;
@@ -69,12 +77,17 @@ export const ExaminationManagementPanel: React.FC<ExaminationManagementPanelProp
   schools,
   students,
   exams,
+  subjects = [],
+  schoolSubjects = [],
+  masterFramework = [],
+  academicYear,
   teacherAssignments = [],
   onCreateLocalExam,
   onToggleCentralTermPublish,
   onUpdateExamMark,
 }) => {
   const canCreateLocalExam = role === 'school_admin' || role === 'teacher';
+  const todayIso = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const [createOpen, setCreateOpen] = useState(false);
   const [activeExamForMarksId, setActiveExamForMarksId] = useState<string | null>(null);
   const [pdfReportExamId, setPdfReportExamId] = useState<string | null>(null);
@@ -84,11 +97,28 @@ export const ExaminationManagementPanel: React.FC<ExaminationManagementPanelProp
   const [titleBn, setTitleBn] = useState('');
   const [examCategory, setExamCategory] = useState<ExamCategoryType>('class_test');
   const [className, setClassName] = useState(
-    teacher?.assignedClasses[0] ?? 'Class 4'
+    teacher?.assignedClasses[0] ?? 'Class 1'
   );
   const [section, setSection] = useState('ক (A)');
-  const [subjectEn, setSubjectEn] = useState('Mathematics');
-  const [examDate, setExamDate] = useState('2026-11-25');
+  const availableSubjects = useMemo(() => {
+    const resolvedYear = academicYear ?? String(new Date().getFullYear());
+    const fromRegistry = getActiveSubjectsForDropdown(
+      schoolSubjects.filter((s) => !schoolId || s.schoolId === schoolId),
+      resolvedYear,
+      className
+    );
+    if (fromRegistry.length > 0) {
+      return fromRegistry.map((s) => ({ code: s.subjectCode, nameBn: s.nameBn, nameEn: s.nameEn }));
+    }
+    if (subjects.length > 0) {
+      return subjects.map((s) => ({ code: s.code, nameBn: s.nameBn, nameEn: s.nameEn }));
+    }
+    return masterFramework.map((s) => ({ code: s.subjectCode, nameBn: s.nameBn, nameEn: s.nameEn }));
+  }, [schoolSubjects, schoolId, academicYear, className, subjects, masterFramework]);
+
+  const [subjectEn, setSubjectEn] = useState('');
+  const effectiveSubjectEn = subjectEn || availableSubjects[0]?.nameEn || '';
+  const [examDate, setExamDate] = useState(todayIso);
   const [startTime, setStartTime] = useState('10:30 AM');
   const [durationMins, setDurationMins] = useState(40);
   const [fullMarks, setFullMarks] = useState(25);
@@ -131,8 +161,8 @@ export const ExaminationManagementPanel: React.FC<ExaminationManagementPanelProp
 
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!titleBn.trim() || !schoolId) return;
-    const subMeta = NCTB_SUBJECTS.find((s) => s.nameEn === subjectEn);
+    if (!titleBn.trim() || !schoolId || !effectiveSubjectEn) return;
+    const subMeta = availableSubjects.find((s) => s.nameEn === effectiveSubjectEn);
     onCreateLocalExam({
       schoolId,
       titleBn: titleBn.trim(),
@@ -140,8 +170,8 @@ export const ExaminationManagementPanel: React.FC<ExaminationManagementPanelProp
       examCategory,
       className,
       section,
-      subjectBn: subMeta?.nameBn ?? subjectEn,
-      subjectEn,
+      subjectBn: subMeta?.nameBn ?? effectiveSubjectEn,
+      subjectEn: effectiveSubjectEn,
       examDate,
       startTime,
       durationMins,
@@ -170,14 +200,14 @@ export const ExaminationManagementPanel: React.FC<ExaminationManagementPanelProp
           <p className="text-slate-500 mt-0.5">
             {role === 'central_admin'
               ? b(
-                  '১ম সাময়িক, ২য় সাময়িক ও বার্ষিক (৩য় প্রান্তিক) পরীক্ষা Central Admin প্রকাশ না করা পর্যন্ত স্কুল/শিক্ষক/শিক্ষার্থী/অভিভাবকের কাছে অদৃশ্য ও লক থাকবে।',
+                  '১ম সাময়িক, ২য় সাময়িক ও বার্ষিক (৩য় প্রান্তিক) পরীক্ষা Central Admin প্রকাশ না করা পর্যন্ত স্কুল/শিক্ষক/অভিভাবকের কাছে অদৃশ্য ও লক থাকবে।',
                   '1st, 2nd & 3rd Term exams stay completely hidden and locked across all schools until Central Admin publishes them.',
                   lang
                 )
-              : role === 'student' || role === 'guardian'
+              : role === 'guardian' || role === 'student'
                 ? b(
-                    'Central-অনুমোদিত সাময়িক পরীক্ষা ও শ্রেণি পরীক্ষার সময়সূচি এবং প্রাপ্ত নম্বর দেখুন।',
-                    'View centrally published Term exams and local school/class test schedules & marks.',
+                    'অভিভাবক (Parent) পোর্টালে সন্তানের Central-অনুমোদিত সাময়িক পরীক্ষা ও শ্রেণি পরীক্ষার সময়সূচি এবং প্রাপ্ত নম্বর দেখুন।',
+                    'View your child’s centrally published Term exams and local school/class test schedules & marks.',
                     lang
                   )
                 : b(
@@ -284,15 +314,19 @@ export const ExaminationManagementPanel: React.FC<ExaminationManagementPanelProp
             <div>
               <label className="block font-semibold mb-1">{b('বিষয় (Subject)', 'Subject', lang)}</label>
               <select
-                value={subjectEn}
+                value={effectiveSubjectEn}
                 onChange={(e) => setSubjectEn(e.target.value)}
                 className="w-full h-9 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 cursor-pointer"
               >
-                {NCTB_SUBJECTS.map((s) => (
-                  <option key={s.code} value={s.nameEn}>
-                    {s.nameBn} ({s.nameEn})
-                  </option>
-                ))}
+                {availableSubjects.length === 0 ? (
+                  <option value="">{b('প্রথমে শ্রেণিভিত্তিক বিষয় নিবন্ধন করুন', 'Register subjects first', lang)}</option>
+                ) : (
+                  availableSubjects.map((s) => (
+                    <option key={s.code + s.nameEn} value={s.nameEn}>
+                      {s.nameBn} ({s.nameEn})
+                    </option>
+                  ))
+                )}
               </select>
             </div>
           </div>

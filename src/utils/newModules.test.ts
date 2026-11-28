@@ -7,7 +7,7 @@ import {
   INITIAL_NOTIFICATIONS,
   INITIAL_STUDENTS,
   INITIAL_TEACHERS,
-} from '../data/mockData';
+} from './testFixtures';
 import {
   DEFAULT_NOTIFICATION_PREFERENCES,
   computeSinceLastVisitSummary,
